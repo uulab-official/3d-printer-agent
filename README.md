@@ -53,7 +53,7 @@ UI 상태 회귀 검사는 개발용 Node.js가 있을 때 `node tests/test_ui_s
 
 CI는 Python 검사와 패키지 설치, UI 상태 검사, 실제 Chromium에서의 브라우저 검사를 실행하도록 구성했습니다. 실행 결과는 [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions)에서 커밋별로 확인합니다. 브라우저 검사에는 개발용 Node.js가 필요하며 실행 방법은 [기여 안내](CONTRIBUTING.md)를 따릅니다.
 
-개발 소스에서 실행하는 방법이며 `pip install .` 후 `printer-agent` 진입점도 제공합니다. 패키지 설치는 별도 PC에서 아직 검증하지 않았습니다. API 키 없이 템플릿 모드와 실제 CAD 생성이 동작합니다.
+개발 소스에서 실행하는 방법이며 `pip install .` 후 `printer-agent` 진입점도 제공합니다. GitHub Actions의 새 Linux 환경에서 wheel 빌드·설치와 소스 디렉터리 밖의 실행을 검증했습니다. Windows·macOS 설치는 별도 검증이 필요합니다. API 키 없이 템플릿 모드와 실제 CAD 생성이 동작합니다.
 
 ## 사용할 수 있는 작업
 

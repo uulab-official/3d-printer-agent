@@ -10,11 +10,13 @@ The app generates three parameterized CAD models; reviews user-supplied filament
 
 The original local validation is documented in [VERIFICATION.md](VERIFICATION.md). Current unit, package and browser results are recorded per commit in [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions). A workflow definition alone is not evidence of a successful run.
 
-Repository adoption checks passed locally: **90 Python tests and 5 UI-controller tests**. The additional regressions keep invalid optional LLM URLs from breaking template mode and make failed CAD jobs inspectable in history. Six real-browser tests are defined for desktop and mobile; their actual run result is reported by CI.
+Repository adoption checks passed locally and in a fresh GitHub Actions environment: **90 Python tests and 5 UI-controller tests**. The additional regressions keep invalid optional LLM URLs from breaking template mode and make failed CAD jobs inspectable in history.
+
+[CI run 43152391860](https://github.com/uulab-official/3d-printer-agent/actions/runs/43152391860), on commit `22b7f57acffbc8a4be35a3df5211f85a2f2b22ce`, also passed **all 6 Chromium browser tests**, with no skipped or flaky tests. Desktop and mobile viewport scenarios exercised real CAD generation, preview zoom, a 3MF download checked against its manifest hash, outcome/history handling, missing profile evidence, unknown shipping and failed-job inspection. Wheel build, installation and execution outside the source directory passed in the same run. Browser evidence is retained by Actions for seven days; the workflow log records the test outcome.
 
 ## Remaining qualifications
 
-Actual Bambu Studio versions, macOS/Windows native installation, real LLM servers and physical printing require separate qualification. The original local environment blocked Chromium IPC, so its static/Canvas/controller checks must not be reported as a full browser pass. GitHub Actions is configured to perform that missing real-browser path.
+Actual Bambu Studio versions, macOS/Windows native installation, real LLM servers and physical printing require separate qualification. The original local environment blocked Chromium IPC; the later successful GitHub Actions run supplies the separate real-browser evidence. Mobile viewport emulation is not a test on a physical phone.
 
 Source authenticity checks, inherited-profile resolution, MakerWorld access/customization and live product collection are future capabilities. No external platform API is assumed to be available or authorized until verified.
 
