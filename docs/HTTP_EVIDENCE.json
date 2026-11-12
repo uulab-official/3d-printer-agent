@@ -1,0 +1,53 @@
+{
+  "verification": "real HTTP server using isolated installed package",
+  "all_passed": true,
+  "checks": [
+    {
+      "name": "installed_package_bootstrap",
+      "passed": true
+    },
+    {
+      "name": "static_asset /",
+      "passed": true,
+      "bytes": 20641,
+      "sha256": "9c1b19011d150b9111ee16b0d0d8f457d0e7285274af61ba22813b5d6ebdd4ec"
+    },
+    {
+      "name": "static_asset /static/style.css",
+      "passed": true,
+      "bytes": 28025,
+      "sha256": "e401f26c0508131ddcfb0c0cbb26eb280b0a8d853f7fca3718c0562d71518a0b"
+    },
+    {
+      "name": "static_asset /static/app.js",
+      "passed": true,
+      "bytes": 49247,
+      "sha256": "a3149392b029d7a9259bdc394370d7b24b165e2d1fb87ceaabd6685192c45c87"
+    },
+    {
+      "name": "natural_language_to_real_CAD_and_hashed_download_bundle",
+      "passed": true,
+      "dimensions_mm": {
+        "x": 140.0,
+        "y": 90.0,
+        "z": 40.0
+      }
+    },
+    {
+      "name": "missing_profile_and_setup_require_input",
+      "passed": true
+    },
+    {
+      "name": "delivered_price_ranking_and_unknown_shipping",
+      "passed": true
+    },
+    {
+      "name": "history_and_user_reported_outcome",
+      "passed": true
+    }
+  ],
+  "browser_rendering": "not_tested",
+  "native_slicer": "not_installed",
+  "physical_print": "not_tested",
+  "installed_sources_match_deliverable": true
+}

@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="용도와 치수에 맞는 실제 CAD 모델을 만들고, 재료 설정과 출력 준비를 확인하는 로컬 작업 공간">
+  <title>3D Printer Agent · 로컬 작업 공간</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
+  <button id="nav-backdrop" class="nav-backdrop" aria-label="메뉴 닫기" hidden></button>
+  <aside id="sidebar" class="sidebar" aria-label="주 메뉴">
+    <a class="brand" href="/" aria-label="3D Printer Agent 홈">
+      <span class="brand-mark" aria-hidden="true">3D</span>
+      <span><strong id="brand-name">Printer Agent</strong><small>YOUR MAKING WORKSPACE</small></span>
+    </a>
+    <div class="nav-label">작업 공간</div>
+    <nav class="navigation" aria-label="작업 선택">
+      <button class="nav-item active" data-view="models" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z M3 8v9l9 5 9-5V8 M12 13v9"/></svg>
+        모델 만들기
+      </button>
+      <button class="nav-item" data-view="profiles">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg>
+        재료 설정
+      </button>
+      <button class="nav-item" data-view="offers">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l5 5-11 11-7-7L5 4Z"/><circle cx="10" cy="9" r="1.5"/></svg>
+        구매 비교
+      </button>
+      <button class="nav-item" data-view="history">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 3 8 M3 4v7h7 M12 7v5l3 2"/></svg>
+        작업 기록
+      </button>
+    </nav>
+    <div class="sidebar-note">
+      <span class="small-dot" aria-hidden="true"></span>
+      <strong>한 단계씩, 실제 결과로</strong>
+      <p>모델 생성, 슬라이싱, 실물 출력의 상태를 따로 기록합니다.</p>
+    </div>
+    <div class="sidebar-footer">
+      <span class="local-indicator"><span aria-hidden="true"></span> 로컬 작업 공간</span>
+      <small id="app-version">버전 확인 중</small>
+    </div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="menu-toggle" class="icon-button menu-toggle" aria-label="메뉴 열기" aria-expanded="false" aria-controls="sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <span class="breadcrumb">WORKSPACE <span aria-hidden="true">/</span> <strong id="current-page">모델 만들기</strong></span>
+      </div>
+      <div id="environment-badge" class="badge badge-neutral">슬라이서 확인 중</div>
+    </header>
+
+    <main id="main-content" tabindex="-1">
+      <div id="bootstrap-error" class="notice notice-error" role="alert" hidden>
+        <div><strong>작업 공간에 연결하지 못했습니다.</strong><p id="bootstrap-error-detail"></p></div>
+        <button id="retry-bootstrap" class="button button-secondary" type="button">다시 연결</button>
+      </div>
+
+      <section id="view-models" class="view" aria-labelledby="models-heading">
+        <div class="page-heading">
+          <div><p class="eyebrow">FROM IDEA TO SOMETHING REAL</p><h1 id="models-heading">무엇을 만들어 볼까요?</h1><p class="page-description">쓸모 있는 시작점을 고르고, 내 치수에 맞는 모델로 만들어 보세요.</p></div>
+          <span class="page-tag">치수 단위 · mm</span>
+        </div>
+
+        <div class="section-heading"><h2>추천 제작 템플릿</h2><span>직접 수정할 수 있는 시작점</span></div>
+        <div id="template-cards" class="template-grid" aria-label="제작 템플릿 선택"><p class="muted">템플릿을 불러오는 중입니다.</p></div>
+
+        <div class="model-workspace">
+          <div class="editor-column">
+            <section class="card request-card" aria-labelledby="request-heading">
+              <div class="card-heading"><div><span class="step-label">01 · 요청</span><h2 id="request-heading">만들고 싶은 물건</h2></div></div>
+              <form id="plan-form">
+                <label for="request-text" class="sr-only">물건과 원하는 치수</label>
+                <textarea id="request-text" rows="4" maxlength="4000" required placeholder="가로 12cm, 세로 8cm, 높이 3cm 수납함을 3칸으로 만들어 줘."></textarea>
+                <div class="request-actions">
+                  <label class="mode-control" for="plan-mode"><span>해석 방식</span><select id="plan-mode"><option value="templates">템플릿 모드</option><option value="llm" disabled>LLM 모드 · 미설정</option></select></label>
+                  <button id="plan-button" class="button button-secondary" type="submit" disabled>제작안 준비 <span aria-hidden="true">↗</span></button>
+                </div>
+                <p id="provider-note" class="field-help">템플릿 모드는 지원하는 물건과 치수를 정해진 규칙으로 해석합니다.</p>
+              </form>
+              <div id="plan-feedback" class="notice" role="status" hidden></div>
+            </section>
+
+            <section class="card parameter-card" aria-labelledby="parameter-heading">
+              <div class="card-heading"><div><span class="step-label">02 · 치수 확인</span><h2 id="parameter-heading" tabindex="-1">내게 맞게 조정하기</h2></div><button id="reset-parameters" class="text-button" type="button" disabled>기본값으로</button></div>
+              <p id="parameter-description" class="muted compact">템플릿을 선택하면 수정할 치수가 표시됩니다.</p>
+              <form id="model-form">
+                <div id="parameter-fields" class="parameter-grid"></div>
+                <p class="field-help defaults-note">각 입력 아래에 템플릿 기본값을 표시합니다. 형상 조건은 생성할 때 다시 확인합니다.</p>
+                <button id="generate-button" class="button button-primary button-wide" type="submit" disabled><span>CAD 모델 생성하기</span><span aria-hidden="true">→</span></button>
+              </form>
+              <div id="model-feedback" class="notice" role="status" hidden></div>
+            </section>
+          </div>
+
+          <div class="preview-column">
+            <section class="card preview-card" aria-labelledby="preview-heading">
+              <div class="card-heading"><div><span class="step-label">03 · 결과</span><h2 id="preview-heading">모델 미리보기</h2></div><span id="preview-status" class="badge badge-neutral">아직 생성 전</span></div>
+              <div id="preview-stage" class="preview-stage">
+                <canvas id="model-canvas" tabindex="0" aria-label="생성한 3D 모델. 방향키로 회전하고 더하기와 빼기 키로 확대하거나 축소합니다." hidden></canvas>
+                <div id="preview-empty" class="preview-empty"><span class="empty-mark" aria-hidden="true">+</span><h3>첫 모델을 기다리고 있어요</h3><p>치수를 확인하고 모델을 생성하면<br>실제 CAD 형상이 여기에 나타납니다.</p></div>
+                <div id="preview-tools" class="preview-tools" hidden>
+                  <button id="zoom-out" class="icon-button" type="button" aria-label="모델 축소">−</button>
+                  <button id="zoom-in" class="icon-button" type="button" aria-label="모델 확대">+</button>
+                  <span class="tool-separator" aria-hidden="true"></span>
+                  <button id="reset-view" class="icon-button" type="button" aria-label="기본 시점으로">↺</button>
+                </div>
+              </div>
+              <div class="preview-footer"><span id="preview-caption">생성된 메시만 표시합니다.</span><span>드래그로 회전 · 휠로 확대</span></div>
+            </section>
+
+            <section id="model-result" class="card result-card" aria-labelledby="result-heading" hidden>
+              <div class="card-heading"><div><span class="step-label">생성한 파일</span><h2 id="result-heading">모델 파일이 준비됐어요</h2></div><span class="badge badge-warning">실물 출력 미검증</span></div>
+              <div id="model-metrics" class="metric-grid"></div>
+              <div id="model-checks" class="check-list"></div>
+              <div id="model-warnings" class="warning-list"></div>
+              <div id="download-links" class="download-grid" aria-label="생성한 모델 파일 다운로드"></div>
+              <p class="field-help">3MF에는 모델 형상이 들어 있습니다. 프린터용 출력 경로는 슬라이싱 단계에서 별도로 만듭니다.</p>
+            </section>
+          </div>
+        </div>
+
+        <section class="card slicer-card" aria-labelledby="slicer-heading">
+          <div class="card-heading"><div><span class="step-label">다음 단계</span><h2 id="slicer-heading">Bambu Studio로 출력 준비</h2></div><span id="slicer-status" class="badge badge-neutral">환경 확인 중</span></div>
+          <p id="slicer-description" class="muted">이 컴퓨터의 Bambu Studio 설치와 명령줄 기능을 확인합니다.</p>
+          <div class="notice notice-info compact-notice"><p>이 단계는 슬라이스 파일을 준비합니다. 프린터 연결이나 실제 출력 시작은 수행하지 않습니다.</p></div>
+          <details id="slicer-details" class="settings-details">
+            <summary>전체 슬라이서 설정으로 준비하기</summary>
+            <div class="slicer-layout">
+              <div>
+                <div class="label-row"><label for="slicer-json">전체 구성 JSON</label><label class="file-button">JSON 파일 열기<input id="slicer-file" type="file" accept=".json,application/json"></label></div>
+                <textarea id="slicer-json" class="code-input" rows="8" spellcheck="false" placeholder='{"machine": {}, "process": {}, "filaments": [], "source": "user_export"}'></textarea>
+                <p class="field-help">machine, process, filaments의 전체 설정이 필요합니다. 상속이 해결되지 않은 부분 프로필은 사용할 수 없습니다.</p>
+                <div class="button-row"><button id="prepare-slice" class="button button-secondary" type="button" disabled>설정과 실행 계획 검토</button><button id="execute-slice" class="button button-primary" type="button" disabled>슬라이싱 실행</button></div>
+              </div>
+              <div><div id="slice-feedback" class="notice notice-info" role="status"><p>모델을 생성하고 전체 설정을 제공하면 실행 계획을 확인할 수 있습니다.</p></div><div id="slice-result"></div></div>
+            </div>
+          </details>
+        </section>
+
+        <section id="outcome-card" class="card" aria-labelledby="outcome-heading" hidden>
+          <div class="card-heading"><div><span class="step-label">실물 출력 후</span><h2 id="outcome-heading">직접 확인한 결과를 남겨 주세요</h2></div><span class="badge badge-neutral">사용자 기록</span></div>
+          <form id="outcome-form" class="outcome-form">
+            <label for="outcome-result">출력 결과<select id="outcome-result"><option value="not_tested">아직 출력하지 않음</option><option value="success">출력 성공</option><option value="failure">출력 실패</option></select></label>
+            <label for="outcome-notes">메모<textarea id="outcome-notes" rows="2" maxlength="2000" placeholder="맞춤 정도나 다음에 바꾸고 싶은 점을 적어 주세요."></textarea></label>
+            <button id="save-outcome" class="button button-secondary" type="submit">결과 기록</button>
+          </form>
+          <div id="outcome-feedback" class="notice" role="status" hidden></div>
+        </section>
+      </section>
+
+      <section id="view-profiles" class="view" aria-labelledby="profiles-heading" hidden>
+        <div class="page-heading"><div><p class="eyebrow">KNOW YOUR MATERIAL</p><h1 id="profiles-heading">재료 설정을 확인하세요</h1><p class="page-description">가지고 있는 프로필이 내 장비와 재료에 맞는지, 어떤 근거가 더 필요한지 살펴봅니다.</p></div><span class="page-tag">수치 자동 추천 없음</span></div>
+        <form id="profile-form">
+          <div class="two-column-layout">
+            <section class="card" aria-labelledby="profile-input-heading">
+              <div class="card-heading"><div><span class="step-label">01 · 설정 파일</span><h2 id="profile-input-heading">필라멘트 프로필</h2></div><label class="file-button">JSON 파일 열기<input id="profile-file" type="file" accept=".json,application/json"></label></div>
+              <label for="profile-json" class="field-label">프로필 JSON 또는 출처·적용 범위를 포함한 JSON</label>
+              <textarea id="profile-json" class="code-input" rows="17" spellcheck="false" required placeholder="보유한 Bambu 필라멘트 프로필 JSON을 붙여 넣으세요."></textarea>
+              <p class="field-help">입력한 값을 그대로 검토합니다. 누락된 온도·유량·체적 속도는 임의로 채우지 않습니다.</p>
+              <details class="help-details"><summary>출처와 적용 범위는 어떻게 제공하나요?</summary><p>기본 프로필을 그대로 넣거나, settings에 프로필을 담고 scope, source, validation 정보를 함께 제공할 수 있습니다. 출처와 측정 기록은 입력된 정보로 표시하며 외부에서 검증된 것으로 간주하지 않습니다.</p><pre>{
+  "id": "프로필 식별자",
+  "settings": {},
+  "scope": {},
+  "source": {},
+  "validation": {}
+}</pre></details>
+            </section>
+            <section class="card" aria-labelledby="setup-heading">
+              <div class="card-heading"><div><span class="step-label">02 · 사용 조건</span><h2 id="setup-heading">내 프린터와 재료</h2></div></div>
+              <p class="muted compact">준비 가능 판정에는 아래 8가지 정보가 모두 필요합니다. 모르는 값은 비워 두면 확인할 항목으로 표시합니다.</p>
+              <div class="setup-grid">
+                <label for="setup-printer-model">프린터 모델<input id="setup-printer-model" name="printer_model" type="text" placeholder="정확한 모델명"></label>
+                <label for="setup-printer-preset">프린터 프리셋<input id="setup-printer-preset" name="printer_preset" type="text" placeholder="슬라이서의 전체 프리셋 이름"></label>
+                <label for="setup-nozzle">노즐 지름 · mm<input id="setup-nozzle" name="nozzle_diameter" type="number" min="0.01" step="any" placeholder="실제 노즐 지름"></label>
+                <label for="setup-plate">플레이트 종류<input id="setup-plate" name="plate_type" type="text" list="plate-types" placeholder="슬라이서 표기 그대로"></label>
+                <label for="setup-extruder">압출기 식별자<input id="setup-extruder" name="extruder" type="text" placeholder="프로필의 압출기 식별자"></label>
+                <label for="setup-feed">필라멘트 공급 방식<input id="setup-feed" name="feed_mode" type="text" placeholder="프로필의 공급 방식 식별자"></label>
+                <label for="setup-material">재료 제품 식별자<input id="setup-material" name="material_id" type="text" placeholder="브랜드·정확한 제품을 구분하는 값"></label>
+                <label for="setup-identity">제품 식별 상태<select id="setup-identity" name="material_identity_status"><option value="unknown">아직 확인하지 못함</option><option value="ambiguous">비슷한 제품이 여러 개</option><option value="exact">정확한 제품을 확인함</option></select></label>
+              </div>
+              <datalist id="plate-types"><option value="Textured PEI Plate"></option><option value="Smooth PEI Plate"></option><option value="High Temp Plate"></option><option value="Engineering Plate"></option><option value="Cool Plate"></option><option value="Bambu Cool Plate SuperTack"></option></datalist>
+              <button id="review-profile" class="button button-primary button-wide" type="submit" disabled>프로필 검토하기 <span aria-hidden="true">→</span></button>
+            </section>
+          </div>
+        </form>
+        <div id="profile-feedback" class="notice" role="status" hidden></div>
+        <section id="profile-result" class="card" aria-labelledby="profile-result-heading" hidden><div class="card-heading"><div><span class="step-label">검토 결과</span><h2 id="profile-result-heading">현재 조건의 확인 사항</h2></div><span id="profile-decision" class="badge"></span></div><div id="profile-summary" class="metric-grid"></div><div id="profile-reasons"></div><div id="profile-warnings" class="warning-list"></div><details class="settings-details"><summary>입력값과 적용 가능한 설정 확인</summary><div id="effective-settings" class="table-wrap"></div></details><details class="help-details"><summary>검토 결과 JSON</summary><pre id="profile-report"></pre></details></section>
+      </section>
+
+      <section id="view-offers" class="view" aria-labelledby="offers-heading" hidden>
+        <div class="page-heading"><div><p class="eyebrow">COMPARE WHAT MATTERS</p><h1 id="offers-heading">같은 기준으로 비교하세요</h1><p class="page-description">찾아둔 상품의 가격과 중량, 배송비를 넣어 kg당 비용을 비교합니다.</p></div><span class="badge badge-neutral">실시간 가격 미연결</span></div>
+        <section class="card" aria-labelledby="offer-input-heading">
+          <div class="card-heading"><div><span class="step-label">사용자가 확인한 가격</span><h2 id="offer-input-heading">비교할 필라멘트</h2></div><label for="offer-currency" class="currency-control">통화<select id="offer-currency" form="offers-form"><option value="KRW">KRW · 원</option><option value="USD">USD · 달러</option><option value="EUR">EUR · 유로</option><option value="JPY">JPY · 엔</option><option value="CNY">CNY · 위안</option></select></label></div>
+          <form id="offers-form"><div id="offer-rows" class="offer-rows"></div><div class="offer-actions"><p class="field-help">배송비를 모르면 비워 두세요. 무료 배송이 확인된 경우에만 0을 입력합니다.</p><button id="compare-offers" class="button button-primary" type="submit" disabled>배송비 포함 단가 비교 <span aria-hidden="true">→</span></button></div></form>
+        </section>
+        <div id="offers-feedback" class="notice" role="status" hidden></div>
+        <section id="offers-result" class="card" aria-labelledby="offers-result-heading" hidden><div class="card-heading"><div><span class="step-label">입력한 조건 기준</span><h2 id="offers-result-heading">비교 결과</h2></div><span class="badge badge-neutral">직접 입력한 가격</span></div><div id="offer-comparison"></div><p id="offer-notice" class="field-help"></p></section>
+        <div class="plain-note"><strong>가격 다음에는 재료와 사용 조건을 확인하세요.</strong><p>동일 제품·색상·중량인지 살펴보세요. 세금, 쿠폰, 회원 조건, 재고와 장비 호환성은 이 계산에 포함하지 않습니다.</p></div>
+      </section>
+
+      <section id="view-history" class="view" aria-labelledby="history-heading" hidden>
+        <div class="page-heading"><div><p class="eyebrow">YOUR MAKING JOURNAL</p><h1 id="history-heading">만든 과정을 남겨 두세요</h1><p class="page-description">모델 파일과 준비 상태, 직접 기록한 실물 출력 결과를 다시 확인할 수 있습니다.</p></div><button id="refresh-history" class="button button-secondary" type="button">새로고침 <span aria-hidden="true">↻</span></button></div>
+        <div id="history-feedback" class="notice" role="status" hidden></div>
+        <div id="history-list" class="history-list"></div>
+      </section>
+      <footer class="main-footer"><span>아이디어에서 실제 파일까지, 확인한 만큼만.</span><span>3D Printer Agent · Local</span></footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

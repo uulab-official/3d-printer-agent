@@ -1,0 +1,80 @@
+{
+  "template": "tray",
+  "parameters": {
+    "template": "tray",
+    "width": 120.0,
+    "depth": 80.0,
+    "height": 35.0,
+    "wall": 2.0,
+    "bottom": 2.0,
+    "dividers": 2,
+    "slots": 5,
+    "cable_diameter": 6.0,
+    "inset_diameter": 52.0,
+    "inset_depth": 2.0,
+    "fit_clearance": 0.3
+  },
+  "dimensions_mm": {
+    "x": 120.0,
+    "y": 80.0,
+    "z": 35.0
+  },
+  "volume_mm3": 55104.00000000001,
+  "geometry_status": "validated",
+  "print_status": "not_tested",
+  "checks": [
+    {
+      "name": "valid_cad",
+      "passed": true,
+      "detail": "OpenCascade 형상 유효성 검사"
+    },
+    {
+      "name": "single_solid",
+      "passed": true,
+      "detail": "연결된 솔리드 1개"
+    },
+    {
+      "name": "positive_volume",
+      "passed": true,
+      "detail": "체적 55104.000000 mm³"
+    },
+    {
+      "name": "requested_dimensions",
+      "passed": true,
+      "detail": "생성 형상의 외부 치수와 요청 치수 비교"
+    },
+    {
+      "name": "closed_preview_mesh",
+      "passed": true,
+      "detail": "미리보기 메시의 모서리가 각각 두 면에 연결됨"
+    }
+  ],
+  "warnings": [
+    "CAD 형상 검증만 완료했습니다. 출력 성공·강도·치수 맞춤은 실제 프린터에서 확인해야 합니다."
+  ],
+  "units": "mm",
+  "cadquery_version": "2.7.0",
+  "slicer_status": "not_run",
+  "artifacts": {
+    "stl": {
+      "filename": "model.stl",
+      "bytes": 3084,
+      "sha256": "73742f12dd36855b279de66e068180ee62840d32f9a2d55235f1714045f83d6e"
+    },
+    "step": {
+      "filename": "model.step",
+      "bytes": 60066,
+      "sha256": "46e46e70cabba452584da9cc970424848a1d494a6097f847bba15db754a6f459"
+    },
+    "three_mf": {
+      "filename": "model.3mf",
+      "bytes": 1773,
+      "sha256": "4595020385523bdd144992e556821c84cea688a5945b49539028963c550a4eed"
+    },
+    "source": {
+      "filename": "model.py",
+      "bytes": 4728,
+      "sha256": "d4f19d3ada4c2aa728983bfda6834bc8d80a868bb2050091a3c90baf07a7f172"
+    }
+  }
+}

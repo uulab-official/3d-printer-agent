@@ -1,0 +1,81 @@
+{
+  "template": "cable_comb",
+  "parameters": {
+    "template": "cable_comb",
+    "width": 80.0,
+    "depth": 18.0,
+    "height": 12.0,
+    "wall": 2.0,
+    "bottom": 2.0,
+    "dividers": 0,
+    "slots": 5,
+    "cable_diameter": 6.0,
+    "inset_diameter": 52.0,
+    "inset_depth": 2.0,
+    "fit_clearance": 0.3
+  },
+  "dimensions_mm": {
+    "x": 80.0,
+    "y": 18.0,
+    "z": 12.0
+  },
+  "volume_mm3": 11993.289610263992,
+  "geometry_status": "validated",
+  "print_status": "not_tested",
+  "checks": [
+    {
+      "name": "valid_cad",
+      "passed": true,
+      "detail": "OpenCascade 형상 유효성 검사"
+    },
+    {
+      "name": "single_solid",
+      "passed": true,
+      "detail": "연결된 솔리드 1개"
+    },
+    {
+      "name": "positive_volume",
+      "passed": true,
+      "detail": "체적 11993.289610 mm³"
+    },
+    {
+      "name": "requested_dimensions",
+      "passed": true,
+      "detail": "생성 형상의 외부 치수와 요청 치수 비교"
+    },
+    {
+      "name": "closed_preview_mesh",
+      "passed": true,
+      "detail": "미리보기 메시의 모서리가 각각 두 면에 연결됨"
+    }
+  ],
+  "warnings": [
+    "CAD 형상 검증만 완료했습니다. 출력 성공·강도·치수 맞춤은 실제 프린터에서 확인해야 합니다.",
+    "위가 열린 케이블 받침입니다. 스냅 고정이나 케이블 유지력을 보장하지 않습니다."
+  ],
+  "units": "mm",
+  "cadquery_version": "2.7.0",
+  "slicer_status": "not_run",
+  "artifacts": {
+    "stl": {
+      "filename": "model.stl",
+      "bytes": 66684,
+      "sha256": "90c06a8199e89a4b8dfee761d3e43bcea8b7b150d68242ef72bd3658fc0acb25"
+    },
+    "step": {
+      "filename": "model.step",
+      "bytes": 91288,
+      "sha256": "6011d7d941786f8ce7079574558a2cbeebf5dbd4784f2e2cff5fca732e3220c3"
+    },
+    "three_mf": {
+      "filename": "model.3mf",
+      "bytes": 20146,
+      "sha256": "37fff7f535c6a906b0b307fa015e18268f508253a09b9dd6c0892d1721c864cf"
+    },
+    "source": {
+      "filename": "model.py",
+      "bytes": 4733,
+      "sha256": "3338f49bdefc9c8674fe8f233a4c61d9dcbcd9f9328c23186e5b2ad1b57f0936"
+    }
+  }
+}

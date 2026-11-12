@@ -1,0 +1,33 @@
+name: Feature request / 기능 제안
+description: Describe a printing task you want the project to support.
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Korean and English proposals are welcome. Check the [roadmap](https://github.com/uulab-official/3d-printer-agent/blob/main/docs/PRODUCT_ROADMAP.md) for planned work.
+        Do not include credentials, private model files, or personally identifying device information.
+  - type: textarea
+    id: goal
+    attributes:
+      label: User goal / 해결하려는 작업
+      description: What are you trying to make or accomplish, and where does the current workflow stop helping?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior / 원하는 동작
+      description: Describe the input, the desired result, and how a user would know it worked.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Relevant conditions / 관련 조건
+      description: Include operating system, software, printer model, material, or file format only if relevant. State what is known and what still needs verification.
+  - type: textarea
+    id: references
+    attributes:
+      label: References and examples / 참고 자료
+      description: Optional public documentation, model links, or anonymized examples. Include the source and applicable license if proposing a bundled asset.

@@ -1,0 +1,72 @@
+name: Bug report / 버그 신고
+description: Report a reproducible problem in an existing workflow.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Korean and English reports are welcome.
+        For a potential vulnerability, follow [SECURITY.md](https://github.com/uulab-official/3d-printer-agent/blob/main/SECURITY.md) before sharing technical details.
+        Remove API keys, printer access codes, serial numbers, tokens, personal paths, and private model files from all text and attachments.
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version / 커밋 또는 버전
+      description: Include the commit SHA or app version. If unknown, say so.
+      placeholder: "Commit SHA or version shown by python -m print_agent doctor"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected workflow / 관련 기능
+      options:
+        - Installation or startup
+        - Request planning or LLM adapter
+        - CAD generation or file export
+        - 3D preview or other interface
+        - Filament profile or calibration review
+        - Bambu Studio slicing
+        - Price comparison
+        - History or downloads
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 실행 환경
+      description: List only information relevant to this problem. Do not include credentials or device identifiers.
+      placeholder: |
+        OS and version:
+        Python version:
+        Browser and version, if relevant:
+        Bambu Studio version, if relevant:
+        Printer model / nozzle / plate / feed mode, if relevant:
+        LLM server type and model, if relevant (no API key or private URL):
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction / 재현 방법
+      description: Include the smallest request or anonymized input that reproduces the issue.
+      placeholder: |
+        1. Start the app with ...
+        2. Select ...
+        3. Enter ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and observed result / 예상 결과와 실제 결과
+      description: Distinguish model generation, slicing, and a physical print. Say whether hardware was actually involved.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized logs or screenshots / 민감 정보 제거 후 로그·화면
+      description: Optional. Check downloaded manifests, console logs, and screenshots for secrets and personal information before attaching them.

@@ -1,0 +1,101 @@
+[
+  {
+    "template": "tray",
+    "dimensions_mm": {
+      "x": 120.0,
+      "y": 80.0,
+      "z": 35.0
+    },
+    "volume_mm3": 55104.0,
+    "mesh_triangles": 60,
+    "step_reimport_valid": true,
+    "artifacts": {
+      "stl": {
+        "filename": "model.stl",
+        "bytes": 3084,
+        "sha256": "73742f12dd36855b279de66e068180ee62840d32f9a2d55235f1714045f83d6e"
+      },
+      "step": {
+        "filename": "model.step",
+        "bytes": 60066,
+        "sha256": "46e46e70cabba452584da9cc970424848a1d494a6097f847bba15db754a6f459"
+      },
+      "three_mf": {
+        "filename": "model.3mf",
+        "bytes": 1773,
+        "sha256": "4595020385523bdd144992e556821c84cea688a5945b49539028963c550a4eed"
+      },
+      "source": {
+        "filename": "model.py",
+        "bytes": 4728,
+        "sha256": "d4f19d3ada4c2aa728983bfda6834bc8d80a868bb2050091a3c90baf07a7f172"
+      }
+    }
+  },
+  {
+    "template": "cable_comb",
+    "dimensions_mm": {
+      "x": 80.0,
+      "y": 18.0,
+      "z": 12.0
+    },
+    "volume_mm3": 11993.29,
+    "mesh_triangles": 1332,
+    "step_reimport_valid": true,
+    "artifacts": {
+      "stl": {
+        "filename": "model.stl",
+        "bytes": 66684,
+        "sha256": "90c06a8199e89a4b8dfee761d3e43bcea8b7b150d68242ef72bd3658fc0acb25"
+      },
+      "step": {
+        "filename": "model.step",
+        "bytes": 91288,
+        "sha256": "6011d7d941786f8ce7079574558a2cbeebf5dbd4784f2e2cff5fca732e3220c3"
+      },
+      "three_mf": {
+        "filename": "model.3mf",
+        "bytes": 20146,
+        "sha256": "37fff7f535c6a906b0b307fa015e18268f508253a09b9dd6c0892d1721c864cf"
+      },
+      "source": {
+        "filename": "model.py",
+        "bytes": 4733,
+        "sha256": "3338f49bdefc9c8674fe8f233a4c61d9dcbcd9f9328c23186e5b2ad1b57f0936"
+      }
+    }
+  },
+  {
+    "template": "magnet_frame",
+    "dimensions_mm": {
+      "x": 65.0,
+      "y": 65.0,
+      "z": 7.0
+    },
+    "volume_mm3": 25278.417,
+    "mesh_triangles": 516,
+    "step_reimport_valid": true,
+    "artifacts": {
+      "stl": {
+        "filename": "model.stl",
+        "bytes": 25884,
+        "sha256": "f817189a9137852a5dcd9b022da8c8cf9d8b5ffa9c7c65e16edf3898f8da0512"
+      },
+      "step": {
+        "filename": "model.step",
+        "bytes": 19250,
+        "sha256": "f137224cab66f4df12411a42e1d14e24dfc60abf81a1d3ef6863b74dd78dcf1f"
+      },
+      "three_mf": {
+        "filename": "model.3mf",
+        "bytes": 7560,
+        "sha256": "f614bfb3aadbf533f95b21ead810c09f00231b824e992a34e5a99bcbf88d31c4"
+      },
+      "source": {
+        "filename": "model.py",
+        "bytes": 4734,
+        "sha256": "9b6303edd32d94259a1b497506f2236b2f074a7d96ef2b3fb74fec5b64cfa41a"
+      }
+    }
+  }
+]
