@@ -39,7 +39,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#generate-button')).toBeEnabled();
   await expect(page.locator('#template-cards .template-card')).toHaveCount(3);
-  await expect(page.locator('#plan-mode option[value="llm"]')).toBeDisabled();
+  await expect(page.locator('#plan-mode option[value="llm"]')).toHaveJSProperty('disabled', true);
   await expect(page.locator('#environment-badge')).toContainText('사용 불가');
   await noHorizontalOverflow(page);
 });
