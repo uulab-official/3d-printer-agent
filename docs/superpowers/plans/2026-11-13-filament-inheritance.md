@@ -48,8 +48,8 @@ Interfaces: POST /api/profiles/resolve consumes documents/target_name/setup and 
 - [x] Add multiple-file import, additive parent loading, target selection and collection clear controls.
 - [x] Render chain, field origins/override history, review or blockers, and download an evidence report.
 - [x] Add revision guards and revoke report links on any relevant change; test a stale asynchronous response.
-- [ ] Exercise real file imports, child overrides, missing-parent recovery, report content and invalidation in desktop/mobile browser tests.
-- [ ] Run Python and UI tests, JavaScript syntax checks, and collect real CI browser evidence.
+- [x] Exercise real file imports, child overrides, missing-parent recovery, report content and invalidation in desktop/mobile browser tests.
+- [x] Run Python and UI tests, JavaScript syntax checks, and collect real CI browser evidence.
 
 ### Task 3: Documentation, review and publication
 
@@ -57,8 +57,8 @@ Files: README.md; CHANGELOG.md; docs/STATUS.md; docs/FILAMENT_PRESETS.md; docs/V
 
 - [x] Explain the supported subset, report format, canonical hashes, source references and remaining Studio defaults/native qualification.
 - [x] Independently review the implementation against the spec and resolve concrete findings.
-- [ ] Commit and push the tested implementation to main without overwriting concurrent changes.
-- [ ] Confirm the remote commit and GitHub Actions result; update the verification record with observed evidence.
+- [x] Commit and push the tested implementation to main without overwriting concurrent changes.
+- [x] Confirm the remote commit and GitHub Actions result; update the verification record with observed evidence.
 
 
 ## Execution notes
@@ -66,3 +66,5 @@ Files: README.md; CHANGELOG.md; docs/STATUS.md; docs/FILAMENT_PRESETS.md; docs/V
 The user authorized continued development and publication to main. Independent workers implemented the pure resolver and UI against the shared contract; root integrated the API, documentation and review fixes. The initial source checkout was preserved, and work continued from the current public main.
 
 Ruling: bound the complete JSON payload to 64 nesting levels before copying or review. An independent reviewer reproduced HTTP 500 from a small, deeply nested document; the API regression failed before the change and passed afterwards for both profile and setup inputs. The full Python suite then passed 116 tests, and the UI controller suite passed 10. This restriction can reject unusually nested vendor extensions, which are now reported as input errors.
+
+Completed implementation commit: e3b6650a5a6858aab9452a0c2692aad6880dc2f3, published to main. [GitHub Actions run 43351259244](https://github.com/uulab-official/3d-printer-agent/actions/runs/43351259244) passed 116 Python, 10 UI-controller and 10 real Chromium browser tests, plus wheel installation and execution outside the source tree. Desktop and mobile screenshots were inspected, and downloaded report originals, edited values and canonical hashes matched. The final independent review reported no remaining reproducible findings after the nesting fix.

@@ -14,7 +14,9 @@ The original local validation is documented in [VERIFICATION.md](VERIFICATION.md
 
 ### Filament import checks — 2026-11-13
 
-Local checks passed: **116 Python tests and 10 UI-controller tests**, plus JavaScript syntax checks. The new regressions cover inheritance evidence, exact names and blockers, request bounds, late UI responses and invalidated downloads. An independent review found a deeply nested JSON request could return HTTP 500; the reproduced failure now returns HTTP 422 with a depth-limit explanation. There are **10 registered browser tests**; this feature's real-browser result is pending its GitHub Actions run.
+Local and GitHub Actions checks passed: **116 Python tests and 10 UI-controller tests**, plus JavaScript syntax checks. The new regressions cover inheritance evidence, exact names and blockers, request bounds, late UI responses and invalidated downloads. An independent review found a deeply nested JSON request could return HTTP 500; the reproduced failure now returns HTTP 422 with a depth-limit explanation.
+
+[CI run 43351259244](https://github.com/uulab-official/3d-printer-agent/actions/runs/43351259244), on commit `e3b6650a5a6858aab9452a0c2692aad6880dc2f3`, passed **all 10 Chromium browser tests**: five desktop and five mobile viewport scenarios, with no skipped or flaky tests. This includes missing-parent recovery, edited-value provenance, downloaded report contents, stale-result invalidation, unsupported include handling and malformed imports, along with the existing CAD workflows. Wheel build/install and execution outside the source tree also passed. The downloaded reports from both browser projects were independently checked for original/edited values and matching canonical hashes, and their screenshots were inspected.
 
 ### Earlier v0.1 baseline
 
