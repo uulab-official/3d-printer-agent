@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from print_agent.app import create_app
 from print_agent.preset_library import resolve_profile_documents
+from tests.test_profiles import fixture_profile, fixture_setup
 from tests.test_workspace_api import workspace_snapshot
 
 
@@ -168,6 +169,61 @@ class ArchiveAPITests(unittest.TestCase):
                 'documents': [document], 'target_name': document['profile']['settings']['name'],
             }, headers=self.headers)
             self.assertEqual(response.status_code, 422, response.text)
+
+    def test_raw_archive_evidence_survives_restart_without_promoting_source_or_measurements(self):
+        envelope = fixture_profile()
+        raw_profile = deepcopy(envelope['settings'])
+        raw_profile['description'] = 'Original synthetic settings; not printing advice. 원문 보존'
+        content, profile, raw, origin = archive_fixture(raw_profile)
+        imported = self.client.post('/api/profiles/import-archive', json=self.payload(content), headers=self.headers)
+        self.assertEqual(imported.status_code, 200, imported.text)
+        snapshot = workspace_snapshot()
+        snapshot['documents'] = imported.json()['documents']
+        edited = {'settings': deepcopy(profile), 'scope': deepcopy(envelope['scope']),
+                  'source': deepcopy(envelope['source'])}
+        edited_text = json.dumps(edited, ensure_ascii=False, indent=2)
+        snapshot['documents'][0]['draft_text'] = edited_text
+        created = self.client.post('/api/profile-workspaces', json={
+            'title': 'Source and scope evidence', 'snapshot': snapshot,
+        }, headers=self.headers)
+        self.assertEqual(created.status_code, 201, created.text)
+        with TestClient(create_app(self.root, test_mode=True)) as restarted:
+            loaded = restarted.get('/api/profile-workspaces/' + created.json()['id']).json()
+            self.assertEqual(loaded['snapshot'], snapshot)
+            self.assertNotIn('review', loaded['snapshot'])
+            entry = loaded['snapshot']['documents'][0]
+            self.assertEqual(entry['profile'], profile)
+            self.assertEqual(entry['origin'], origin)
+            token = restarted.get('/api/bootstrap').json()['session_token']
+            reviewed = restarted.post('/api/profiles/resolve', json={
+                'documents': [{'filename': entry['filename'], 'profile': json.loads(entry['draft_text']), 'origin': entry['origin']}],
+                'target_name': profile['name'], 'setup': fixture_setup(),
+                'baseline': {'documents': [{'filename': entry['filename'], 'profile': entry['profile'], 'origin': entry['origin']}],
+                             'target_name': profile['name']},
+            }, headers={'X-Session-Token': token})
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        report = reviewed.json()
+        self.assertEqual(report['edit_review']['status'], 'unchanged')
+        self.assertEqual(report['edit_review']['changed_fields'], [])
+        self.assertEqual(report['edit_review']['evidence_status'], 'compared')
+        changes = report['edit_review']['evidence_changes']
+        expected_paths = {f'{group}.{key}' for group in ('scope', 'source') for key in edited[group]}
+        self.assertEqual({change['path'] for change in changes}, expected_paths)
+        self.assertTrue(all(not change['before_present'] and change['after_present'] for change in changes))
+        self.assertFalse(report['edit_review']['validation_invalidated'])
+        self.assertEqual(report['review']['validation_status'], 'unverified')
+        self.assertEqual(report['review']['source_authority'], 'manufacturer')
+        self.assertTrue(any(item.startswith('SOURCE_CLAIM_ONLY:') for item in report['review']['warnings']))
+        self.assertEqual(report['resolved_profile']['settings'], profile)
+        self.assertNotIn('validation', report['documents'][0]['profile'])
+        self.assertEqual(report['imported_documents'][0]['profile'], profile)
+        self.assertEqual(report['documents'][0]['origin'], origin)
+        self.assertEqual(report['imported_documents'][0]['origin'], origin)
+        self.assertNotEqual(report['documents'][0]['sha256'], report['imported_documents'][0]['sha256'])
+        self.assertEqual(origin['member_sha256'], hashlib.sha256(raw.encode('utf-8')).hexdigest())
+        self.assertFalse(report['full_config'])
+        self.assertFalse(report['native_verified'])
+        self.assertEqual(self.client.get('/api/jobs').json(), {'jobs': []})
 
 
 class OriginResolutionTests(unittest.TestCase):

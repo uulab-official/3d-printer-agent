@@ -200,14 +200,22 @@
                 <h3 id="profile-guided-heading">주요 설정 편집</h3>
                 <p id="profile-guided-help" class="field-help">JSON 파일을 가져오면 온도·유량·체적 속도를 항목별로 편집할 수 있습니다.</p>
                 <div id="profile-guided-fields" class="guided-fields"></div>
-                <div id="profile-guided-actions" class="button-row" hidden><button id="profile-guided-apply" class="button button-secondary" type="button">설정 편집 적용</button><button id="profile-guided-cancel" class="text-button" type="button">편집 취소</button></div>
+                <details id="profile-evidence" class="profile-evidence" hidden>
+                  <summary id="profile-evidence-summary">프로필의 적용 범위와 출처</summary>
+                  <p id="profile-evidence-help" class="field-help">선택한 파일의 원문에서 확인한 범위와 출처를 적어 주세요. ‘내 프린터와 재료’에 적은 사용 조건과 비교하며, 부모 파일의 근거를 자동으로 가져오지 않습니다.</p>
+                  <p class="field-help">빈칸으로 지운 항목은 적용할 때 해당 근거만 제거합니다. 다른 정보와 가져온 원본은 유지합니다.</p>
+                  <fieldset id="profile-evidence-scope"></fieldset>
+                  <fieldset id="profile-evidence-source"></fieldset>
+                  <datalist id="profile-source-authorities"><option value="manufacturer"></option><option value="user"></option><option value="community"></option><option value="unknown"></option></datalist>
+                </details>
+                <div id="profile-guided-actions" class="button-row" hidden><button id="profile-guided-apply" class="button button-secondary" type="button">편집 적용</button><button id="profile-guided-cancel" class="text-button" type="button">편집 취소</button></div>
                 <div id="profile-guided-feedback" class="notice" role="status" hidden></div>
               </section>
               <label for="profile-json" class="field-label">프로필 JSON 또는 출처·적용 범위를 포함한 JSON</label>
               <textarea id="profile-json" class="code-input" rows="17" spellcheck="false" required placeholder="보유한 Bambu 필라멘트 프로필 JSON을 붙여 넣으세요."></textarea>
               <button id="profile-adopt" class="text-button profile-adopt" type="button">이 JSON을 파일 모음에 추가</button>
               <p class="field-help">입력한 값을 그대로 검토합니다. 누락된 온도·유량·체적 속도는 임의로 채우지 않습니다.</p>
-              <details class="help-details"><summary>출처와 적용 범위는 어떻게 제공하나요?</summary><p>기본 프로필을 그대로 넣거나, settings에 프로필을 담고 scope, source, validation 정보를 함께 제공할 수 있습니다. 출처와 측정 기록은 입력된 정보로 표시하며 외부에서 검증된 것으로 간주하지 않습니다.</p><pre>{
+              <details class="help-details"><summary>출처와 적용 범위는 어떻게 제공하나요?</summary><p>파일을 가져오거나 입력한 JSON을 파일 모음에 추가한 뒤, 위의 ‘프로필의 적용 범위와 출처’에서 확인한 근거를 입력하세요. JSON으로 직접 제공할 때는 settings에 프로필을 담고 scope, source, validation 정보를 함께 넣을 수도 있습니다. 출처와 측정 기록은 입력된 정보이며 외부에서 검증된 것으로 간주하지 않습니다.</p><pre>{
   "id": "프로필 식별자",
   "settings": {},
   "scope": {},
@@ -238,6 +246,7 @@
           <div class="card-heading"><div><span class="step-label">가져온 파일의 상속</span><h2 id="profile-resolution-heading">설정이 어디에서 왔나요?</h2></div><span id="profile-resolution-status" class="badge"></span></div>
           <p class="muted compact">제공한 파일에 적힌 값과 단일 부모 연결을 확인합니다. Studio 기본값을 채운 전체 설정이나 실물 출력 검증을 뜻하지 않습니다.</p>
           <div id="profile-edit-review" class="notice" role="status" hidden></div>
+          <section id="profile-evidence-review" class="notice notice-info" aria-labelledby="profile-evidence-review-heading" hidden><h3 id="profile-evidence-review-heading">원본과 달라진 근거</h3><p id="profile-evidence-review-help" role="status"></p><div id="profile-evidence-changes" class="table-wrap"></div></section>
           <ul id="profile-resolution-issues" class="reason-list"></ul>
           <ol id="profile-chain" class="profile-chain"></ol>
           <div id="profile-resolution-warnings" class="warning-list"></div>

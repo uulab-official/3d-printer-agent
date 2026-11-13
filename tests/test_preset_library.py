@@ -479,5 +479,259 @@ class PresetEditReviewTests(unittest.TestCase):
         self.assertEqual(report["documents"][0]["profile"], preserved[0]["profile"])
 
 
+class PresetEvidenceReviewTests(unittest.TestCase):
+    def setUp(self):
+        self.setup = fixture_setup()
+        profile = fixture_profile()
+        profile["settings"]["name"] = "Child"
+        profile["validation"] = {
+            "status": "measured_on_matching_setup", "setup_fingerprint": deepcopy(self.setup),
+        }
+        self.originals = [{"filename": "child.json", "profile": profile}]
+
+    def resolve(self, documents=None, baseline=None, target="Child"):
+        return resolve_profile_documents(
+            self.originals if documents is None else documents, target, self.setup,
+            baseline={"documents": self.originals, "target_name": "Child"} if baseline is None else baseline,
+        )
+
+    def test_wrapping_raw_settings_records_evidence_without_inventing_measurement(self):
+        raw = deepcopy(self.originals[0]["profile"]["settings"])
+        raw["vendor_notes"] = {"opaque": ["retained"]}
+        origin = {
+            "type": "bambu_preset_archive", "archive_name": "synthetic.bbsflmt",
+            "archive_sha256": "a" * 64, "member_path": "filament/child.json",
+            "member_sha256": "b" * 64,
+        }
+        original = {"filename": "child.json", "profile": raw, "origin": origin}
+        current = {
+            "filename": "child.json", "origin": deepcopy(origin),
+            "profile": {"settings": deepcopy(raw), "scope": {"material_id": "fixture:pla-basic"},
+                        "source": {"publisher": "User supplied publisher"}},
+        }
+        report = self.resolve([current], {"documents": [original], "target_name": "Child"})
+        edit = report["edit_review"]
+        self.assertEqual(edit.get("evidence_status"), "compared")
+        self.assertEqual(edit["evidence_changes"], [
+            {"path": "scope.material_id", "before_present": False, "after_present": True,
+             "after": "fixture:pla-basic"},
+            {"path": "source.publisher", "before_present": False, "after_present": True,
+             "after": "User supplied publisher"},
+        ])
+        self.assertEqual(edit["status"], "unchanged")
+        self.assertEqual(edit["changed_fields"], [])
+        self.assertFalse(edit["validation_invalidated"])
+        self.assertEqual(report["review"]["validation_status"], "unverified")
+        self.assertEqual(report["resolved_profile"]["settings"], raw)
+        self.assertTrue(all(source["edited"] is False for source in report["field_sources"].values()))
+        self.assertEqual(report["imported_documents"][0]["profile"], raw)
+        self.assertEqual(report["documents"][0]["origin"], origin)
+        self.assertEqual(report["imported_documents"][0]["origin"], origin)
+        self.assertNotEqual(report["documents"][0]["sha256"], report["imported_documents"][0]["sha256"])
+
+    def test_source_corrections_remain_claims_without_invalidating_matching_measurement(self):
+        edited = deepcopy(self.originals)
+        edited[0]["profile"]["source"] = {
+            "authority": "user-reported", "publisher": "Corrected publisher",
+            "url": "https://example.invalid/corrected", "retrieved_at": "date supplied by user",
+        }
+        report = self.resolve(edited)
+        edit = report["edit_review"]
+        self.assertEqual(edit.get("evidence_status"), "compared")
+        self.assertEqual(edit["evidence_changes"], [
+            {"path": "source.authority", "before_present": True, "after_present": True,
+             "before": "manufacturer", "after": "user-reported"},
+            {"path": "source.publisher", "before_present": True, "after_present": True,
+             "before": "Synthetic fixture publisher", "after": "Corrected publisher"},
+            {"path": "source.retrieved_at", "before_present": True, "after_present": True,
+             "before": "2026-11-12", "after": "date supplied by user"},
+            {"path": "source.url", "before_present": True, "after_present": True,
+             "before": "https://example.invalid/fixture", "after": "https://example.invalid/corrected"},
+        ])
+        self.assertEqual(edit["status"], "unchanged")
+        self.assertEqual(edit["changed_fields"], [])
+        self.assertFalse(edit["validation_invalidated"])
+        self.assertEqual(report["review"]["validation_status"], "reported_validated")
+        self.assertTrue(report["review"]["can_prepare_profile"])
+        self.assertEqual(report["review"]["source_authority"], "user-reported")
+        self.assertTrue(any(w.startswith("SOURCE_CLAIM_ONLY:") for w in report["review"]["warnings"]))
+        self.assertEqual(report["resolved_profile"]["validation"], self.originals[0]["profile"]["validation"])
+
+    def test_scope_edits_invalidate_positive_claims_without_weakening_blockers(self):
+        for status in ("measured_on_matching_setup", "verified", "validated", "reported_validated"):
+            for nozzle, decision in (("0.40", "needs_evidence"), (0.6, "blocked")):
+                with self.subTest(status=status, nozzle=nozzle):
+                    originals = deepcopy(self.originals)
+                    originals[0]["profile"]["validation"]["status"] = status
+                    edited = deepcopy(originals)
+                    edited[0]["profile"]["scope"]["nozzle_diameter"] = nozzle
+                    report = self.resolve(edited, {"documents": originals, "target_name": "Child"})
+                    self.assertEqual(report["review"]["validation_status"], "stale")
+                    self.assertEqual(report["review"]["decision"], decision)
+                    self.assertFalse(report["review"]["can_prepare_profile"])
+                    self.assertIsNone(report["review"]["selected_profile_id"])
+                    self.assertEqual(report["edit_review"]["status"], "unchanged")
+                    self.assertEqual(report["edit_review"]["changed_fields"], [])
+                    self.assertEqual(report["edit_review"]["evidence_changes"], [
+                        {"path": "scope.nozzle_diameter", "before_present": True, "after_present": True,
+                         "before": 0.4, "after": nozzle},
+                    ])
+                    self.assertTrue(report["edit_review"]["validation_invalidated"])
+                    self.assertIn("VALIDATION_EVIDENCE_CHANGED", {r["code"] for r in report["review"]["reasons"]})
+                    self.assertIn("validation_evidence_changed", {a["reason"] for a in report["review"]["calibration_actions"]})
+                    self.assertFalse(any(w.startswith("VALIDATION_CLAIM_ONLY:") for w in report["review"]["warnings"]))
+                    self.assertEqual(report["resolved_profile"]["validation"], originals[0]["profile"]["validation"])
+
+    def test_validation_claim_edits_are_distinct_from_setting_changes(self):
+        replacements = [
+            ("status", "verified"),
+            ("setup_fingerprint", {**self.setup, "nozzle_diameter": "0.40"}),
+            ("measurement_note", {"record": "a different supplied account"}),
+        ]
+        for field, value in replacements:
+            with self.subTest(field=field):
+                edited = deepcopy(self.originals)
+                edited[0]["profile"]["validation"][field] = deepcopy(value)
+                report = self.resolve(edited)
+                self.assertEqual(report["review"]["validation_status"], "stale")
+                self.assertEqual(report["review"]["decision"], "needs_evidence")
+                self.assertEqual(report["edit_review"]["changed_fields"], [])
+                self.assertEqual([c["path"] for c in report["edit_review"]["evidence_changes"]], [f"validation.{field}"])
+                self.assertEqual(report["resolved_profile"]["validation"], edited[0]["profile"]["validation"])
+                self.assertEqual(report["imported_documents"][0]["profile"], self.originals[0]["profile"])
+
+    def test_lowering_a_claim_to_unverified_does_not_invent_stale_measurement(self):
+        edited = deepcopy(self.originals)
+        edited[0]["profile"]["validation"]["status"] = "unverified"
+        report = self.resolve(edited)
+        self.assertEqual(report["edit_review"].get("evidence_status"), "compared")
+        self.assertEqual(report["edit_review"]["evidence_changes"], [
+            {"path": "validation.status", "before_present": True, "after_present": True,
+             "before": "measured_on_matching_setup", "after": "unverified"},
+        ])
+        self.assertEqual(report["review"]["validation_status"], "unverified")
+        self.assertFalse(report["edit_review"]["validation_invalidated"])
+        self.assertTrue(report["review"]["can_prepare_profile"])
+
+    def test_empty_groups_and_json_key_order_do_not_fabricate_evidence_edits(self):
+        raw = deepcopy(self.originals[0]["profile"]["settings"])
+        empty = {"settings": deepcopy(raw), "scope": {}, "source": {}, "validation": {}}
+        for before, after in ((raw, empty), (empty, raw)):
+            with self.subTest(before_envelope="settings" in before):
+                report = self.resolve(
+                    [{"filename": "child.json", "profile": after}],
+                    {"documents": [{"filename": "child.json", "profile": before}], "target_name": "Child"},
+                )
+                self.assertEqual(report["edit_review"].get("evidence_status"), "compared")
+                self.assertEqual(report["edit_review"]["evidence_changes"], [])
+        self.originals[0]["profile"]["source"]["extra"] = {"first": 1, "second": ["2"]}
+        edited = deepcopy(self.originals)
+        edited[0]["profile"]["source"]["extra"] = {"second": ["2"], "first": 1}
+        edited[0]["profile"]["scope"] = dict(reversed(list(edited[0]["profile"]["scope"].items())))
+        report = self.resolve(edited)
+        self.assertEqual(report["edit_review"].get("evidence_status"), "compared")
+        self.assertEqual(report["edit_review"]["evidence_changes"], [])
+        self.assertEqual(report["review"]["validation_status"], "reported_validated")
+
+    def test_absent_keys_and_explicit_null_are_distinguishable_in_evidence(self):
+        self.originals[0]["profile"]["source"]["old_null"] = None
+        edited = deepcopy(self.originals)
+        del edited[0]["profile"]["source"]["old_null"]
+        edited[0]["profile"]["source"]["new_null"] = None
+        edited[0]["profile"]["source"]["publisher"] = None
+        report = self.resolve(edited)
+        self.assertEqual(report["edit_review"].get("evidence_status"), "compared")
+        self.assertEqual(report["edit_review"]["evidence_changes"], [
+            {"path": "source.new_null", "before_present": False, "after_present": True, "after": None},
+            {"path": "source.old_null", "before_present": True, "after_present": False, "before": None},
+            {"path": "source.publisher", "before_present": True, "after_present": True,
+             "before": "Synthetic fixture publisher", "after": None},
+        ])
+        self.assertEqual(report["review"]["validation_status"], "reported_validated")
+
+    def test_parent_metadata_never_becomes_selected_child_evidence(self):
+        parent = deepcopy(self.originals[0])
+        parent["filename"] = "base.json"
+        parent["profile"]["settings"]["name"] = "Base"
+        self.originals[0]["profile"]["settings"] = {"name": "Child", "type": "filament", "inherits": "Base"}
+        self.originals.append(parent)
+        edited = deepcopy(self.originals)
+        edited[1]["profile"]["scope"]["material_id"] = "another product"
+        edited[1]["profile"]["source"]["publisher"] = "Different parent publisher"
+        edited[1]["profile"]["validation"]["status"] = "unverified"
+        report = self.resolve(edited)
+        self.assertEqual(report["edit_review"].get("evidence_status"), "compared")
+        self.assertEqual(report["edit_review"]["evidence_changes"], [])
+        self.assertEqual(report["edit_review"]["status"], "unchanged")
+        self.assertFalse(report["edit_review"]["validation_invalidated"])
+        self.assertEqual(report["review"]["validation_status"], "reported_validated")
+
+    def test_unique_target_evidence_compares_before_missing_parent_resolution(self):
+        self.originals[0]["profile"]["settings"]["inherits"] = "Missing"
+        edited = deepcopy(self.originals)
+        edited[0]["profile"]["source"]["url"] = "https://example.invalid/corrected"
+        for current_resolves in (False, True):
+            with self.subTest(current_resolves=current_resolves):
+                documents = edited + ([document("Missing")] if current_resolves else [])
+                report = self.resolve(documents)
+                self.assertEqual(report["edit_review"].get("evidence_status"), "compared")
+                self.assertEqual([c["path"] for c in report["edit_review"]["evidence_changes"]], ["source.url"])
+                self.assertEqual(report["edit_review"]["baseline_status"], "needs_input")
+                if current_resolves:
+                    self.assertEqual(report["edit_review"]["status"], "baseline_unresolved")
+                    self.assertEqual(report["review"]["validation_status"], "stale")
+                    self.assertIn("VALIDATION_BASELINE_UNRESOLVED", {r["code"] for r in report["review"]["reasons"]})
+                else:
+                    self.assertEqual(report["edit_review"]["status"], "untracked")
+                    self.assertIsNone(report["review"])
+                    self.assertFalse(report["edit_review"]["validation_invalidated"])
+
+    def test_unidentified_targets_and_absent_baseline_do_not_claim_evidence_comparison(self):
+        unnamed = deepcopy(self.originals)
+        unnamed[0]["profile"]["settings"]["name"] = ""
+        cases = [
+            ([document("Other")], {"documents": self.originals, "target_name": "Child"}),
+            (self.originals, {"documents": [document("Other")], "target_name": "Child"}),
+            (self.originals + deepcopy(self.originals), {"documents": self.originals, "target_name": "Child"}),
+            (self.originals, {"documents": self.originals + deepcopy(self.originals), "target_name": "Child"}),
+            (self.originals, {"documents": unnamed, "target_name": ""}),
+            (self.originals, None),
+        ]
+        for index, (documents, baseline) in enumerate(cases):
+            with self.subTest(case=index):
+                report = resolve_profile_documents(documents, "Child", self.setup, baseline=baseline)
+                self.assertEqual(report["edit_review"].get("evidence_status"), "untracked")
+                self.assertEqual(report["edit_review"]["evidence_changes"], [])
+
+    def test_setting_and_evidence_invalidations_keep_both_reasons(self):
+        edited = deepcopy(self.originals)
+        edited[0]["profile"]["settings"]["nozzle_temperature"] = ["210"]
+        edited[0]["profile"]["scope"]["material_id"] = "different product"
+        report = self.resolve(edited)
+        reasons = {r["code"] for r in report["review"]["reasons"]}
+        self.assertIn("VALIDATION_EVIDENCE_CHANGED", reasons)
+        self.assertIn("VALIDATION_SETTINGS_CHANGED", reasons)
+        self.assertEqual(report["edit_review"]["changed_fields"], ["nozzle_temperature"])
+        self.assertEqual([c["path"] for c in report["edit_review"]["evidence_changes"]], ["scope.material_id"])
+        self.assertEqual(report["review"]["decision"], "blocked")
+        self.assertEqual(report["review"]["validation_status"], "stale")
+
+    def test_evidence_values_are_independent_of_inputs_and_other_report_components(self):
+        self.originals[0]["profile"]["source"]["extra"] = {"notes": ["before"]}
+        edited = deepcopy(self.originals)
+        edited[0]["profile"]["source"]["extra"]["notes"] = ["after"]
+        report = self.resolve(edited)
+        self.assertEqual(report["edit_review"].get("evidence_status"), "compared")
+        change = report["edit_review"]["evidence_changes"][0]
+        self.assertEqual(change["path"], "source.extra")
+        change["before"]["notes"].append("mutation")
+        change["after"]["notes"].append("mutation")
+        self.assertEqual(self.originals[0]["profile"]["source"]["extra"], {"notes": ["before"]})
+        self.assertEqual(edited[0]["profile"]["source"]["extra"], {"notes": ["after"]})
+        self.assertEqual(report["imported_documents"][0]["profile"]["source"]["extra"], {"notes": ["before"]})
+        self.assertEqual(report["documents"][0]["profile"]["source"]["extra"], {"notes": ["after"]})
+        self.assertEqual(report["resolved_profile"]["source"]["extra"], {"notes": ["after"]})
+
+
 if __name__ == "__main__":
     unittest.main()

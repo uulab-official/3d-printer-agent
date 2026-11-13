@@ -229,6 +229,18 @@ summary:hover { color: var(--blue); }
 .guided-field .field-help { font-size: 10px; line-height: 1.6; margin-bottom: 3px; overflow-wrap: anywhere; }
 .guided-field .text-button { font-size: 10px; text-align: left; }
 .guided-field input:disabled { color: #8c98a9; background: #f3f5f8; }
+.profile-evidence { margin-top: 20px; padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: #f8faff; min-width: 0; }
+.profile-evidence summary { line-height: 1.8; overflow-wrap: anywhere; }
+.profile-evidence fieldset { min-width: 0; margin: 20px 0 0; padding: 0; border: 0; }
+.profile-evidence legend { padding: 0; color: #526987; font-size: 12px; font-weight: 650; }
+.profile-evidence .guided-fields { margin-top: 12px; }
+.profile-evidence .evidence-original { margin: 7px 0 0; padding: 8px 10px; font-size: 10px; max-height: 160px; }
+#profile-evidence-review h3 { margin: 0 0 6px; font-size: 13px; }
+.profile-evidence-table { table-layout: fixed; }
+.profile-evidence-table th, .profile-evidence-table td { padding: 10px; vertical-align: top; overflow-wrap: anywhere; }
+.profile-evidence-table tbody th { width: 28%; font-weight: 600; }
+.profile-evidence-table th small { display: block; margin-top: 4px; font-size: 9px; font-weight: 400; }
+.profile-evidence-table .evidence-value { white-space: pre-wrap; font-size: 11px; }
 .profile-adopt { margin-top: 10px; }
 .profile-library { padding: 14px; margin-bottom: 19px; border: 1px solid var(--line); border-radius: 10px; background: #f8faff; }
 .profile-library .label-row { margin-bottom: 5px; flex-wrap: wrap; }

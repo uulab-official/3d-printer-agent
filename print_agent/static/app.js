@@ -904,11 +904,98 @@
     return settings;
   }
 
+  function evidenceFieldDefinitions() {
+    return [
+      { group: "scope", field: "printer_model", label: "프린터 모델" },
+      { group: "scope", field: "printer_preset", label: "프린터 프리셋" },
+      { group: "scope", field: "nozzle_diameter", label: "노즐 지름 · mm", numeric: true },
+      { group: "scope", field: "plate_type", label: "플레이트 종류", list: "plate-types" },
+      { group: "scope", field: "extruder", label: "압출기 식별자" },
+      { group: "scope", field: "feed_mode", label: "필라멘트 공급 방식" },
+      { group: "scope", field: "material_id", label: "재료 제품 식별자" },
+      { group: "source", field: "authority", label: "출처 구분", list: "profile-source-authorities", placeholder: "예: manufacturer · user · community" },
+      { group: "source", field: "publisher", label: "발행처" },
+      { group: "source", field: "url", label: "원문 URL", placeholder: "확인한 원문 주소 그대로" },
+      { group: "source", field: "retrieved_at", label: "원문 확인 시각", placeholder: "확인한 날짜·시각 그대로" },
+    ];
+  }
+
+  function stageGuidedInput(field, input) {
+    const source = state.guidedSources[field];
+    if (!source?.editable) return;
+    source.invalid = Boolean(input.validity?.badInput);
+    if (input.value === source.initial && !source.invalid) delete state.guidedEdits[field];
+    else state.guidedEdits[field] = input.value;
+    hideNotice("profile-guided-feedback");
+    invalidateProfile();
+    markWorkspaceChanged();
+  }
+
+  function renderEvidenceEditor(profile) {
+    const details = $("profile-evidence");
+    details.hidden = !profile;
+    const definitions = evidenceFieldDefinitions();
+    const counts = [];
+    for (const [group, title] of [["scope", "이 프로필의 적용 범위"], ["source", "출처 기록"]]) {
+      const area = $(`profile-evidence-${group}`);
+      area.replaceChildren();
+      if (!profile) continue;
+      area.append(node("legend", "", title));
+      if (group === "source") area.append(node("p", "field-help", "입력한 출처 기록입니다. 발행처 인증이나 실제 출력 검증을 뜻하지 않습니다."));
+      const value = Object.hasOwn(profile, "settings") && Object.hasOwn(profile, group) ? profile[group] : {};
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        area.append(node("p", "field-help", "기존 근거가 JSON 객체 형식이 아닙니다. 이 내용은 그대로 보존하며, JSON 편집창에서 확인해 주세요."), node("pre", "evidence-original", JSON.stringify(value)));
+        counts.push(`${group === "scope" ? "적용 범위" : "출처"} 형식 확인 필요`);
+        continue;
+      }
+      const fields = definitions.filter((definition) => definition.group === group);
+      counts.push(`${group === "scope" ? "적용 범위" : "출처"} ${fields.filter((definition) => Object.hasOwn(value, definition.field)).length}/${fields.length}`);
+      const grid = node("div", "guided-fields");
+      for (const definition of fields) {
+        const field = definition.field, key = `${group}.${field}`;
+        const own = Object.hasOwn(value, field), original = own ? value[field] : undefined;
+        const scalar = Array.isArray(original) && original.length === 1 ? original[0] : original;
+        let editable = !own || typeof original === "string";
+        if (own && definition.numeric) {
+          try { numericSetting(original, String(scalar), false); editable = true; }
+          catch { editable = false; }
+        }
+        const row = node("div", "guided-field");
+        row.dataset.evidence = key;
+        const label = node("label", "", definition.label);
+        const input = node("input");
+        input.id = `evidence-${group}-${field}`;
+        input.type = definition.numeric && editable ? "number" : "text";
+        if (definition.numeric && editable) input.step = "any";
+        if (definition.list) input.setAttribute("list", definition.list);
+        if (definition.placeholder) input.placeholder = definition.placeholder;
+        if (field === "url") input.inputMode = "url";
+        input.value = editable && own ? String(scalar) : "";
+        input.disabled = !editable;
+        input.dataset.guided = key;
+        const helpId = `evidence-help-${group}-${field}`;
+        input.setAttribute("aria-describedby", helpId);
+        label.htmlFor = input.id;
+        label.append(input);
+        const help = node("p", "field-help", !editable ? "이 값의 형식은 간편 편집을 지원하지 않습니다. JSON에서 확인해 주세요." : own ? "선택한 파일에 명시된 근거" : "근거 없음 · 확인한 내용만 입력하세요.");
+        help.id = helpId;
+        row.append(label, help);
+        if (!editable) row.append(node("pre", "evidence-original", JSON.stringify(original)));
+        state.guidedSources[key] = { kind: "evidence", group, field, numeric: Boolean(definition.numeric), value: original, editable, initial: input.value, label: definition.label };
+        input.addEventListener("input", () => stageGuidedInput(key, input));
+        grid.append(row);
+      }
+      area.append(grid);
+    }
+    $("profile-evidence-summary").textContent = `프로필의 적용 범위와 출처${counts.length ? ` · ${counts.join(" · ")}` : ""}`;
+  }
+
   function renderGuidedEditor() {
     state.guidedSources = {};
     state.guidedEdits = {};
     const area = $("profile-guided-fields");
     area.replaceChildren();
+    renderEvidenceEditor(null);
     $("profile-adopt").hidden = state.profileDocuments.length > 0;
     hideNotice("profile-guided-feedback");
     if (!state.profileDocuments.length) {
@@ -916,8 +1003,8 @@
       updateWorkspaceStatus();
       return;
     }
-    let settings;
-    try { settings = profileSettings(parseObject($("profile-json").value, "선택한 프로필")); }
+    let profile, settings;
+    try { profile = parseObject($("profile-json").value, "선택한 프로필"); settings = profileSettings(profile); }
     catch (error) {
       $("profile-guided-help").textContent = `${error.message} 편집 중인 JSON은 그대로 저장할 수 있습니다.`;
       updateWorkspaceStatus();
@@ -954,13 +1041,7 @@
       const help = node("p", "field-help", description);
       help.id = `guided-help-${field}`;
       state.guidedSources[field] = { value, positive, editable, initial: input.value };
-      input.addEventListener("input", () => {
-        if (input.value === state.guidedSources[field].initial) delete state.guidedEdits[field];
-        else state.guidedEdits[field] = input.value;
-        hideNotice("profile-guided-feedback");
-        invalidateProfile();
-        markWorkspaceChanged();
-      });
+      input.addEventListener("input", () => stageGuidedInput(field, input));
       row.append(label, help);
       if (own) {
         const remove = node("button", "text-button guided-remove", "이 파일의 값 제거");
@@ -971,6 +1052,7 @@
       }
       area.append(row);
     }
+    renderEvidenceEditor(profile);
     updateWorkspaceStatus();
   }
 
@@ -979,17 +1061,43 @@
     if (!edits.length) return;
     const entry = state.profileDocuments[state.profileTarget];
     if (!entry) throw new Error("편집할 파일을 먼저 선택해 주세요.");
-    const profile = parseObject($("profile-json").value, entry.filename);
+    let profile = parseObject($("profile-json").value, entry.filename);
     const settings = profileSettings(profile);
     const replacements = edits.map(([field, text]) => {
       const source = state.guidedSources[field];
       if (!source?.editable) throw new Error("이 설정은 JSON에서 확인해 주세요.");
-      try { return [field, numericSetting(Object.hasOwn(settings, field) ? settings[field] : source.value, text, source.positive)]; }
-      catch (error) { throw new Error(`${fieldNames[field] || field}: ${error.message}`); }
+      try {
+        if (source.invalid) throw new Error("완전한 숫자를 입력하거나 편집 취소를 눌러 주세요.");
+        if (source.kind === "evidence") {
+          const group = Object.hasOwn(profile, "settings") && Object.hasOwn(profile, source.group) ? profile[source.group] : {};
+          if (!group || typeof group !== "object" || Array.isArray(group)) throw new Error("이 근거의 기존 형식은 JSON에서 확인해 주세요.");
+          const present = Object.hasOwn(group, source.field), original = group[source.field];
+          const remove = text === "";
+          let value;
+          if (!remove) {
+            value = source.numeric ? numericSetting(present ? original : undefined, text, true) : text;
+            if (source.numeric && !present) value = Number(value[0]);
+          }
+          return { kind: "evidence", group: source.group, field: source.field, remove, value, changed: remove ? present : !present || !sameJson(original, value) };
+        }
+        const value = numericSetting(Object.hasOwn(settings, field) ? settings[field] : source.value, text, source.positive);
+        return { kind: "setting", field, value, changed: !Object.hasOwn(settings, field) || !sameJson(settings[field], value) };
+      } catch (error) { throw new Error(`${source.label || fieldNames[field] || field}: ${error.message}`); }
     });
-    for (const [field, value] of replacements) settings[field] = value;
-    entry.draftText = JSON.stringify(profile, null, 2);
-    $("profile-json").value = entry.draftText;
+    const changes = replacements.filter((replacement) => replacement.changed);
+    if (changes.some((replacement) => replacement.kind === "evidence") && !Object.hasOwn(profile, "settings")) profile = { settings: profile };
+    for (const replacement of changes) {
+      if (replacement.kind === "setting") profileSettings(profile)[replacement.field] = replacement.value;
+      else {
+        if (!Object.hasOwn(profile, replacement.group)) profile[replacement.group] = {};
+        if (replacement.remove) delete profile[replacement.group][replacement.field];
+        else profile[replacement.group][replacement.field] = replacement.value;
+      }
+    }
+    if (changes.length) {
+      entry.draftText = JSON.stringify(profile, null, 2);
+      $("profile-json").value = entry.draftText;
+    }
     state.guidedEdits = {};
     invalidateProfile();
     markWorkspaceChanged();
@@ -1254,6 +1362,38 @@
     } finally { updateWorkspaceStatus(); }
   }
 
+  function renderProfileEvidenceChanges(edit) {
+    const area = $("profile-evidence-changes");
+    area.replaceChildren();
+    const changes = edit?.evidence_status === "compared" ? edit.evidence_changes || [] : [];
+    $("profile-evidence-review").hidden = !changes.length;
+    $("profile-evidence-review-help").textContent = changes.length ? `선택한 파일의 근거 정보 ${changes.length}곳이 원본과 다릅니다. 입력한 기록의 변경이며, 발행처 인증이나 실제 출력 검증을 뜻하지 않습니다.` : "";
+    if (!changes.length) return;
+    const definitions = evidenceFieldDefinitions();
+    const table = node("table", "profile-evidence-table");
+    table.setAttribute("aria-label", "선택한 프로필 근거의 원본과 편집본 비교");
+    const head = node("thead"), headings = node("tr");
+    for (const label of ["근거 항목", "가져온 원본", "현재 편집본"]) {
+      const heading = node("th", "", label);
+      heading.scope = "col";
+      headings.append(heading);
+    }
+    head.append(headings);
+    const body = node("tbody");
+    for (const change of changes) {
+      const row = node("tr");
+      row.dataset.evidencePath = change.path;
+      const definition = definitions.find((item) => `${item.group}.${item.field}` === change.path);
+      const heading = node("th", "", definition ? `${definition.group === "scope" ? "적용 범위" : "출처"} · ${definition.label}` : change.path);
+      heading.scope = "row";
+      if (definition) heading.append(node("small", "", change.path));
+      row.append(heading, node("td", "evidence-value", change.before_present ? JSON.stringify(change.before) : "항목 없음"), node("td", "evidence-value", change.after_present ? JSON.stringify(change.after) : "항목 없음"));
+      body.append(row);
+    }
+    table.append(head, body);
+    area.append(table);
+  }
+
   function renderProfileResolution(result) {
     state.profileReport = result;
     $("profile-resolution").hidden = false;
@@ -1271,6 +1411,7 @@
     }));
     $("profile-resolution-warnings").replaceChildren(...(result.warnings || []).map((warning) => node("p", "", friendly(warning))));
     const edit = result.edit_review;
+    renderProfileEvidenceChanges(edit);
     hideNotice("profile-edit-review");
     if (edit?.status === "changed") showNotice("profile-edit-review", `가져온 원본과 달라진 설정 ${edit.changed_fields.length}개가 있습니다. 수정값은 사용자의 변경으로 구분합니다.${edit.validation_invalidated ? " 이전 검증 보고는 이 변경값에 적용하지 않습니다." : ""}`, "info", edit.changed_fields.map((field) => fieldNames[field] || field));
     else if (edit?.status === "baseline_unresolved") showNotice("profile-edit-review", "원본의 상속을 확인하지 못해 변경 전후의 유효값을 비교할 수 없습니다. 이전 검증 보고를 현재 값의 근거로 사용하지 않습니다.", "warning");

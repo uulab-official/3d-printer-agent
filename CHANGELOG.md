@@ -2,6 +2,9 @@
 
 ## Unreleased — 2026-11-13
 
+- Edit a selected filament profile's supplied applicability and source in a guided form, separately from the current-use setup, without hand-writing an envelope.
+- Apply numeric and evidence edits together; preserve raw originals, unknown fields, value representations, inheritance and archive origins through cancel/save/reopen.
+- Report selected-target scope/source/validation changes separately from effective settings; invalidate positive claims for changed scope or validation while keeping source-only corrections distinct.
 - Import Studio `.bbsflmt`, `.bbscfg` and preset `.zip` archives directly into filament workspaces, reporting excluded printer/process entries and retaining original settings.
 - Preserve archive/member byte identity separately from profile settings through editing, save/reopen, baseline comparison and evidence reports.
 - Make collection imports atomic: retain pasted profiles and unfinished drafts, skip identical originals, reject conflicting names, and ignore stale import responses.

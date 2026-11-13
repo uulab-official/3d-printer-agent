@@ -683,6 +683,220 @@ test('guided filament edits survive save and reload with original evidence and s
   await expect(page.locator('#profile-resolution-issues')).toContainText('Synthetic Base');
 });
 
+test('guided source and applicability evidence wraps only the draft and survives archive workspace reload', async ({ page }, testInfo) => {
+  const { base, child, setup } = inheritedPresetFixture();
+  const original = { ...child.settings, from: 'User', filament_settings_id: [child.settings.name] };
+  delete original.type;
+  const originalText = ` ${JSON.stringify(original, null, 2)}\n`;
+  const upload = filamentArchive('evidence-fixture.bbsflmt', [{ path: 'Example/Evidence.json', text: originalText }]);
+  const parent = { settings: base, scope: child.scope, source: { authority: 'manufacturer', publisher: 'Parent only; never child evidence' } };
+  const source = {
+    authority: 'manufacturer', publisher: '<img src=x onerror="window.evidenceExecuted=true"> Synthetic publisher',
+    url: `https://example.invalid/filament/${'exact-product-'.repeat(12)}source`, retrieved_at: '2026-11-13T09:15:00+09:00',
+  };
+  const ownedSetup = { ...setup, material_id: 'fixture:owned-different-product' };
+  await openView(page, 'profiles');
+  const importedResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/import-archive'));
+  await page.locator('#profile-archive').setInputFiles(upload);
+  const imported = await (await importedResponse).json();
+  const origin = imported.documents[0].origin;
+  expect(origin.archive_sha256).toBe(crypto.createHash('sha256').update(upload.buffer).digest('hex'));
+  expect(origin.member_sha256).toBe(crypto.createHash('sha256').update(originalText).digest('hex'));
+  await expect(page.locator('#profile-target option')).toHaveCount(1);
+  await page.locator('#profile-file').setInputFiles(presetUpload('parent-with-evidence.json', parent));
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  for (const [name, value] of Object.entries(ownedSetup)) {
+    const field = page.locator(`.setup-grid [name="${name}"]`);
+    if (name === 'material_identity_status') await field.selectOption(value);
+    else await field.fill(String(value));
+  }
+  await page.locator('#profile-evidence summary').click();
+  await expect(page.locator('#profile-json')).toHaveValue(originalText);
+  for (const [name, value] of Object.entries(child.scope)) {
+    const field = page.locator(`#evidence-scope-${name}`);
+    await expect(field).toHaveValue(''); // Neither the parent nor current setup supplies evidence automatically.
+    await field.fill(String(value));
+  }
+  for (const [name, value] of Object.entries(source)) {
+    const field = page.locator(`#evidence-source-${name}`);
+    await expect(field).toHaveValue('');
+    await field.fill(value);
+  }
+  await expect(page.locator('#profile-json')).toBeDisabled();
+  await expect(page.locator('#profile-target')).toBeDisabled();
+  await expect(page.locator('#profile-archive')).toBeDisabled();
+  await expect(page.locator('#setup-material')).toHaveValue(ownedSetup.material_id);
+  await expect(page.locator('#workspace-status')).toHaveText('편집값 적용 필요');
+  await expect(page.locator('#profile-json')).toHaveValue(originalText);
+
+  const title = `Evidence ${testInfo.project.name} ${Date.now()}`;
+  await page.locator('#workspace-title').fill(title);
+  const saveResponse = page.waitForResponse(response => response.url().endsWith('/api/profile-workspaces') && response.request().method() === 'POST');
+  await page.locator('#workspace-save').click(); // Save applies all pending evidence as one draft edit.
+  const saved = await (await saveResponse).json();
+  const edited = { settings: original, scope: child.scope, source };
+  expect(saved.snapshot.documents[0].profile).toEqual(original);
+  expect(JSON.parse(saved.snapshot.documents[0].draft_text)).toEqual(edited);
+  expect(saved.snapshot.documents[0].origin).toEqual(origin);
+  expect(saved.snapshot.documents[1].profile).toEqual(parent);
+  expect(saved.snapshot.setup).toEqual(Object.fromEntries(Object.entries(ownedSetup).map(([key, value]) => [key, String(value)])));
+  await expect(page.locator('#workspace-status')).toHaveText('저장됨');
+  await page.reload();
+  await expect(page.locator('#generate-button')).toBeEnabled();
+  await openView(page, 'profiles');
+  await expect(page.locator(`#workspace-list option[value="${saved.id}"]`)).toHaveCount(1);
+  await page.locator('#workspace-list').selectOption(saved.id);
+  await page.locator('#workspace-open').click();
+  await expect(page.locator('#workspace-title')).toHaveValue(title);
+  await expect(page.locator('#profile-resolution')).toBeHidden();
+  await expect(page.locator('#profile-download')).not.toHaveAttribute('href');
+  expect(JSON.parse(await page.locator('#profile-json').inputValue())).toEqual(edited);
+  await expect(page.locator('#setup-material')).toHaveValue(ownedSetup.material_id);
+  await page.locator('#profile-evidence summary').click();
+  await expect(page.locator('#evidence-scope-material_id')).toHaveValue(setup.material_id);
+  await expect(page.locator('#evidence-source-publisher')).toHaveValue(source.publisher);
+  await expect(page.locator('#evidence-source-retrieved_at')).toHaveValue(source.retrieved_at);
+  const mismatchResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  const mismatch = await (await mismatchResponse).json();
+  expect(mismatch.review.decision).toBe('blocked');
+  expect(mismatch.review.reasons.some(item => item.code === 'PROFILE_SCOPE_MISMATCH')).toBe(true);
+  expect(mismatch.review.validation_status).toBe('unverified');
+  expect(mismatch.edit_review.status).toBe('unchanged');
+  expect(mismatch.edit_review.evidence_status).toBe('compared');
+  expect(mismatch.edit_review.evidence_changes).toHaveLength(11);
+  expect(mismatch.edit_review.evidence_changes.every(item => !item.before_present && item.after_present)).toBe(true);
+  await expect(page.locator('#review-profile')).toBeEnabled();
+  await page.locator('#setup-material').fill(setup.material_id);
+  await expect(page.locator('#profile-download')).not.toHaveAttribute('href');
+  const updatedResponse = page.waitForResponse(response => response.url().endsWith(`/api/profile-workspaces/${saved.id}`) && response.request().method() === 'PUT');
+  await page.locator('#workspace-save').click();
+  expect((await (await updatedResponse).json()).revision).toBe(2);
+  await expect(page.locator('#workspace-status')).toHaveText('저장됨');
+  const reviewedResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  const reviewed = await (await reviewedResponse).json();
+  expect(reviewed.review.decision).toBe('ready_to_prepare');
+  expect(reviewed.review.validation_status).toBe('unverified');
+  expect(reviewed.review.warnings.some(item => item.startsWith('SOURCE_CLAIM_ONLY:'))).toBe(true);
+  expect(reviewed.edit_review.changed_fields).toEqual([]);
+  expect(reviewed.edit_review.validation_invalidated).toBe(false);
+  expect(reviewed.documents[0].profile).toEqual(edited);
+  expect(reviewed.imported_documents[0].profile).toEqual(original);
+  expect(reviewed.documents[1].profile).toEqual(parent);
+  expect(reviewed.documents[0].origin).toEqual(origin);
+  expect(reviewed.imported_documents[0].origin).toEqual(origin);
+  expect(reviewed.setup).toEqual(setup);
+  expect(reviewed.full_config).toBe(false);
+  expect(reviewed.native_verified).toBe(false);
+  await expect(page.locator('#profile-evidence-changes tr[data-evidence-path]')).toHaveCount(11);
+  await expect(page.locator('#profile-evidence-review')).toContainText(source.publisher);
+  await expect(page.locator('#profile-evidence-review img')).toHaveCount(0);
+  expect(await page.evaluate(() => window.evidenceExecuted)).toBeUndefined();
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#profile-download').click();
+  const download = await downloadPromise;
+  const reportPath = testInfo.outputPath('filament-evidence-review.json');
+  await download.saveAs(reportPath);
+  expect(JSON.parse(await fs.readFile(reportPath, 'utf8')).edit_review).toEqual(reviewed.edit_review);
+  await noHorizontalOverflow(page);
+  await page.locator('#profile-evidence').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('filament-evidence-editor.png'), fullPage: true });
+});
+
+test('evidence edits cancel atomically and keep source corrections distinct from changed validation scope', async ({ page }, testInfo) => {
+  const { base, child, setup } = inheritedPresetFixture();
+  child.scope.nozzle_diameter = ['0.40'];
+  child.scope.extra_scope_note = ['preserve unknown evidence'];
+  child.source = { authority: 'custom authority', publisher: { legacy: 'do not coerce' }, url: 'original source text', retrieved_at: 'original time text' };
+  child.validation = { status: 'measured_on_matching_setup', setup_fingerprint: structuredClone(child.scope), note: 'Supplied synthetic claim' };
+  child.extra_envelope_note = { preserved: true };
+  await openView(page, 'profiles');
+  await page.locator('#profile-file').setInputFiles([presetUpload('base.json', base), presetUpload('child.json', child)]);
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  await page.locator('#profile-target').selectOption('1');
+  for (const [name, value] of Object.entries(setup)) {
+    const field = page.locator(`.setup-grid [name="${name}"]`);
+    if (name === 'material_identity_status') await field.selectOption(value);
+    else await field.fill(String(value));
+  }
+  await page.locator('#profile-evidence summary').click();
+  await expect(page.locator('#evidence-source-authority')).toHaveValue('custom authority');
+  await expect(page.locator('#evidence-source-publisher')).toBeDisabled();
+  await expect(page.locator('#profile-evidence-source')).toContainText('do not coerce');
+  await expect(page.locator('#evidence-scope-nozzle_diameter')).toHaveValue('0.40');
+  await page.locator('#guided-nozzle_temperature').fill('220');
+  await page.locator('#evidence-scope-nozzle_diameter').fill('');
+  await page.locator('#evidence-scope-nozzle_diameter').pressSequentially('-');
+  expect(await page.locator('#evidence-scope-nozzle_diameter').evaluate(input => input.validity.badInput)).toBe(true);
+  await page.locator('#profile-guided-apply').click();
+  await expect(page.locator('#profile-guided-feedback')).toBeVisible();
+  await expect(page.locator('#workspace-status')).toHaveText('편집값 적용 필요');
+  expect(JSON.parse(await page.locator('#profile-json').inputValue())).toEqual(child);
+  await expect(page.locator('#guided-nozzle_temperature')).toHaveValue('220');
+  await page.locator('#evidence-scope-nozzle_diameter').fill('-0.4');
+  await page.locator('#profile-guided-apply').click();
+  await expect(page.locator('#profile-guided-feedback')).toBeVisible();
+  await expect(page.locator('#workspace-status')).toHaveText('편집값 적용 필요');
+  expect(JSON.parse(await page.locator('#profile-json').inputValue())).toEqual(child);
+  await expect(page.locator('#guided-nozzle_temperature')).toHaveValue('220');
+  await expect(page.locator('#evidence-scope-nozzle_diameter')).toHaveValue('-0.4');
+  await page.locator('#profile-guided-cancel').click();
+  await expect(page.locator('#profile-json')).toBeEnabled();
+  await expect(page.locator('#guided-nozzle_temperature')).toHaveValue('215');
+  await expect(page.locator('#evidence-scope-nozzle_diameter')).toHaveValue('0.40');
+  expect(JSON.parse(await page.locator('#profile-json').inputValue())).toEqual(child);
+
+  const correctedUrl = 'https://example.invalid/corrected-evidence';
+  await page.locator('#evidence-source-url').fill(correctedUrl);
+  const sourceResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click(); // Review also applies pending evidence.
+  const sourceReport = await (await sourceResponse).json();
+  expect(sourceReport.edit_review.status).toBe('unchanged');
+  expect(sourceReport.edit_review.evidence_changes).toEqual([{
+    path: 'source.url', before_present: true, after_present: true, before: child.source.url, after: correctedUrl,
+  }]);
+  expect(sourceReport.edit_review.validation_invalidated).toBe(false);
+  expect(sourceReport.review.validation_status).toBe('reported_validated');
+  expect(sourceReport.documents[1].profile.source.publisher).toEqual(child.source.publisher);
+  expect(sourceReport.documents[1].profile.extra_envelope_note).toEqual(child.extra_envelope_note);
+  await expect(page.locator('#profile-evidence-changes tr[data-evidence-path="source.url"]')).toContainText(child.source.url);
+  await expect(page.locator('#profile-evidence-changes tr[data-evidence-path="source.url"]')).toContainText(correctedUrl);
+  await expect(page.locator('#review-profile')).toBeEnabled();
+
+  await page.locator('#evidence-scope-material_id').fill('fixture:a-different-product');
+  await page.locator('#evidence-source-url').fill(''); // Empty means explicit removal of this source key only.
+  await expect(page.locator('#profile-download')).not.toHaveAttribute('href');
+  const scopeResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  const scoped = await (await scopeResponse).json();
+  expect(scoped.edit_review.status).toBe('unchanged');
+  expect(scoped.edit_review.changed_fields).toEqual([]);
+  expect(scoped.edit_review.validation_invalidated).toBe(true);
+  expect(scoped.review.validation_status).toBe('stale');
+  expect(scoped.review.decision).toBe('blocked');
+  expect(scoped.review.reasons.some(item => item.code === 'VALIDATION_EVIDENCE_CHANGED')).toBe(true);
+  expect(scoped.edit_review.evidence_changes.find(item => item.path === 'source.url')).toEqual({
+    path: 'source.url', before_present: true, after_present: false, before: child.source.url,
+  });
+  expect(scoped.imported_documents[1].profile).toEqual(child);
+  expect(scoped.documents[1].profile.settings).toEqual(child.settings);
+  expect(scoped.documents[1].profile.scope.nozzle_diameter).toEqual(['0.40']);
+  expect(scoped.documents[1].profile.scope.extra_scope_note).toEqual(child.scope.extra_scope_note);
+  expect(scoped.documents[1].profile.source.publisher).toEqual(child.source.publisher);
+  expect(scoped.documents[1].profile.source.retrieved_at).toBe(child.source.retrieved_at);
+  expect(scoped.documents[1].profile.source).not.toHaveProperty('url');
+  expect(scoped.documents[1].profile.validation).toEqual(child.validation);
+  expect(scoped.full_config).toBe(false);
+  expect(scoped.native_verified).toBe(false);
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#profile-download').click();
+  await (await downloadPromise).saveAs(testInfo.outputPath('filament-evidence-stale-review.json'));
+  await noHorizontalOverflow(page);
+  await page.locator('#profile-evidence').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('filament-evidence-stale.png'), fullPage: true });
+});
+
 test('workspace conflicts preserve edits, allow a separate copy and delete only its saved record', async ({ page }, testInfo) => {
   await openView(page, 'profiles');
   const original = { name: 'Pasted synthetic profile', type: 'filament', nozzle_temperature: 210 };

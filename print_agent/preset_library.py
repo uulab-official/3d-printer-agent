@@ -265,7 +265,39 @@ def _resolve_profile_documents(documents, target_name, setup, *, allow_empty_tar
     return report
 
 
-def _invalidate_edited_validation(report):
+def _compare_target_evidence(report, original):
+    """Compare only uniquely named target envelopes, independently of parents."""
+    selected = []
+    for snapshot in (original, report):
+        if not snapshot["target_name"].strip():
+            return
+        matches = [
+            document["profile"] for document in snapshot["documents"]
+            if _settings(document["profile"]).get("name") == snapshot["target_name"]
+        ]
+        if len(matches) != 1:
+            return
+        profile = matches[0]
+        selected.append(profile if "settings" in profile else {})
+
+    changes = []
+    for group in ("scope", "source", "validation"):
+        before, after = (profile.get(group, {}) for profile in selected)
+        for field in sorted(before.keys() | after.keys()):
+            before_present, after_present = field in before, field in after
+            if before_present and after_present and _json_bytes(before[field]) == _json_bytes(after[field]):
+                continue
+            change = {"path": f"{group}.{field}", "before_present": before_present,
+                      "after_present": after_present}
+            if before_present:
+                change["before"] = deepcopy(before[field])
+            if after_present:
+                change["after"] = deepcopy(after[field])
+            changes.append(change)
+    report["edit_review"].update(evidence_status="compared", evidence_changes=changes)
+
+
+def _invalidate_edited_validation(report, *, evidence_changed=False):
     """Invalidate a supplied positive claim without rewriting its source evidence."""
     edit_review = report["edit_review"]
     validation = report["resolved_profile"].get("validation", {})
@@ -280,27 +312,45 @@ def _invalidate_edited_validation(report):
     review["selected_profile_id"] = None
     if review["decision"] == "ready_to_prepare":
         review["decision"] = "needs_evidence"
-    review["reasons"].append({
-        "code": "VALIDATION_BASELINE_UNRESOLVED" if unresolved else "VALIDATION_SETTINGS_CHANGED",
-        "message": (
-            "원본 설정의 상속을 확인할 수 없어 기존 검증 보고를 현재 설정에 적용할 수 없습니다. 원본 파일과 검증 근거를 다시 확인하세요."
-            if unresolved else
-            "원본과 비교해 실제 적용 설정이 변경되었습니다. 기존 검증 보고를 변경된 값에 적용할 수 없으므로 다시 확인해야 합니다."
-        ),
-    })
-    review["calibration_actions"].append({
-        "action": "review",
-        "reason": "validation_baseline_unresolved" if unresolved else "validation_settings_changed",
-        "changed_fields": list(edit_review["changed_fields"]),
-    })
+    if evidence_changed:
+        review["reasons"].append({
+            "code": "VALIDATION_EVIDENCE_CHANGED",
+            "message": "원본과 비교해 적용 범위 또는 검증 주장이 변경되었습니다. 기존 검증 보고의 적용 근거를 다시 확인해야 합니다.",
+        })
+        review["calibration_actions"].append({
+            "action": "review", "reason": "validation_evidence_changed",
+            "changed_evidence_fields": [
+                change["path"] for change in edit_review["evidence_changes"]
+                if change["path"].startswith(("scope.", "validation."))
+            ],
+        })
+    else:
+        review["reasons"].append({
+            "code": "VALIDATION_BASELINE_UNRESOLVED" if unresolved else "VALIDATION_SETTINGS_CHANGED",
+            "message": (
+                "원본 설정의 상속을 확인할 수 없어 기존 검증 보고를 현재 설정에 적용할 수 없습니다. 원본 파일과 검증 근거를 다시 확인하세요."
+                if unresolved else
+                "원본과 비교해 실제 적용 설정이 변경되었습니다. 기존 검증 보고를 변경된 값에 적용할 수 없으므로 다시 확인해야 합니다."
+            ),
+        })
+        review["calibration_actions"].append({
+            "action": "review",
+            "reason": "validation_baseline_unresolved" if unresolved else "validation_settings_changed",
+            "changed_fields": list(edit_review["changed_fields"]),
+        })
     # A positive-sounding setup-only warning no longer describes applicability.
     review["warnings"] = [
         warning for warning in review["warnings"]
         if not warning.startswith("VALIDATION_CLAIM_ONLY:")
     ]
-    review["warnings"].append(
-        "VALIDATION_SETTINGS_STALE: 입력된 검증 주장은 원본 증거에 보존했습니다. 현재 편집본의 실물 검증을 뜻하지 않습니다."
-    )
+    if evidence_changed:
+        review["warnings"].append(
+            "VALIDATION_EVIDENCE_STALE: 입력된 검증 주장은 원본 증거에 보존했습니다. 변경한 적용 범위나 검증 주장의 확인을 뜻하지 않습니다."
+        )
+    else:
+        review["warnings"].append(
+            "VALIDATION_SETTINGS_STALE: 입력된 검증 주장은 원본 증거에 보존했습니다. 현재 편집본의 실물 검증을 뜻하지 않습니다."
+        )
     edit_review["validation_invalidated"] = True
 
 
@@ -310,8 +360,9 @@ def resolve_profile_documents(documents: list[dict], target_name: str, setup: di
 
     Each current/original document set has the same independent size/depth bounds.
     ``baseline`` is user-supplied evidence, not an authenticated version or a
-    measurement. Only effective settings are compared; key ordering and edits to
-    unused or overridden ancestor values do not imply a configuration change.
+    measurement. Effective settings and the selected target's own evidence are
+    compared separately. Key ordering and edits to unused or overridden ancestor
+    values do not imply a configuration change.
     """
     report = _resolve_profile_documents(documents, target_name, setup)
     report["imported_documents"] = []
@@ -321,6 +372,8 @@ def resolve_profile_documents(documents: list[dict], target_name: str, setup: di
         "baseline_target_name": None,
         "baseline_issues": [],
         "changed_fields": [],
+        "evidence_status": "untracked",
+        "evidence_changes": [],
         "validation_invalidated": False,
     }
     for source in report["field_sources"].values():
@@ -340,11 +393,15 @@ def resolve_profile_documents(documents: list[dict], target_name: str, setup: di
         baseline_target_name=baseline["target_name"],
         baseline_issues=original["issues"],
     )
+    _compare_target_evidence(report, original)
     report["warnings"].append(
         "BASELINE_CLAIM_ONLY: 원본 비교는 사용자가 처음 제공한 JSON을 기준으로 합니다. 발행처 인증이나 측정 이력 확인을 대신하지 않습니다."
     )
     if report["status"] != "resolved":
         return report
+    if any(change["path"].startswith(("scope.", "validation."))
+           for change in edit_review["evidence_changes"]):
+        _invalidate_edited_validation(report, evidence_changed=True)
     if original["status"] != "resolved":
         edit_review["status"] = "baseline_unresolved"
         _invalidate_edited_validation(report)

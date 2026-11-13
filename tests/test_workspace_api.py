@@ -174,6 +174,54 @@ class WorkspaceAPITests(unittest.TestCase):
         response = self.client.post('/api/profiles/resolve', json=oversized, headers=self.headers)
         self.assertEqual(response.status_code, 422, response.text[:200])
 
+    def test_saved_evidence_distinguishes_source_correction_from_changed_applicability(self):
+        original = fixture_profile()
+        original['validation'] = {'status': 'measured_on_matching_setup',
+                                  'setup_fingerprint': deepcopy(original['scope']),
+                                  'note': 'Synthetic user claim; no observed print'}
+        source_edit = deepcopy(original)
+        source_edit['source']['url'] = 'https://example.invalid/corrected-source'
+        source_edit['source']['publisher'] = 'Corrected synthetic publisher'
+        snapshot = workspace_snapshot()
+        snapshot['documents'][0] = {'filename': 'synthetic.json', 'profile': original,
+                                    'draft_text': json.dumps(source_edit)}
+        record = self.create(snapshot)
+        path = '/api/profile-workspaces/' + record['id']
+        for scope_changed in (False, True):
+            with self.subTest(scope_changed=scope_changed):
+                if scope_changed:
+                    draft = deepcopy(source_edit)
+                    draft['scope']['material_id'] = 'fixture:a-different-product'
+                    snapshot['documents'][0]['draft_text'] = json.dumps(draft)
+                    response = self.client.put(path, json={
+                        'title': record['title'], 'snapshot': snapshot, 'expected_revision': 1,
+                    }, headers=self.headers)
+                    self.assertEqual(response.status_code, 200, response.text)
+                entry = self.client.get(path).json()['snapshot']['documents'][0]
+                target = original['settings']['name']
+                response = self.client.post('/api/profiles/resolve', json={
+                    'documents': [{'filename': entry['filename'], 'profile': json.loads(entry['draft_text'])}],
+                    'target_name': target, 'setup': fixture_setup(),
+                    'baseline': {'documents': [{'filename': entry['filename'], 'profile': entry['profile']}], 'target_name': target},
+                }, headers=self.headers)
+                self.assertEqual(response.status_code, 200, response.text)
+                report = response.json()
+                self.assertEqual(report['edit_review']['status'], 'unchanged')
+                self.assertEqual(report['edit_review']['evidence_status'], 'compared')
+                paths = {change['path'] for change in report['edit_review']['evidence_changes']}
+                expected = {'source.url', 'source.publisher'} | ({'scope.material_id'} if scope_changed else set())
+                self.assertEqual(paths, expected)
+                self.assertEqual(report['edit_review']['validation_invalidated'], scope_changed)
+                self.assertEqual(report['review']['validation_status'], 'stale' if scope_changed else 'reported_validated')
+                if scope_changed:
+                    self.assertEqual(report['review']['decision'], 'blocked')
+                    self.assertFalse(report['review']['can_prepare_profile'])
+                    self.assertIn('VALIDATION_EVIDENCE_CHANGED', {item['code'] for item in report['review']['reasons']})
+                self.assertEqual(report['imported_documents'][0]['profile'], original)
+                self.assertEqual(report['documents'][0]['profile']['validation'], original['validation'])
+                self.assertFalse(report['full_config'])
+                self.assertFalse(report['native_verified'])
+
 
 if __name__ == '__main__':
     unittest.main()

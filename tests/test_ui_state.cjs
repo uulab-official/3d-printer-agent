@@ -38,7 +38,7 @@ function fixture() {
 function profileFixture() {
   const context=fixture();
   Object.assign(context.state,{profileDocuments:[],profileTarget:0,profileRevision:0,profileImport:0,profileReport:null,profileDownloadUrl:null,guidedEdits:{},guidedSources:{},workspaceId:null,workspaceRevision:null,workspaceSavedSignature:null,workspaceEpoch:0,workspaceEdits:0,workspaceListRequest:0,workspaceBusy:false,workspaces:[]});
-  for(const name of ['profileName','sameJson','profileDocument','invalidateProfile','renderProfileLibrary','renderProfileOrigin','beginProfileImport','currentProfileImport','appendProfileDocuments','profileImportSummary','importProfileFiles','importProfileArchive','selectProfileTarget','clearProfileLibrary','reviewProfile','profileSetupFields','captureProfileSnapshot','workspaceSignature','workspaceDirty','markWorkspaceChanged','updateWorkspaceStatus','loadWorkspaces','saveWorkspace','restoreWorkspace','openWorkspace','newWorkspace','deleteWorkspace','guidedFieldDefinitions','numericSetting','profileSettings','renderGuidedEditor','applyGuidedEdits','removeGuidedOverride','adoptProfileText','removeProfileDocument','restoreProfileOriginal']) {
+  for(const name of ['profileName','sameJson','profileDocument','invalidateProfile','renderProfileLibrary','renderProfileOrigin','beginProfileImport','currentProfileImport','appendProfileDocuments','profileImportSummary','importProfileFiles','importProfileArchive','selectProfileTarget','clearProfileLibrary','reviewProfile','renderProfileResolution','renderProfileEvidenceChanges','profileSetupFields','captureProfileSnapshot','workspaceSignature','workspaceDirty','markWorkspaceChanged','updateWorkspaceStatus','loadWorkspaces','saveWorkspace','restoreWorkspace','openWorkspace','newWorkspace','deleteWorkspace','guidedFieldDefinitions','numericSetting','profileSettings','evidenceFieldDefinitions','stageGuidedInput','renderEvidenceEditor','renderGuidedEditor','applyGuidedEdits','removeGuidedOverride','adoptProfileText','removeProfileDocument','restoreProfileOriginal']) {
     const match=new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if(!match)throw new Error('Missing profile controller function: '+name);
     const tail=source.slice(match.index),end=/\n  \}(?=\n|$)/.exec(tail);
@@ -56,6 +56,29 @@ const archiveResult = () => {
   return {schema_version:1,archive:{filename:'synthetic.bbsflmt',sha256:'a'.repeat(64),format:'bbsflmt'},documents:[{filename:'Example/Child.json',profile:JSON.parse(draft_text),draft_text,origin:archiveOrigin()}],ignored_members:[{path:'printer/Printer.json',reason:'프린터 설정'}],warnings:['사용자가 제공한 파일입니다.']};
 };
 const archiveInput = () => ({files:[{name:'synthetic.bbsflmt',size:3,arrayBuffer:async()=>new Uint8Array([80,75,3]).buffer}],value:'synthetic.bbsflmt'});
+function findElement(element, predicate) {
+  if(predicate(element))return element;
+  for(const child of element.children || []) {const found=findElement(child,predicate);if(found)return found;}
+}
+function guidedInput(context, key) {
+  const input=['profile-guided-fields','profile-evidence-scope','profile-evidence-source']
+    .map(id=>findElement(context.$(id),element=>element.dataset.guided===key)).find(Boolean);
+  assert(input,`The selected profile exposes an input for ${key}`);
+  return input;
+}
+function editGuided(context, key, value) {
+  const input=guidedInput(context,key);assert.equal(input.disabled,false,`${key} is editable`);
+  input.value=value;input.listeners.input();
+  return input;
+}
+function selectedProfile(context, profile, origin) {
+  const draftText=` ${JSON.stringify(profile)}\n`;
+  context.state.profileDocuments=[{filename:'selected.json',profile,draftText,...(origin?{origin}: {})}];
+  context.$('profile-json').value=draftText;
+  context.renderGuidedEditor();
+  context.state.workspaceSavedSignature=context.workspaceSignature();
+  return draftText;
+}
 const job = () => ({
   id:'job-a',title:'Tray',artifacts:{stl:'/api/jobs/job-a/files/stl',sliced_three_mf:'/api/jobs/job-a/files/sliced_three_mf'},
   result:{template:'tray',parameters:{width:120},dimensions_mm:{x:120,y:80,z:35},volume_mm3:45072,geometry_status:'validated',checks:[],warnings:[],mesh:{vertices:[],faces:[]}},
@@ -526,6 +549,159 @@ const job = () => ({
     await c.reviewProfile();assert.deepEqual(plain(report.edited_filenames),[]);
     assert.equal(c.sameJson({value:['1',2]},{value:['1',2]}),true);
     assert.equal(c.sameJson({value:['1',2]},{value:[1,'2']}),false);
+  });
+  await check('Evidence rendering and cancellation keep raw JSON exact and never copy setup or parent claims',()=>{
+    const c=profileFixture(),raw={name:'Child',inherits:'Parent',nozzle_temperature:['215']};
+    const text=selectedProfile(c,raw);
+    c.$('setup-printer-model').value='Current user hardware';
+    c.state.profileReport={status:'resolved',resolved_profile:{settings:raw,scope:{printer_model:'Parent hardware'},source:{publisher:'Parent publisher'}},field_sources:{}};
+    c.$('profile-evidence').open=true;c.renderGuidedEditor();
+    assert.equal(guidedInput(c,'scope.printer_model').value,'');
+    assert.equal(guidedInput(c,'source.publisher').value,'');
+    assert.equal(guidedInput(c,'source.retrieved_at').value,'');
+    assert.equal(c.$('profile-evidence').open,true);
+    editGuided(c,'source.publisher','Temporary claim');
+    assert.equal(c.$('profile-json').value,text);assert.equal(c.workspaceDirty(),true);
+    c.renderGuidedEditor();c.markWorkspaceChanged();c.applyGuidedEdits();
+    assert.equal(c.$('profile-json').value,text);assert.deepEqual(plain(c.state.guidedEdits),{});
+    assert.deepEqual(c.state.profileDocuments[0].profile,raw);
+    assert.equal(c.$('setup-printer-model').value,'Current user hardware');
+    assert.equal(c.$('profile-evidence').open,true);
+  });
+  await check('Applying mixed settings and evidence wraps only the selected raw draft while preserving origin and setup',()=>{
+    const c=profileFixture(),raw={name:'Child',inherits:'Parent',nozzle_temperature:['215'],source:{legacy:'raw setting'}};
+    const origin=archiveOrigin(),text=selectedProfile(c,raw,origin),parent={settings:{name:'Parent'},scope:{printer_model:'Parent hardware'}};
+    c.state.profileDocuments.push({filename:'parent.json',profile:parent,draftText:JSON.stringify(parent)});
+    for(const [name,id] of Object.entries(c.profileSetupFields()))c.$(id).value=`user:${name}`;
+    const setup=plain(c.captureProfileSnapshot().setup);
+    editGuided(c,'nozzle_temperature','220');
+    editGuided(c,'scope.printer_model','Profile hardware');
+    editGuided(c,'scope.nozzle_diameter','0.6');
+    editGuided(c,'source.publisher','  Supplied publisher  ');
+    assert.equal(c.$('profile-json').value,text);assert.equal(c.$('profile-json').disabled,true);
+    for(const id of ['profile-target','profile-file','profile-archive','setup-printer-model'])assert.equal(c.$(id).disabled,true);
+    c.applyGuidedEdits();
+    assert.deepEqual(JSON.parse(c.$('profile-json').value),{
+      settings:{name:'Child',inherits:'Parent',nozzle_temperature:['220'],source:{legacy:'raw setting'}},
+      scope:{printer_model:'Profile hardware',nozzle_diameter:0.6},source:{publisher:'  Supplied publisher  '},
+    });
+    assert.deepEqual(c.state.profileDocuments[0].profile,raw);assert.deepEqual(c.state.profileDocuments[0].origin,origin);
+    assert.equal(c.state.profileDocuments[1].draftText,JSON.stringify(parent));assert.deepEqual(c.state.profileDocuments[1].profile,parent);
+    assert.deepEqual(plain(c.captureProfileSnapshot().setup),setup);assert.equal(c.$('profile-json').disabled,false);
+  });
+  await check('Evidence changes preserve unknown metadata and exact strings while empty text removes only its key',()=>{
+    const c=profileFixture(),profile={id:'identity',settings:{name:'Preset',inherits:'Base'},scope:{printer_model:'  Literal model  ',nozzle_diameter:['0.40'],custom:{keep:['a']}},source:{authority:'custom claim',publisher:'Old publisher',url:'  https://example.test/source  ',extra:[1,2]},validation:{status:'unverified'},extra:{keep:true}};
+    selectedProfile(c,profile);
+    assert.equal(guidedInput(c,'source.authority').value,'custom claim');assert.equal(guidedInput(c,'scope.printer_model').value,'  Literal model  ');
+    editGuided(c,'source.publisher','');editGuided(c,'scope.nozzle_diameter','0.60');editGuided(c,'source.retrieved_at','  2026-11-13  ');
+    c.applyGuidedEdits();
+    const expected=plain(profile);delete expected.source.publisher;expected.scope.nozzle_diameter=['0.60'];expected.source.retrieved_at='  2026-11-13  ';
+    assert.deepEqual(JSON.parse(c.$('profile-json').value),expected);assert.deepEqual(c.state.profileDocuments[0].profile,profile);
+    editGuided(c,'source.publisher','  ');c.applyGuidedEdits();
+    assert.equal(JSON.parse(c.$('profile-json').value).source.publisher,'  ');
+  });
+  await check('Invalid scope nozzle leaves every pending settings and evidence edit unapplied',()=>{
+    const c=profileFixture(),profile={name:'Preset',nozzle_temperature:['215']},text=selectedProfile(c,profile);
+    editGuided(c,'nozzle_temperature','220');editGuided(c,'source.publisher','Publisher');editGuided(c,'scope.nozzle_diameter','0');
+    assert.throws(()=>c.applyGuidedEdits(),/양수/);
+    assert.equal(c.$('profile-json').value,text);assert.equal(c.state.profileDocuments[0].draftText,text);
+    assert.deepEqual(plain(c.state.guidedEdits),{nozzle_temperature:'220','source.publisher':'Publisher','scope.nozzle_diameter':'0'});
+    assert.deepEqual(c.state.profileDocuments[0].profile,profile);
+  });
+  await check('Scope nozzle edits preserve existing scalar and singleton representations',()=>{
+    for(const [before,after] of [[0.4,0.6],['0.40','0.60'],[[0.4],[0.6]],[['0.40'],['0.60']]]) {
+      const c=profileFixture();selectedProfile(c,{settings:{name:'Preset'},scope:{nozzle_diameter:before}});
+      editGuided(c,'scope.nozzle_diameter','0.60');c.applyGuidedEdits();
+      assert.deepEqual(JSON.parse(c.$('profile-json').value).scope.nozzle_diameter,after);
+    }
+  });
+  await check('A browser-invalid partial nozzle input is not mistaken for removing evidence',()=>{
+    for(const scope of [{nozzle_diameter:'0.40'},{}]) {
+      const c=profileFixture(),profile={settings:{name:'Preset'},scope},text=selectedProfile(c,profile);
+      const input=guidedInput(c,'scope.nozzle_diameter');
+      // Number inputs expose an unfinished '-' as empty value with badInput.
+      input.validity={badInput:true};editGuided(c,'scope.nozzle_diameter','');
+      assert.equal(c.workspaceDirty(),true);
+      assert.throws(()=>c.applyGuidedEdits(),/숫자/);
+      assert.equal(c.$('profile-json').value,text);assert.equal(c.state.profileDocuments[0].draftText,text);
+      input.validity={badInput:false};editGuided(c,'scope.nozzle_diameter','0.6');c.applyGuidedEdits();
+      assert.deepEqual(JSON.parse(c.$('profile-json').value).scope.nozzle_diameter,Object.hasOwn(scope,'nozzle_diameter')?'0.6':0.6);
+    }
+  });
+  await check('Unsupported evidence values stay visible and unchanged while another field is edited',()=>{
+    const c=profileFixture(),profile={settings:{name:'Preset'},scope:{printer_model:['A','B'],nozzle_diameter:[0.4,0.6],material_id:null},source:{authority:{legacy:true},publisher:'Old'}};
+    selectedProfile(c,profile);
+    for(const key of ['scope.printer_model','scope.nozzle_diameter','scope.material_id','source.authority'])assert.equal(guidedInput(c,key).disabled,true);
+    assert.match(c.$('profile-evidence-scope').textContent,/\["A","B"\]/);
+    assert.match(c.$('profile-evidence-source').textContent,/legacy/);
+    editGuided(c,'source.publisher','Updated');c.applyGuidedEdits();
+    const edited=JSON.parse(c.$('profile-json').value);assert.deepEqual(edited.scope,profile.scope);assert.deepEqual(edited.source.authority,{legacy:true});
+    assert.equal(edited.source.publisher,'Updated');assert.deepEqual(c.state.profileDocuments[0].profile,profile);
+  });
+  await check('Malformed evidence groups remain read-only without blocking a separate supported group edit',()=>{
+    for(const [group,legacy,key] of [['scope',['legacy scope'],'source.publisher'],['source',false,'scope.printer_model']]) {
+      const c=profileFixture(),profile={settings:{name:'Preset'},[group]:legacy};selectedProfile(c,profile);
+      assert.match(c.$(`profile-evidence-${group}`).textContent,/JSON/);
+      editGuided(c,key,'Explicit value');c.applyGuidedEdits();
+      assert.deepEqual(JSON.parse(c.$('profile-json').value)[group],legacy);assert.deepEqual(c.state.profileDocuments[0].profile,profile);
+    }
+  });
+  await check('Numeric-only changes and reverted evidence leave raw shape intact',()=>{
+    const c=profileFixture(),raw={name:'Preset',nozzle_temperature:['215']};selectedProfile(c,raw);
+    editGuided(c,'source.publisher','Temporary');editGuided(c,'source.publisher','');
+    editGuided(c,'nozzle_temperature','220');c.applyGuidedEdits();
+    assert.deepEqual(JSON.parse(c.$('profile-json').value),{name:'Preset',nozzle_temperature:['220']});
+  });
+  await check('Saving pending evidence preserves originals and restores inputs without a current review',async()=>{
+    const c=profileFixture(),raw={name:'Preset'},origin=archiveOrigin();selectedProfile(c,raw,origin);c.$('workspace-title').value='Evidence work';
+    editGuided(c,'scope.printer_model','Profile hardware');editGuided(c,'source.publisher','Publisher');
+    let submitted;c.api=async(path,body,method)=>{if(method==='POST'){submitted=plain(body);return workspaceRecord(body.snapshot,{title:body.title});}return {workspaces:[]};};
+    await c.saveWorkspace();
+    assert.deepEqual(submitted.snapshot.documents[0].profile,raw);assert.deepEqual(submitted.snapshot.documents[0].origin,origin);
+    assert.deepEqual(JSON.parse(submitted.snapshot.documents[0].draft_text),{settings:{name:'Preset'},scope:{printer_model:'Profile hardware'},source:{publisher:'Publisher'}});
+    c.state.profileReport={status:'resolved'};c.$('profile-download').setAttribute('href','blob:old');
+    c.restoreWorkspace(workspaceRecord(submitted.snapshot));
+    assert.equal(guidedInput(c,'scope.printer_model').value,'Profile hardware');assert.equal(guidedInput(c,'source.publisher').value,'Publisher');
+    assert.equal(c.state.profileReport,null);assert.equal(c.$('profile-download').attributes.href,undefined);assert.equal(c.workspaceDirty(),false);
+  });
+  await check('New evidence input invalidates a pending review, archive import, and workspace open',async()=>{
+    for(const action of ['review','archive','open']) {
+      const c=profileFixture(),raw={name:'Preset'},text=selectedProfile(c,raw);let finish,rendered=0;
+      const saved=workspaceRecord(plain(c.captureProfileSnapshot()));
+      c.api=()=>new Promise(done=>{finish=done;});c.renderProfileResolution=()=>{rendered++;};
+      c.$('workspace-list').value=saved.id;
+      const pending=action==='review'?c.reviewProfile():action==='archive'?c.importProfileArchive(archiveInput()):c.openWorkspace();
+      await new Promise(done=>setImmediate(done));
+      editGuided(c,'source.publisher','Newer publisher');
+      finish(action==='review'?{status:'resolved',review:null}:action==='archive'?archiveResult():saved);await pending;
+      assert.equal(c.$('profile-json').value,text);assert.equal(c.state.profileDocuments.length,1);
+      assert.equal(c.state.guidedEdits['source.publisher'],'Newer publisher');assert.equal(rendered,0);
+      assert.equal(c.state.workspaceId,null);assert.equal(c.state.profileReport,null);
+    }
+  });
+  await check('Evidence typed while a save is pending is not reported as saved',async()=>{
+    const c=profileFixture();selectedProfile(c,{name:'Preset'});c.$('workspace-title').value='Work';
+    editGuided(c,'source.publisher','Captured publisher');let submitted,finish;
+    c.api=(path,body,method)=>method==='POST'?new Promise(done=>{submitted=plain(body);finish=done;}):Promise.resolve({workspaces:[]});
+    const pending=c.saveWorkspace();editGuided(c,'source.publisher','Newer publisher');
+    finish(workspaceRecord(submitted.snapshot,{title:'Work'}));await pending;
+    assert.equal(JSON.parse(submitted.snapshot.documents[0].draft_text).source.publisher,'Captured publisher');
+    assert.equal(c.state.guidedEdits['source.publisher'],'Newer publisher');assert.equal(c.workspaceDirty(),true);
+    assert.match(c.$('workspace-feedback').textContent,/한 번 더 저장/);
+  });
+  await check('Evidence changes are rendered separately from effective setting changes with presence and raw values',()=>{
+    const c=profileFixture();c.$('profile-evidence-review').hidden=true;
+    c.renderProfileResolution({status:'needs_input',issues:[],chain:[],warnings:[],field_sources:{},edit_review:{status:'unchanged',changed_fields:[],evidence_status:'compared',evidence_changes:[
+      {path:'scope.printer_model',before_present:false,after_present:true,after:'Profile hardware'},
+      {path:'source.publisher',before_present:true,after_present:false,before:'<img src=x onerror=alert(1)>'},
+      {path:'validation.custom',before_present:true,after_present:true,before:null,after:{claim:'value'}},
+    ]}});
+    assert.equal(c.$('profile-evidence-review').hidden,false);assert.equal(c.$('profile-edit-review').hidden,true);
+    const area=c.$('profile-evidence-changes');assert.match(area.textContent,/Profile hardware/);assert.match(area.textContent,/<img src=x/);
+    assert.match(area.textContent,/null/);assert.match(area.textContent,/claim/);
+    assert(findElement(area,element=>element.dataset.evidencePath==='scope.printer_model'));
+    c.renderProfileResolution({status:'needs_input',edit_review:{status:'unchanged',changed_fields:[],evidence_status:'compared',evidence_changes:[]}});
+    assert.equal(c.$('profile-evidence-review').hidden,true);assert.equal(c.$('profile-evidence-changes').textContent,'');
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();
