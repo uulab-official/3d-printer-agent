@@ -199,6 +199,22 @@ summary:hover { color: var(--blue); }
 .help-details p { margin-top: 12px; font-size: 11px; line-height: 1.9; color: var(--muted); }
 #profile-result, #profile-resolution, #offers-result { margin-top: 24px; }
 .profile-import-help { margin: -6px 0 18px; }
+.profile-workspace { margin-bottom: 24px; }
+.workspace-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 20px; }
+.workspace-grid > div { min-width: 0; }
+.workspace-grid .button-row { gap: 10px 16px; }
+.profile-workspace .card-heading { flex-wrap: wrap; gap: 12px; }
+.profile-workspace .field-help { overflow-wrap: anywhere; }
+.profile-guided { padding: 17px 0 20px; margin-bottom: 17px; border-bottom: 1px solid var(--line); }
+.profile-guided h3 { font-size: 14px; margin: 0; color: #526987; }
+.profile-guided .field-help { margin-top: 7px; }
+.guided-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 14px; margin-top: 16px; }
+.guided-field { min-width: 0; }
+.guided-field label { font-size: 11px; }
+.guided-field .field-help { font-size: 10px; line-height: 1.6; margin-bottom: 3px; overflow-wrap: anywhere; }
+.guided-field .text-button { font-size: 10px; text-align: left; }
+.guided-field input:disabled { color: #8c98a9; background: #f3f5f8; }
+.profile-adopt { margin-top: 10px; }
 .profile-library { padding: 14px; margin-bottom: 19px; border: 1px solid var(--line); border-radius: 10px; background: #f8faff; }
 .profile-library .label-row { margin-bottom: 5px; flex-wrap: wrap; }
 .profile-library select { font-size: 12px; }
@@ -297,6 +313,7 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
   .preview-footer { flex-direction: row; }
   .slicer-layout { grid-template-columns: 1fr; }
   .two-column-layout { grid-template-columns: 1fr; }
+  .workspace-grid { grid-template-columns: 1fr; gap: 22px; }
   .setup-grid { grid-template-columns: 1fr 1fr; }
   .offer-row { grid-template-columns: 20px repeat(3, 1fr); }
   .offer-row label:first-of-type { grid-column: 2 / -1; }
@@ -368,6 +385,7 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
   .outcome-form { grid-template-columns: 1fr; gap: 13px; }
   .outcome-form .button { width: 100%; }
   .setup-grid { grid-template-columns: 1fr; gap: 16px; }
+  .guided-fields { grid-template-columns: 1fr; }
   .currency-control { font-size: 0; gap: 0; }
   .currency-control select { max-width: 118px; font-size: 10px; }
   .offer-row { grid-template-columns: 1fr 1fr 1fr; padding: 15px 12px; gap: 12px 8px; }

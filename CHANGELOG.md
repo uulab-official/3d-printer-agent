@@ -2,6 +2,9 @@
 
 ## Unreleased — 2026-11-13
 
+- Save and reopen named filament workspaces with imported originals, exact unfinished drafts, selected target and setup; revision checks prevent cross-tab overwrites.
+- Edit common nozzle/flow/volumetric/plate settings while retaining inheritance and value representation; remove individual documents or restore imported originals.
+- Compare effective settings with the original chain and invalidate positive validation claims after inherited edits or an unavailable baseline, retaining the source evidence.
 - Import related filament JSON files, select and edit a target, and add missing parents without losing the collection.
 - Resolve supported explicit single-parent inheritance with exact names, preserved documents, canonical JSON hashes and per-field assignment history.
 - Review the result against the supplied setup and download the evidence report; changed inputs invalidate prior results and late responses.

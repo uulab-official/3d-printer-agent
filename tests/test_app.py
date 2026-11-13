@@ -166,7 +166,7 @@ class APITests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/profiles/resolve', json=payload).status_code, 403)
         self.assertEqual(self.client.post('/api/profiles/resolve', json=payload,
             headers={**self.headers, 'Origin': 'https://untrusted.example'}).status_code, 403)
-        response = self.client.post('/api/profiles/resolve', content=b'x' * (2 * 1024 * 1024 + 1),
+        response = self.client.post('/api/profiles/resolve', content=b'x' * (8 * 1024 * 1024 + 1),
             headers={**self.headers, 'Content-Type': 'application/json'})
         self.assertEqual(response.status_code, 413)
 

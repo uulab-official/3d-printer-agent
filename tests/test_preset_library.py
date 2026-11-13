@@ -295,5 +295,189 @@ class PresetLibraryTests(unittest.TestCase):
         json.dumps(result, allow_nan=False)
 
 
+class PresetEditReviewTests(unittest.TestCase):
+    def setUp(self):
+        self.setup = fixture_setup()
+        parent = fixture_profile()["settings"]
+        parent["name"] = "Base"
+        child = fixture_profile()
+        child["settings"] = {"name": "Child", "type": "filament", "inherits": "Base"}
+        child["validation"] = {
+            "status": "measured_on_matching_setup", "setup_fingerprint": deepcopy(self.setup),
+        }
+        self.originals = [
+            {"filename": "base.json", "profile": parent},
+            {"filename": "child.json", "profile": child},
+        ]
+
+    def resolve(self, documents=None, baseline=None, target="Child"):
+        return resolve_profile_documents(
+            self.originals if documents is None else documents, target, self.setup,
+            baseline={"documents": self.originals, "target_name": "Child"} if baseline is None else baseline,
+        )
+
+    def test_changed_parent_invalidates_validation_but_preserves_original_claim(self):
+        edited = deepcopy(self.originals)
+        edited[0]["profile"]["nozzle_temperature"] = ["260"]
+        preserved = deepcopy(self.originals)
+        report = self.resolve(edited)
+        self.assertEqual(report["status"], "resolved")
+        self.assertEqual(report["edit_review"]["status"], "changed")
+        self.assertEqual(report["edit_review"]["changed_fields"], ["nozzle_temperature"])
+        self.assertTrue(report["edit_review"]["validation_invalidated"])
+        self.assertEqual(report["review"]["validation_status"], "stale")
+        self.assertEqual(report["review"]["decision"], "needs_evidence")
+        self.assertFalse(report["review"]["can_prepare_profile"])
+        self.assertIsNone(report["review"]["selected_profile_id"])
+        self.assertIn("VALIDATION_SETTINGS_CHANGED", {row["code"] for row in report["review"]["reasons"]})
+        self.assertIn("validation_settings_changed", {row["reason"] for row in report["review"]["calibration_actions"]})
+        self.assertTrue(report["field_sources"]["nozzle_temperature"]["edited"])
+        self.assertTrue(report["field_sources"]["nozzle_temperature"]["inherited"])
+        self.assertFalse(report["field_sources"]["filament_flow_ratio"]["edited"])
+        self.assertEqual(report["resolved_profile"]["validation"], self.originals[1]["profile"]["validation"])
+        self.assertEqual(report["review"]["source_authority"], self.originals[1]["profile"]["source"]["authority"])
+        self.assertEqual(self.originals, preserved)
+        self.assertEqual(report["imported_documents"][0]["profile"], preserved[0]["profile"])
+        self.assertEqual(report["documents"][0]["profile"], edited[0]["profile"])
+        self.assertNotEqual(report["documents"][0]["sha256"], report["imported_documents"][0]["sha256"])
+
+    def test_target_override_is_changed_and_original_restoration_is_unchanged(self):
+        edited = deepcopy(self.originals)
+        edited[1]["profile"]["settings"]["filament_flow_ratio"] = ["0.91"]
+        report = self.resolve(edited)
+        self.assertEqual(report["edit_review"]["changed_fields"], ["filament_flow_ratio"])
+        self.assertTrue(report["field_sources"]["filament_flow_ratio"]["edited"])
+        self.assertFalse(report["field_sources"]["filament_flow_ratio"]["inherited"])
+        restored = self.resolve(deepcopy(self.originals))
+        self.assertEqual(restored["edit_review"]["status"], "unchanged")
+        self.assertEqual(restored["edit_review"]["changed_fields"], [])
+        self.assertFalse(restored["edit_review"]["validation_invalidated"])
+        self.assertEqual(restored["review"]["validation_status"], "reported_validated")
+        self.assertTrue(restored["review"]["can_prepare_profile"])
+
+    def test_unused_document_and_overridden_parent_changes_do_not_invalidate(self):
+        self.originals.append(document("Unrelated", nozzle_temperature=["10"]))
+        self.originals[1]["profile"]["settings"]["nozzle_temperature"] = ["215"]
+        edited = deepcopy(self.originals)
+        edited[0]["profile"]["nozzle_temperature"] = ["260"]
+        edited[2]["profile"]["nozzle_temperature"] = ["20"]
+        report = self.resolve(edited)
+        self.assertEqual(report["edit_review"]["status"], "unchanged")
+        self.assertEqual(report["review"]["validation_status"], "reported_validated")
+        self.assertFalse(report["field_sources"]["nozzle_temperature"]["edited"])
+
+    def test_key_order_is_ignored_but_numeric_and_array_representation_changes_are_visible(self):
+        reordered = deepcopy(self.originals)
+        reordered[0]["profile"] = dict(reversed(list(reordered[0]["profile"].items())))
+        self.assertEqual(self.resolve(reordered)["edit_review"]["status"], "unchanged")
+        for value in (210, [210], "210"):
+            with self.subTest(value=value):
+                edited = deepcopy(self.originals)
+                edited[0]["profile"]["nozzle_temperature"] = value
+                self.assertIn("nozzle_temperature", self.resolve(edited)["edit_review"]["changed_fields"])
+
+    def test_removed_field_is_recorded_without_fabricating_current_provenance(self):
+        self.originals[0]["profile"]["vendor_notes"] = "Original supplied note"
+        edited = deepcopy(self.originals)
+        del edited[0]["profile"]["vendor_notes"]
+        report = self.resolve(edited)
+        self.assertEqual(report["edit_review"]["changed_fields"], ["vendor_notes"])
+        self.assertNotIn("vendor_notes", report["field_sources"])
+
+    def test_unavailable_original_chain_invalidates_positive_claim_without_faking_differences(self):
+        for baseline in (
+            {"documents": [self.originals[1]], "target_name": "Child"},
+            {"documents": self.originals, "target_name": "Missing"},
+            {"documents": self.originals, "target_name": ""},
+            {"documents": [document("Child", include="Unsupported native include")], "target_name": "Child"},
+        ):
+            with self.subTest(target=baseline["target_name"], documents=len(baseline["documents"])):
+                report = self.resolve(baseline=baseline)
+                self.assertEqual(report["status"], "resolved")
+                self.assertEqual(report["edit_review"]["status"], "baseline_unresolved")
+                self.assertIn(report["edit_review"]["baseline_status"], {"needs_input", "blocked"})
+                self.assertEqual(report["edit_review"]["changed_fields"], [])
+                self.assertTrue(report["edit_review"]["validation_invalidated"])
+                self.assertIsNone(report["field_sources"]["nozzle_temperature"]["edited"])
+                self.assertEqual(report["review"]["validation_status"], "stale")
+                self.assertFalse(report["review"]["can_prepare_profile"])
+                self.assertIn("VALIDATION_BASELINE_UNRESOLVED", {row["code"] for row in report["review"]["reasons"]})
+
+    def test_malformed_baseline_is_rejected_even_when_current_chain_cannot_resolve(self):
+        malformed = [
+            [], {}, {"documents": self.originals},
+            {"documents": self.originals, "target_name": None},
+            {"documents": self.originals, "target_name": "Child", "unexpected": True},
+            {"documents": [], "target_name": "Child"},
+            {"documents": [{"filename": "bad.json", "profile": []}], "target_name": "Child"},
+            {"documents": [document("Child", vendor_notes=float("nan"))], "target_name": "Child"},
+        ]
+        for baseline in malformed:
+            with self.subTest(baseline=baseline):
+                with self.assertRaises(ValueError):
+                    self.resolve([document("Child", "Missing")], baseline=baseline)
+
+    def test_current_and_original_sets_keep_independent_size_and_depth_limits(self):
+        docs = [document("Child", vendor_notes="x" * (1200 * 1024))]
+        report = self.resolve(docs, baseline={"documents": docs, "target_name": "Child"})
+        self.assertEqual(report["edit_review"]["status"], "unchanged")
+        oversized = [document("Child", vendor_notes="x" * (2 * 1024 * 1024))]
+        with self.assertRaises(ValueError):
+            self.resolve(baseline={"documents": oversized, "target_name": "Child"})
+        nested = "leaf"
+        for _ in range(65):
+            nested = [nested]
+        with self.assertRaisesRegex(ValueError, "중첩"):
+            self.resolve(baseline={"documents": [document("Child", vendor_notes=nested)], "target_name": "Child"})
+
+    def test_all_positive_claim_spellings_are_invalidated_even_without_scope_fingerprint(self):
+        for status in ("measured_on_matching_setup", "verified", "validated", "reported_validated"):
+            with self.subTest(status=status):
+                edited = deepcopy(self.originals)
+                edited[1]["profile"]["validation"] = {"status": status}
+                edited[0]["profile"]["filament_flow_ratio"] = ["0.9"]
+                report = self.resolve(edited)
+                self.assertEqual(report["review"]["validation_status"], "stale")
+                self.assertTrue(report["edit_review"]["validation_invalidated"])
+
+    def test_unverified_draft_changes_are_visible_without_inventing_prior_validation(self):
+        edited = deepcopy(self.originals)
+        edited[1]["profile"]["validation"] = {"status": "unverified"}
+        edited[0]["profile"]["filament_flow_ratio"] = ["0.9"]
+        report = self.resolve(edited)
+        self.assertEqual(report["edit_review"]["status"], "changed")
+        self.assertEqual(report["review"]["validation_status"], "unverified")
+        self.assertFalse(report["edit_review"]["validation_invalidated"])
+
+    def test_changed_settings_do_not_downgrade_a_stronger_blocker(self):
+        edited = deepcopy(self.originals)
+        edited[0]["profile"]["nozzle_temperature"] = ["-1"]
+        report = self.resolve(edited)
+        self.assertEqual(report["review"]["decision"], "blocked")
+        self.assertEqual(report["review"]["validation_status"], "stale")
+
+    def test_untracked_and_current_unresolved_reports_do_not_claim_a_comparison(self):
+        report = resolve_profile_documents(self.originals, "Child", self.setup)
+        self.assertEqual(report["edit_review"]["status"], "untracked")
+        self.assertIsNone(report["edit_review"]["baseline_status"])
+        self.assertEqual(report["review"]["validation_status"], "reported_validated")
+        self.assertEqual(report["imported_documents"], [])
+        unavailable = self.resolve([document("Child", "Missing")])
+        self.assertEqual(unavailable["edit_review"]["status"], "untracked")
+        self.assertEqual(unavailable["edit_review"]["baseline_status"], "resolved")
+        self.assertIsNone(unavailable["review"])
+        self.assertEqual(len(unavailable["imported_documents"]), 2)
+
+    def test_imported_evidence_is_copied_and_hashed_without_aliasing(self):
+        report = self.resolve()
+        preserved = deepcopy(self.originals)
+        for original, record in zip(preserved, report["imported_documents"]):
+            canonical = json.dumps(original["profile"], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            self.assertEqual(record["sha256"], hashlib.sha256(canonical.encode()).hexdigest())
+        report["imported_documents"][0]["profile"]["nozzle_temperature"].append("999")
+        self.assertEqual(self.originals, preserved)
+        self.assertEqual(report["documents"][0]["profile"], preserved[0]["profile"])
+
+
 if __name__ == "__main__":
     unittest.main()

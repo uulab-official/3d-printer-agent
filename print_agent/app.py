@@ -23,8 +23,10 @@ from .profiles import evaluate_profile, review_calibrations
 from .schemas import GeometryRequest
 from .slicer import detect_environment, execute_slice, prepare_slice
 from .storage import JobStore
+from .workspaces import ProfileWorkspaceStore, WorkspaceConflict
 
 MAX_BODY = 2 * 1024 * 1024
+MAX_WORKSPACE_BODY = 8 * 1024 * 1024
 CAD_LOCK = threading.Lock()
 SLICER_LOCK = threading.Lock()
 LOGGER = logging.getLogger(__name__)
@@ -53,9 +55,16 @@ class LocalSessionMiddleware:
                 return await reject(403, '다른 웹사이트의 요청은 허용하지 않습니다.')
             if headers.get('content-type','').split(';')[0].strip().lower() != 'application/json':
                 return await reject(415, 'JSON 요청 본문이 필요합니다.')
+            # These requests retain both imported originals and editable drafts.
+            # Resolver/store validation still bounds each document set separately.
+            path = scope['path']
+            stores_originals = (path == '/api/profiles/resolve' or path == '/api/profile-workspaces'
+                                or path.startswith('/api/profile-workspaces/'))
+            max_body = MAX_WORKSPACE_BODY if stores_originals else MAX_BODY
+            size_message = f'요청 전체는 {max_body // (1024 * 1024)} MiB 이하여야 합니다.'
             try:
-                if int(headers.get('content-length','0')) > MAX_BODY:
-                    return await reject(413, '입력 파일은 2 MiB 이하여야 합니다.')
+                if int(headers.get('content-length','0')) > max_body:
+                    return await reject(413, size_message)
             except ValueError:
                 return await reject(400, '요청 길이가 올바르지 않습니다.')
             body = bytearray()
@@ -64,8 +73,8 @@ class LocalSessionMiddleware:
                 if event['type'] == 'http.disconnect':
                     return
                 body.extend(event.get('body',b''))
-                if len(body) > MAX_BODY:
-                    return await reject(413, '입력 파일은 2 MiB 이하여야 합니다.')
+                if len(body) > max_body:
+                    return await reject(413, size_message)
                 if not event.get('more_body',False):
                     break
             try:
@@ -117,10 +126,31 @@ class ProfileDocumentPayload(StrictPayload):
     profile: dict
 
 
+class ProfileBaselinePayload(StrictPayload):
+    documents: list[ProfileDocumentPayload] = Field(min_length=1, max_length=64)
+    # A previously unnamed input cannot establish a resolved original baseline.
+    target_name: str = Field(max_length=256)
+
+
 class ProfileResolvePayload(StrictPayload):
     documents: list[ProfileDocumentPayload] = Field(min_length=1, max_length=64)
     target_name: str = Field(min_length=1, max_length=256)
     setup: dict = Field(default_factory=dict)
+    baseline: ProfileBaselinePayload | None = None
+
+
+class WorkspaceCreatePayload(StrictPayload):
+    # The store validates length after trimming surrounding whitespace.
+    title: str
+    snapshot: dict
+
+
+class WorkspaceUpdatePayload(WorkspaceCreatePayload):
+    expected_revision: int = Field(strict=True, ge=1)
+
+
+class WorkspaceDeletePayload(StrictPayload):
+    expected_revision: int = Field(strict=True, ge=1)
 
 
 class CalibrationPayload(StrictPayload):
@@ -144,13 +174,20 @@ class OutcomePayload(StrictPayload):
 
 
 def create_app(data_dir: Path | None = None, *, test_mode=False):
-    store = JobStore(data_dir or Path(os.getenv('PPA_DATA_DIR','data')))
+    data_root = data_dir or Path(os.getenv('PPA_DATA_DIR','data'))
+    store = JobStore(data_root)
+    workspaces = ProfileWorkspaceStore(data_root)
     token = secrets.token_urlsafe(32)
     app = FastAPI(title='3D Printer Agent', version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
+    app.state.workspaces = workspaces
     app.add_middleware(LocalSessionMiddleware, token=token)
     hosts = ['localhost','127.0.0.1'] + (['testserver'] if test_mode else [])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
+
+    @app.exception_handler(WorkspaceConflict)
+    async def workspace_conflict(_request, exception):
+        return JSONResponse({'detail': str(exception)}, status_code=409)
 
     @app.exception_handler(ValueError)
     async def value_error(_request, exception):
@@ -218,7 +255,28 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             [document.model_dump() for document in payload.documents],
             payload.target_name,
             payload.setup,
+            baseline=payload.baseline.model_dump() if payload.baseline is not None else None,
         )
+
+    @app.get('/api/profile-workspaces')
+    def list_profile_workspaces():
+        return {'workspaces': workspaces.list_workspaces()}
+
+    @app.post('/api/profile-workspaces', status_code=201)
+    def create_profile_workspace(payload: WorkspaceCreatePayload):
+        return workspaces.create(payload.title, payload.snapshot)
+
+    @app.get('/api/profile-workspaces/{workspace_id}')
+    def get_profile_workspace(workspace_id: str):
+        return workspaces.get(workspace_id)
+
+    @app.put('/api/profile-workspaces/{workspace_id}')
+    def update_profile_workspace(workspace_id: str, payload: WorkspaceUpdatePayload):
+        return workspaces.update(workspace_id, payload.title, payload.snapshot, payload.expected_revision)
+
+    @app.delete('/api/profile-workspaces/{workspace_id}')
+    def delete_profile_workspace(workspace_id: str, payload: WorkspaceDeletePayload):
+        return workspaces.delete(workspace_id, payload.expected_revision)
 
     @app.post('/api/calibrations/review')
     def calibration_review(payload: CalibrationPayload):

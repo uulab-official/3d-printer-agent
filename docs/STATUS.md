@@ -10,6 +10,8 @@ The app generates three parameterized CAD models; reviews user-supplied filament
 
 The filament workflow now imports related JSON documents, selects an editable target, resolves supported explicit single-parent inheritance, shows each value's source and assignment history, and exports an evidence report with the submitted setup. Missing parents can be added to the collection. Changes invalidate old results. See [FILAMENT_PRESETS.md](FILAMENT_PRESETS.md) for the supported subset and official-source references. This does not fill Studio defaults or certify a full native configuration.
 
+Named filament workspaces preserve original documents, exact unfinished drafts, the selected target and all setup inputs across app restarts. A separate SQLite store uses revision checks for atomic updates and conflicts. Common-setting controls edit the selected draft while preserving inheritance and original evidence. Baseline comparison invalidates positive validation claims after effective settings change, including inherited parent changes. Reopening a saved workspace restores inputs and requires a fresh review. See [FILAMENT_WORKSPACES.md](FILAMENT_WORKSPACES.md).
+
 The original local validation is documented in [VERIFICATION.md](VERIFICATION.md). Current unit, package and browser results are recorded per commit in [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions). A workflow definition alone is not evidence of a successful run.
 
 ### Filament import checks — 2026-11-13

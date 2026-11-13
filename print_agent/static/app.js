@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null };
+  const state = { token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -28,6 +28,8 @@
     textured_plate_temp: "텍스처 PEI 베드 온도", textured_plate_temp_initial_layer: "텍스처 PEI 첫 레이어 베드 온도",
     hot_plate_temp: "고온·매끈한 PEI 베드 온도", hot_plate_temp_initial_layer: "고온·매끈한 PEI 첫 레이어 베드 온도",
     cool_plate_temp: "쿨 플레이트 베드 온도", cool_plate_temp_initial_layer: "쿨 플레이트 첫 레이어 베드 온도",
+    eng_plate_temp: "엔지니어링 베드 온도", eng_plate_temp_initial_layer: "엔지니어링 첫 레이어 베드 온도",
+    supertack_plate_temp: "슈퍼택 베드 온도", supertack_plate_temp_initial_layer: "슈퍼택 첫 레이어 베드 온도",
     name: "프로필 이름", filament_vendor: "재료 제조사", filament_type: "재료 종류", inherits: "상속 원본",
   };
   const numberFormat = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 });
@@ -75,8 +77,8 @@
     return "처리 결과를 확인하지 못했습니다. 입력과 연결을 확인해 주세요.";
   }
 
-  async function api(path, body) {
-    const options = { method: body === undefined ? "GET" : "POST", credentials: "same-origin", cache: "no-store", headers: {} };
+  async function api(path, body, method) {
+    const options = { method: method || (body === undefined ? "GET" : "POST"), credentials: "same-origin", cache: "no-store", headers: {} };
     if (body !== undefined) {
       if (!state.token) throw new Error("작업 공간에 연결한 뒤 다시 시도해 주세요.");
       options.headers["Content-Type"] = "application/json";
@@ -89,7 +91,11 @@
     let data;
     try { data = await response.json(); }
     catch { throw new Error(`서버 응답을 읽지 못했습니다. (HTTP ${response.status})`); }
-    if (!response.ok) throw new Error(friendly(errorMessage(data.detail || data.message)));
+    if (!response.ok) {
+      const error = new Error(friendly(errorMessage(data.detail || data.message)));
+      error.status = response.status;
+      throw error;
+    }
     return data;
   }
 
@@ -494,6 +500,377 @@
     return settings && typeof settings.name === "string" ? settings.name : "";
   }
 
+  function sameJson(first, second) {
+    if (first === second) return true;
+    if (!first || !second || typeof first !== "object" || typeof second !== "object" || Array.isArray(first) !== Array.isArray(second)) return false;
+    if (Array.isArray(first)) return first.length === second.length && first.every((value, index) => sameJson(value, second[index]));
+    const keys = Object.keys(first);
+    return keys.length === Object.keys(second).length && keys.every((key) => Object.hasOwn(second, key) && sameJson(first[key], second[key]));
+  }
+
+  function profileSetupFields() {
+    return { printer_model: "setup-printer-model", printer_preset: "setup-printer-preset", nozzle_diameter: "setup-nozzle", plate_type: "setup-plate", extruder: "setup-extruder", feed_mode: "setup-feed", material_id: "setup-material", material_identity_status: "setup-identity" };
+  }
+
+  function captureProfileSnapshot() {
+    if (state.profileDocuments[state.profileTarget]) state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
+    return {
+      schema_version: 1,
+      documents: state.profileDocuments.map((entry) => ({ filename: entry.filename, profile: entry.profile, draft_text: entry.draftText })),
+      target_index: state.profileTarget,
+      profile_text: state.profileDocuments.length ? "" : $("profile-json").value,
+      setup: Object.fromEntries(Object.entries(profileSetupFields()).map(([name, id]) => [name, $(id).value])),
+    };
+  }
+
+  function workspaceSignature() {
+    return JSON.stringify({ title: $("workspace-title").value.trim(), snapshot: captureProfileSnapshot() });
+  }
+
+  function workspaceDirty() {
+    return Object.keys(state.guidedEdits).length > 0 || workspaceSignature() !== state.workspaceSavedSignature;
+  }
+
+  function markWorkspaceChanged() {
+    state.workspaceEdits += 1;
+    updateWorkspaceStatus();
+  }
+
+  function updateWorkspaceStatus() {
+    const pending = Object.keys(state.guidedEdits).length > 0;
+    const dirty = workspaceDirty();
+    setBadge("workspace-status", pending ? "편집값 적용 필요" : dirty ? "저장하지 않은 변경" : state.workspaceId ? "저장됨" : "새 작업", dirty ? "warning" : "neutral");
+    $("workspace-detail").textContent = state.workspaceId
+      ? `현재 작업 · ${state.workspaceId.slice(0, 8)} · 저장 버전 ${state.workspaceRevision}${dirty ? " · 현재 변경 내용은 아직 저장되지 않았습니다." : " · 원본과 편집본을 함께 보관했습니다."}`
+      : "이름을 정해 저장하면 새로고침 후에도 다시 열 수 있습니다. 저장은 이 PC의 앱 데이터에만 적용됩니다.";
+    for (const id of ["workspace-save", "workspace-save-copy"]) $(id).disabled = state.workspaceBusy || !state.token;
+    $("workspace-open").disabled = state.workspaceBusy || !$("workspace-list").value;
+    $("workspace-delete").disabled = state.workspaceBusy || !state.workspaceId;
+    $("workspace-new").disabled = state.workspaceBusy;
+    $("workspace-refresh").disabled = state.workspaceBusy;
+    $("workspace-list").disabled = state.workspaceBusy;
+    $("profile-guided-actions").hidden = !pending;
+    for (const id of ["profile-json", "profile-target", "profile-file", "profile-adopt", "profile-clear", "profile-remove", "profile-restore", ...Object.values(profileSetupFields())]) {
+      if (!$("review-profile").dataset.busy) $(id).disabled = pending;
+    }
+    document.querySelectorAll(".guided-remove").forEach((button) => { button.disabled = pending || Boolean($("review-profile").dataset.busy); });
+  }
+
+  async function loadWorkspaces() {
+    const request = ++state.workspaceListRequest;
+    try {
+      const result = await api("/api/profile-workspaces");
+      if (request !== state.workspaceListRequest) return;
+      state.workspaces = result.workspaces || [];
+      const select = $("workspace-list");
+      const previous = select.value || state.workspaceId;
+      const placeholder = node("option", "", state.workspaces.length ? "저장된 작업을 선택하세요" : "아직 저장된 작업이 없습니다");
+      placeholder.value = "";
+      select.replaceChildren(placeholder, ...state.workspaces.map((record) => {
+        const option = node("option", "", `${record.title} · ${record.document_count}개 파일 · ${dateTime(record.updated_at)}`);
+        option.value = record.id;
+        return option;
+      }));
+      select.value = state.workspaces.some((record) => record.id === previous) ? previous : "";
+      updateWorkspaceStatus();
+    } catch (error) {
+      if (request === state.workspaceListRequest) showNotice("workspace-feedback", `저장된 작업 목록을 불러오지 못했습니다. ${error.message}`, "error");
+    }
+  }
+
+  async function saveWorkspace(copy = false) {
+    if (state.workspaceBusy) return;
+    const epoch = state.workspaceEpoch;
+    try {
+      applyGuidedEdits();
+      const title = $("workspace-title").value.trim();
+      if (!title) throw new Error("저장할 작업 이름을 입력해 주세요.");
+      const snapshot = captureProfileSnapshot();
+      const payload = { title, snapshot };
+      const signature = JSON.stringify(payload);
+      if (new TextEncoder().encode(signature).byteLength > 8 * 1024 * 1024) throw new Error("저장할 원본과 편집본의 합계는 8 MiB 이하여야 합니다. 현재 내용은 입력창에 유지했습니다.");
+      const id = copy ? null : state.workspaceId;
+      if (id) payload.expected_revision = state.workspaceRevision;
+      state.workspaceBusy = true;
+      updateWorkspaceStatus();
+      hideNotice("workspace-feedback");
+      const record = await api(id ? `/api/profile-workspaces/${encodeURIComponent(id)}` : "/api/profile-workspaces", payload, id ? "PUT" : "POST");
+      if (epoch !== state.workspaceEpoch) return;
+      state.workspaceId = record.id;
+      state.workspaceRevision = record.revision;
+      state.workspaceSavedSignature = signature;
+      $("workspace-list").value = record.id;
+      await loadWorkspaces();
+      if (epoch === state.workspaceEpoch) {
+        const changed = workspaceDirty();
+        showNotice("workspace-feedback", changed ? "요청한 내용을 저장했습니다. 저장 중에 편집한 내용이 남아 있으니 한 번 더 저장해 주세요." : "원본, 편집본과 사용 조건을 이 PC에 저장했습니다.", changed ? "info" : "success");
+      }
+    } catch (error) {
+      if (epoch === state.workspaceEpoch) showNotice("workspace-feedback", error.status === 409 ? "다른 탭에서 이 작업을 변경했습니다. 현재 편집은 유지했습니다. 다른 이름으로 저장하거나 저장된 작업을 다시 열어 최신 내용을 확인하세요." : error.message, "error");
+    } finally {
+      state.workspaceBusy = false;
+      updateWorkspaceStatus();
+    }
+  }
+
+  function restoreWorkspace(record) {
+    const snapshot = record.snapshot;
+    state.workspaceEpoch += 1;
+    state.workspaceEdits += 1;
+    state.profileImport += 1;
+    state.guidedEdits = {};
+    state.profileDocuments = snapshot.documents.map((entry) => ({ filename: entry.filename, profile: entry.profile, draftText: entry.draft_text }));
+    state.profileTarget = snapshot.target_index;
+    $("profile-json").value = state.profileDocuments.length ? state.profileDocuments[state.profileTarget].draftText : snapshot.profile_text;
+    for (const [name, id] of Object.entries(profileSetupFields())) $(id).value = snapshot.setup[name];
+    $("workspace-title").value = record.title;
+    state.workspaceId = record.id;
+    state.workspaceRevision = record.revision;
+    invalidateProfile();
+    renderProfileLibrary();
+    renderGuidedEditor();
+    state.workspaceSavedSignature = workspaceSignature();
+    updateWorkspaceStatus();
+  }
+
+  async function openWorkspace() {
+    if (state.workspaceBusy) return;
+    const id = $("workspace-list").value;
+    if (!id) return;
+    if (workspaceDirty() && !window.confirm("저장하지 않은 변경 내용이 있습니다. 현재 편집을 버리고 저장된 작업을 여시겠습니까?")) return;
+    const epoch = state.workspaceEpoch, edits = state.workspaceEdits;
+    state.workspaceBusy = true;
+    updateWorkspaceStatus();
+    try {
+      const record = await api(`/api/profile-workspaces/${encodeURIComponent(id)}`);
+      if (epoch !== state.workspaceEpoch || edits !== state.workspaceEdits) {
+        showNotice("workspace-feedback", "불러오는 동안 편집한 내용이 있어 현재 작업을 유지했습니다. 저장된 작업을 열려면 다시 눌러 주세요.");
+        return;
+      }
+      restoreWorkspace(record);
+      showNotice("workspace-feedback", "저장된 원본과 편집본을 열었습니다. 프로필 검토하기로 현재 조건을 다시 확인해 주세요.", "success");
+    } catch (error) {
+      if (epoch === state.workspaceEpoch) showNotice("workspace-feedback", error.message, "error");
+    } finally { state.workspaceBusy = false; updateWorkspaceStatus(); }
+  }
+
+  function newWorkspace() {
+    if (state.workspaceBusy) return;
+    if (workspaceDirty() && !window.confirm("저장하지 않은 변경 내용이 있습니다. 현재 편집을 버리고 새 작업을 시작하시겠습니까?")) return;
+    restoreWorkspace({ id: null, revision: null, title: "", snapshot: {
+      documents: [], target_index: 0, profile_text: "",
+      setup: Object.fromEntries(Object.keys(profileSetupFields()).map((name) => [name, name === "material_identity_status" ? "unknown" : ""])),
+    } });
+    $("workspace-list").value = "";
+    hideNotice("workspace-feedback");
+    updateWorkspaceStatus();
+  }
+
+  async function deleteWorkspace() {
+    if (state.workspaceBusy || !state.workspaceId) return;
+    if (!window.confirm("이 작업의 저장본을 삭제하시겠습니까? 편집 중인 내용은 입력창에 남으며, 삭제한 저장본은 다시 열 수 없습니다.")) return;
+    const id = state.workspaceId, epoch = state.workspaceEpoch;
+    state.workspaceBusy = true;
+    updateWorkspaceStatus();
+    try {
+      await api(`/api/profile-workspaces/${encodeURIComponent(id)}`, { expected_revision: state.workspaceRevision }, "DELETE");
+      if (epoch === state.workspaceEpoch && id === state.workspaceId) {
+        state.workspaceId = null;
+        state.workspaceRevision = null;
+        state.workspaceSavedSignature = null;
+        state.workspaceEpoch += 1;
+        $("workspace-list").value = "";
+        showNotice("workspace-feedback", "저장본을 삭제했습니다. 편집 중인 내용은 남아 있으며 새로 저장할 수 있습니다.");
+      }
+      await loadWorkspaces();
+    } catch (error) {
+      if (epoch === state.workspaceEpoch) showNotice("workspace-feedback", error.status === 409 ? "다른 탭에서 저장본을 변경해 삭제하지 않았습니다. 최신 작업을 다시 열어 확인해 주세요. 현재 편집은 유지했습니다." : error.message, "error");
+    } finally { state.workspaceBusy = false; updateWorkspaceStatus(); }
+  }
+
+  function guidedFieldDefinitions() {
+    const fields = [
+      { field: "nozzle_temperature", unit: "°C", positive: true },
+      { field: "nozzle_temperature_initial_layer", unit: "°C", positive: true },
+      { field: "filament_flow_ratio", unit: "비율", positive: true },
+      { field: "filament_max_volumetric_speed", unit: "mm³/s", positive: true },
+    ];
+    const plateFields = { "Textured PEI Plate": "textured_plate_temp", "Smooth PEI Plate": "hot_plate_temp", "High Temp Plate": "hot_plate_temp", "Smooth PEI Plate / High Temp Plate": "hot_plate_temp", "Engineering Plate": "eng_plate_temp", "Cool Plate": "cool_plate_temp", "Bambu Cool Plate SuperTack": "supertack_plate_temp" };
+    const plate = plateFields[$("setup-plate").value.trim()];
+    if (plate) fields.push({ field: plate, unit: "°C", positive: false }, { field: `${plate}_initial_layer`, unit: "°C", positive: false });
+    return fields;
+  }
+
+  function numericSetting(value, text, positive) {
+    const input = text.trim();
+    if (!input || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(input)) throw new Error("빈 값은 설정에 적용하지 않습니다. 숫자를 입력하거나 편집 취소를 눌러 주세요.");
+    const number = Number(input);
+    if (!Number.isFinite(number) || (Number.isInteger(number) && !Number.isSafeInteger(number)) || (positive ? number <= 0 : number < 0)) throw new Error(positive ? "유한한 양수를 입력해 주세요." : "유한한 0 이상의 숫자를 입력해 주세요.");
+    if (value === undefined) return [input];
+    const multiple = Array.isArray(value);
+    if (multiple && value.length !== 1) throw new Error("여러 값의 배열은 압출기 대응을 확인한 뒤 JSON에서 편집해 주세요.");
+    const original = multiple ? value[0] : value;
+    if (typeof original !== "string" && typeof original !== "number") throw new Error("이 값의 형식은 간편 편집을 지원하지 않습니다. JSON에서 확인해 주세요.");
+    const updated = typeof original === "number" ? number : input;
+    return multiple ? [updated] : updated;
+  }
+
+  function profileSettings(profile) {
+    const settings = Object.hasOwn(profile, "settings") ? profile.settings : profile;
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new Error("settings는 JSON 객체여야 합니다.");
+    return settings;
+  }
+
+  function renderGuidedEditor() {
+    state.guidedSources = {};
+    state.guidedEdits = {};
+    const area = $("profile-guided-fields");
+    area.replaceChildren();
+    $("profile-adopt").hidden = state.profileDocuments.length > 0;
+    hideNotice("profile-guided-feedback");
+    if (!state.profileDocuments.length) {
+      $("profile-guided-help").textContent = "파일을 가져오거나 입력한 JSON을 파일 모음에 추가하면 주요 설정을 편집할 수 있습니다.";
+      updateWorkspaceStatus();
+      return;
+    }
+    let settings;
+    try { settings = profileSettings(parseObject($("profile-json").value, "선택한 프로필")); }
+    catch (error) {
+      $("profile-guided-help").textContent = `${error.message} 편집 중인 JSON은 그대로 저장할 수 있습니다.`;
+      updateWorkspaceStatus();
+      return;
+    }
+    const resolved = state.profileReport?.status === "resolved" ? state.profileReport : null;
+    const definitions = guidedFieldDefinitions();
+    $("profile-guided-help").textContent = `선택한 파일에만 값을 적용합니다. 상속값은 검토 후 표시하며, 부모 파일은 유지합니다.${definitions.length === 4 ? " 베드 온도는 사용 조건에서 플레이트를 선택하면 표시됩니다." : ""}`;
+    for (const definition of definitions) {
+      const { field, unit, positive } = definition;
+      const own = Object.hasOwn(settings, field);
+      const inherited = !own && resolved && Object.hasOwn(resolved.resolved_profile.settings, field);
+      const value = own ? settings[field] : inherited ? resolved.resolved_profile.settings[field] : undefined;
+      const pendingParent = !own && !resolved && Boolean(settings.inherits);
+      const scalar = Array.isArray(value) && value.length === 1 ? value[0] : value;
+      let editable = !pendingParent, description = own ? "선택한 파일에 명시" : inherited ? `상속값 · ${resolved.field_sources[field]?.filename || "부모 파일"}` : pendingParent ? "프로필 검토 후 상속값을 확인하세요." : "값 없음 · 입력하면 문자열 배열로 추가합니다.";
+      if (value !== undefined) {
+        try { numericSetting(value, String(scalar), false); }
+        catch { editable = false; description = "여러 옵션 또는 숫자가 아닌 값입니다. JSON에서 확인해 주세요."; }
+      }
+      const row = node("div", "guided-field");
+      row.dataset.field = field;
+      const label = node("label", "", `${fieldNames[field] || field} · ${unit}`);
+      const input = node("input");
+      input.id = `guided-${field}`;
+      input.type = "number";
+      input.step = "any";
+      input.value = editable && value !== undefined ? String(scalar) : "";
+      input.disabled = !editable;
+      input.dataset.guided = field;
+      input.setAttribute("aria-describedby", `guided-help-${field}`);
+      label.htmlFor = input.id;
+      label.append(input);
+      const help = node("p", "field-help", description);
+      help.id = `guided-help-${field}`;
+      state.guidedSources[field] = { value, positive, editable, initial: input.value };
+      input.addEventListener("input", () => {
+        if (input.value === state.guidedSources[field].initial) delete state.guidedEdits[field];
+        else state.guidedEdits[field] = input.value;
+        hideNotice("profile-guided-feedback");
+        invalidateProfile();
+        markWorkspaceChanged();
+      });
+      row.append(label, help);
+      if (own) {
+        const remove = node("button", "text-button guided-remove", "이 파일의 값 제거");
+        remove.type = "button";
+        remove.setAttribute("aria-label", `${fieldNames[field] || field}의 이 파일 값 제거`);
+        remove.addEventListener("click", () => removeGuidedOverride(field));
+        row.append(remove);
+      }
+      area.append(row);
+    }
+    updateWorkspaceStatus();
+  }
+
+  function applyGuidedEdits() {
+    const edits = Object.entries(state.guidedEdits);
+    if (!edits.length) return;
+    const entry = state.profileDocuments[state.profileTarget];
+    if (!entry) throw new Error("편집할 파일을 먼저 선택해 주세요.");
+    const profile = parseObject($("profile-json").value, entry.filename);
+    const settings = profileSettings(profile);
+    const replacements = edits.map(([field, text]) => {
+      const source = state.guidedSources[field];
+      if (!source?.editable) throw new Error("이 설정은 JSON에서 확인해 주세요.");
+      try { return [field, numericSetting(Object.hasOwn(settings, field) ? settings[field] : source.value, text, source.positive)]; }
+      catch (error) { throw new Error(`${fieldNames[field] || field}: ${error.message}`); }
+    });
+    for (const [field, value] of replacements) settings[field] = value;
+    entry.draftText = JSON.stringify(profile, null, 2);
+    $("profile-json").value = entry.draftText;
+    state.guidedEdits = {};
+    invalidateProfile();
+    markWorkspaceChanged();
+    renderProfileLibrary();
+    renderGuidedEditor();
+    showNotice("profile-guided-feedback", "선택한 파일의 편집본에 적용했습니다. 프로필을 다시 검토하고 작업을 저장해 주세요.", "success");
+  }
+
+  function removeGuidedOverride(field) {
+    if (Object.keys(state.guidedEdits).length) return;
+    try {
+      const entry = state.profileDocuments[state.profileTarget];
+      if (!entry) return;
+      const profile = parseObject($("profile-json").value, entry.filename);
+      delete profileSettings(profile)[field];
+      entry.draftText = JSON.stringify(profile, null, 2);
+      $("profile-json").value = entry.draftText;
+      invalidateProfile();
+      markWorkspaceChanged();
+      renderGuidedEditor();
+      showNotice("profile-guided-feedback", "선택한 파일의 명시값을 제거했습니다. 상속될 값이 있는지 다시 검토해 주세요.");
+    } catch (error) { showNotice("profile-guided-feedback", error.message, "error"); }
+  }
+
+  function adoptProfileText() {
+    if (state.profileDocuments.length) return;
+    try {
+      const profile = parseObject($("profile-json").value, "입력한 프로필");
+      if (new TextEncoder().encode(JSON.stringify([{ filename: "pasted-filament.json", profile }])).byteLength > 2 * 1024 * 1024) throw new Error("보관할 원본 JSON 합계는 2 MiB 이하여야 합니다. 입력한 내용은 유지했습니다.");
+      state.profileDocuments = [{ filename: "pasted-filament.json", profile, draftText: $("profile-json").value }];
+      state.profileTarget = 0;
+      invalidateProfile();
+      markWorkspaceChanged();
+      renderProfileLibrary();
+      renderGuidedEditor();
+      showNotice("profile-feedback", "지금 입력한 JSON을 비교 원본으로 보관했습니다. 출처나 실제 측정을 인증한 것은 아닙니다.");
+    } catch (error) { showNotice("profile-feedback", error.message, "error"); }
+  }
+
+  function removeProfileDocument() {
+    if (!state.profileDocuments[state.profileTarget]) return;
+    if (!window.confirm("선택한 파일을 이 작업의 파일 모음에서 제거하시겠습니까? 다른 파일과 PC의 원본 파일은 유지됩니다.")) return;
+    state.profileDocuments.splice(state.profileTarget, 1);
+    state.profileTarget = Math.max(0, Math.min(state.profileTarget, state.profileDocuments.length - 1));
+    $("profile-json").value = state.profileDocuments[state.profileTarget]?.draftText || "";
+    state.profileImport += 1;
+    invalidateProfile();
+    markWorkspaceChanged();
+    renderProfileLibrary();
+    renderGuidedEditor();
+  }
+
+  function restoreProfileOriginal() {
+    const entry = state.profileDocuments[state.profileTarget];
+    if (!entry) return;
+    if (entry.draftText !== JSON.stringify(entry.profile, null, 2) && !window.confirm("선택한 파일의 편집 내용을 버리고 가져온 원본으로 되돌리시겠습니까?")) return;
+    entry.draftText = JSON.stringify(entry.profile, null, 2);
+    $("profile-json").value = entry.draftText;
+    invalidateProfile();
+    markWorkspaceChanged();
+    renderProfileLibrary();
+    renderGuidedEditor();
+  }
+
   function invalidateProfile() {
     state.profileRevision += 1;
     state.profileReport = null;
@@ -522,6 +899,7 @@
     const files = Array.from(input.files || []);
     if (!files.length) return;
     input.value = "";
+    markWorkspaceChanged();
     invalidateProfile();
     const revision = state.profileRevision;
     const importId = ++state.profileImport;
@@ -530,11 +908,15 @@
       if (state.profileDocuments.length + files.length > 64) throw new Error("한 번에 검토할 파일은 최대 64개입니다. 파일 모음을 비우고 필요한 파일만 다시 선택해 주세요.");
       if (files.reduce((sum, file) => sum + file.size, 0) > 2 * 1024 * 1024) throw new Error("가져올 JSON 파일의 합계는 2 MiB 이하여야 합니다.");
       const imported = await Promise.all(files.map(async (file) => {
-        const profile = parseObject(await file.text(), file.name);
-        return { filename: file.name, profile, draftText: JSON.stringify(profile, null, 2) };
+        if (!file.name.trim() || file.name.length > 240) throw new Error("파일명은 1~240자로 지정해 주세요. 파일 이름을 줄인 뒤 다시 추가할 수 있습니다.");
+        const draftText = await file.text();
+        const profile = parseObject(draftText, file.name);
+        return { filename: file.name, profile, draftText };
       }));
       if (revision !== state.profileRevision || importId !== state.profileImport) return;
       const documents = [...state.profileDocuments, ...imported];
+      const originals = documents.map((entry) => ({ filename: entry.filename, profile: entry.profile }));
+      if (new TextEncoder().encode(JSON.stringify(originals)).byteLength > 2 * 1024 * 1024) throw new Error("보관할 원본 JSON 합계가 2 MiB를 넘습니다. 편집으로 원본 크기는 줄어들지 않으므로 필요한 파일만 선택해 주세요.");
       const submitted = documents.map((entry) => ({ filename: entry.filename, profile: parseObject(entry.draftText, entry.filename) }));
       if (new TextEncoder().encode(JSON.stringify(submitted)).byteLength > 2 * 1024 * 1024) throw new Error("기존 파일을 포함한 JSON 합계가 2 MiB를 넘습니다. 필요한 파일만 선택해 주세요.");
       const firstImport = state.profileDocuments.length === 0;
@@ -544,6 +926,8 @@
         $("profile-json").value = documents[0].draftText;
       }
       renderProfileLibrary();
+      renderGuidedEditor();
+      markWorkspaceChanged();
       showNotice("profile-feedback", `${files.length}개 파일을 추가했습니다. 검토할 프로필을 선택한 뒤 프로필 검토하기를 누르세요.`, "info");
     } catch (error) {
       if (revision === state.profileRevision && importId === state.profileImport) showNotice("profile-feedback", error.message, "error");
@@ -558,6 +942,8 @@
     $("profile-json").value = state.profileDocuments[index].draftText;
     invalidateProfile();
     renderProfileLibrary();
+    renderGuidedEditor();
+    markWorkspaceChanged();
   }
 
   function clearProfileLibrary() {
@@ -566,13 +952,17 @@
     state.profileDocuments = [];
     state.profileTarget = 0;
     renderProfileLibrary();
+    renderGuidedEditor();
+    markWorkspaceChanged();
     showNotice("profile-feedback", "파일 모음을 비웠습니다. 선택했던 JSON은 입력창에 남아 있으며 단일 프로필로 검토할 수 있습니다.");
   }
 
   async function reviewProfile() {
-    invalidateProfile();
-    const revision = state.profileRevision;
+    let revision = state.profileRevision;
     try {
+      applyGuidedEdits();
+      invalidateProfile();
+      revision = state.profileRevision;
       await withBusy($("review-profile"), "프로필 검토 중", async () => {
         const profile = parseObject($("profile-json").value, "필라멘트 프로필");
         const setup = {};
@@ -585,19 +975,20 @@
           const targetName = profileName(profile);
           if (!targetName.trim()) throw new Error("선택한 프로필의 name에 정확한 이름이 필요합니다. 이름 필드는 소문자 name으로 입력해 주세요.");
           const originals = state.profileDocuments.map((entry) => ({ filename: entry.filename, profile: entry.profile }));
-          const edited = documents.filter((entry, index) => JSON.stringify(entry.profile) !== JSON.stringify(originals[index].profile)).map((entry) => entry.filename);
-          const result = await api("/api/profiles/resolve", { documents, target_name: targetName, setup });
+          const edited = documents.filter((entry, index) => !sameJson(entry.profile, originals[index].profile)).map((entry) => entry.filename);
+          const result = await api("/api/profiles/resolve", { documents, target_name: targetName, setup, baseline: { documents: originals, target_name: profileName(state.profileDocuments[state.profileTarget].profile) } });
           if (revision !== state.profileRevision) return;
-          renderProfileResolution({ ...result, setup, imported_documents: originals, edited_filenames: edited });
+          renderProfileResolution({ ...result, setup, imported_documents: result.imported_documents || originals, edited_filenames: edited });
           if (result.review) renderProfile(result.review);
         } else {
           const result = await api("/api/profiles/review", { profile, setup });
           if (revision === state.profileRevision) renderProfile(result);
         }
       });
+      if (revision === state.profileRevision) renderGuidedEditor();
     } catch (error) {
       if (revision === state.profileRevision) showNotice("profile-feedback", error.message, "error");
-    }
+    } finally { updateWorkspaceStatus(); }
   }
 
   function renderProfileResolution(result) {
@@ -616,6 +1007,10 @@
       return item;
     }));
     $("profile-resolution-warnings").replaceChildren(...(result.warnings || []).map((warning) => node("p", "", friendly(warning))));
+    const edit = result.edit_review;
+    hideNotice("profile-edit-review");
+    if (edit?.status === "changed") showNotice("profile-edit-review", `가져온 원본과 달라진 설정 ${edit.changed_fields.length}개가 있습니다. 수정값은 사용자의 변경으로 구분합니다.${edit.validation_invalidated ? " 이전 검증 보고는 이 변경값에 적용하지 않습니다." : ""}`, "info", edit.changed_fields.map((field) => fieldNames[field] || field));
+    else if (edit?.status === "baseline_unresolved") showNotice("profile-edit-review", "원본의 상속을 확인하지 못해 변경 전후의 유효값을 비교할 수 없습니다. 이전 검증 보고를 현재 값의 근거로 사용하지 않습니다.", "warning");
     const entries = Object.entries(result.field_sources || {});
     const area = $("profile-fields");
     area.replaceChildren();
@@ -636,6 +1031,7 @@
         const cell = node("td", "", JSON.stringify(value));
         const origin = node("td", "", source.preset_name);
         origin.append(node("small", "", source.filename), node("small", "", source.inherited ? "부모에서 상속" : "선택한 프로필에 명시"));
+        if (source.edited === true) origin.append(node("small", "", "원본과 다른 사용자 수정값"));
         if (source.history?.length > 1) {
           const details = node("details");
           details.append(node("summary", "", `덮어쓰기 기록 ${source.history.length}건`));
@@ -660,13 +1056,34 @@
 
   $("profile-form").addEventListener("submit", (event) => { event.preventDefault(); reviewProfile(); });
   $("profile-form").addEventListener("input", (event) => {
-    if (event.target.id === "profile-file") return;
+    if (event.target.id === "profile-file" || event.target.id === "profile-target" || event.target.dataset.guided) return;
     if (event.target.id === "profile-json" && state.profileDocuments[state.profileTarget]) state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
     invalidateProfile();
+    markWorkspaceChanged();
+    renderGuidedEditor();
   });
   $("profile-target").addEventListener("change", selectProfileTarget);
   $("profile-clear").addEventListener("click", clearProfileLibrary);
-  window.addEventListener("beforeunload", () => { if (state.profileDownloadUrl) URL.revokeObjectURL(state.profileDownloadUrl); });
+  $("profile-adopt").addEventListener("click", adoptProfileText);
+  $("profile-remove").addEventListener("click", removeProfileDocument);
+  $("profile-restore").addEventListener("click", restoreProfileOriginal);
+  $("profile-guided-apply").addEventListener("click", () => {
+    try { applyGuidedEdits(); }
+    catch (error) { showNotice("profile-guided-feedback", error.message, "error"); }
+  });
+  $("profile-guided-cancel").addEventListener("click", () => { renderGuidedEditor(); markWorkspaceChanged(); });
+  $("workspace-title").addEventListener("input", markWorkspaceChanged);
+  $("workspace-list").addEventListener("change", updateWorkspaceStatus);
+  $("workspace-save").addEventListener("click", () => saveWorkspace(false));
+  $("workspace-save-copy").addEventListener("click", () => saveWorkspace(true));
+  $("workspace-open").addEventListener("click", openWorkspace);
+  $("workspace-refresh").addEventListener("click", loadWorkspaces);
+  $("workspace-new").addEventListener("click", newWorkspace);
+  $("workspace-delete").addEventListener("click", deleteWorkspace);
+  window.addEventListener("beforeunload", (event) => {
+    if (workspaceDirty()) { event.preventDefault(); event.returnValue = ""; }
+  });
+  window.addEventListener("pagehide", () => { if (state.profileDownloadUrl) URL.revokeObjectURL(state.profileDownloadUrl); });
 
   function renderProfile(result) {
     $("profile-result").hidden = false;
@@ -1041,6 +1458,8 @@
       else renderTemplates();
       ["plan-button", "review-profile", "compare-offers"].forEach((id) => { $(id).disabled = false; });
       updateWorkflowControls();
+      updateWorkspaceStatus();
+      await loadWorkspaces();
     } catch (error) {
       $("bootstrap-error").hidden = false;
       $("bootstrap-error-detail").textContent = error.message;
@@ -1049,5 +1468,7 @@
   }
   $("retry-bootstrap").addEventListener("click", bootstrap);
   renderOfferRows();
+  state.workspaceSavedSignature = workspaceSignature();
+  renderGuidedEditor();
   bootstrap();
 })();

@@ -12,7 +12,7 @@ npm run test:browser
 
 On Linux, `npx playwright install --with-deps chromium` installs Chromium system libraries as well. CI uses that route. The suite starts its own server on `127.0.0.1:8765`; stop another development server on that port first. Test jobs and reports are written beneath ignored `qa-output/playwright/`. No physical printer, native slicer, LLM account or API key is used.
 
-Desktop and mobile browser projects check real CAD creation/downloads, profile evidence, shipping cost uncertainty, saved outcomes and failed-job history. `npm run test:browser:list` lists tests without launching a browser. DOM/controller tests and the real browser suite provide different evidence; report which one you actually ran.
+Desktop and mobile browser projects check real CAD creation/downloads, profile evidence, saved filament workspaces and guided edits, shipping cost uncertainty, saved outcomes and failed-job history. `npm run test:browser:list` lists tests without launching a browser. DOM/controller tests and the real browser suite provide different evidence; report which one you actually ran.
 
 Thanks for helping improve 3D Printer Agent. Bug reports, reproducible fixes, accessibility improvements, and documentation are welcome. You may write issues and pull requests in Korean or English.
 
@@ -68,6 +68,7 @@ Preserve these project behaviors:
 - Keep CAD validation, slicing, printer connection, and physical output as separate states. A user-reported success remains a user report.
 - Keep supplied source metadata distinct from independently checked provenance. Unknown settings, compatibility, shipping costs, or measurements must remain unknown until evidence is available.
 - Preserve original inputs and make generated artifacts traceable to parameters and settings. An earlier result must not appear to be the result of a failed new request.
+- Saved filament workspaces retain exact unfinished text and original documents, restore only inputs, and reject stale revisions. Guided edits must retain scalar/array and string/number representation and must not guess an extruder index. Changed effective inherited settings cannot reuse an earlier positive validation claim.
 - Keep the local application bound to loopback and retain its request-origin and session checks. Changes to remote access or physical printer actions need an explicit design and integration evidence.
 
 When adding a CAD template, document units, editable dimensions, geometric constraints, and intended use. Check exported files and invalid inputs. When adding a profile or integration, record its applicable hardware/software conditions and the source of each supplied setting; synthetic test numbers are not manufacturer recommendations.

@@ -10,6 +10,8 @@ Help people discover useful things to print, customize models, prepare settings 
 - `schemas.py`, `planner.py`: typed geometry parameters and rules/optional LLM planning.
 - `geometry.py`: deterministic CadQuery solids, mesh preview, exports and reproduction source.
 - `profiles.py`: supplied evidence, exact scope matching and calibration review.
+- `preset_library.py`: explicit single-parent values, per-field evidence and original-baseline comparison.
+- `workspaces.py`: atomic saved filament inputs, exact drafts and revision conflicts, separate from CAD jobs.
 - `slicer.py`: local Bambu Studio CLI preparation, execution and output verification.
 - `offers.py`, `storage.py`: user-entered offer calculation and per-job artifacts/history.
 - `static/`: dependency-free Korean UI and Canvas mesh viewer.
@@ -38,6 +40,7 @@ When a test cannot run, record its concrete blocker. A successful HTTP response,
 - Do not flatten an inherited profile by deleting `inherits`; resolve its complete configuration with per-field evidence before supporting it.
 - Keep generation artifacts and source files reproducible. Never overwrite the user's imported source model.
 - A changed draft must not keep an old preview/download looking current. A failed new slice must not retain the old slice as the current result.
+- Saved filament workspaces restore inputs, not current reviews. Preserve imported originals and invalid draft text; stale revision writes must not overwrite another tab's saved changes.
 - Keep provider keys in local environment variables; do not return them to the browser, commit them, or include them in issue logs.
 - New model sources require recorded origin and applicable reuse terms. Do not imply a supported external API without verifying it.
 

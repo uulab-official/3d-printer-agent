@@ -15,6 +15,9 @@ _MAX_DOCUMENTS = 64
 _MAX_BYTES = 2 * 1024 * 1024
 _MAX_CHAIN_DEPTH = 32
 _MAX_JSON_DEPTH = 64
+_POSITIVE_VALIDATION_STATUSES = {
+    "measured_on_matching_setup", "verified", "validated", "reported_validated",
+}
 
 # This is an explicit identity-isolation policy, not a complete Studio schema.
 # Description and filament_id are intentionally inherited as explicit values.
@@ -119,7 +122,7 @@ def _chain_issues(record):
     return issues
 
 
-def resolve_profile_documents(documents: list[dict], target_name: str, setup: dict) -> dict:
+def _resolve_profile_documents(documents, target_name, setup, *, allow_empty_target=False):
     """Resolve exact single-parent references and retain per-field evidence.
 
     Structural non-JSON input raises ValueError. Missing references and
@@ -128,7 +131,7 @@ def resolve_profile_documents(documents: list[dict], target_name: str, setup: di
     """
     if not isinstance(documents, list) or not 1 <= len(documents) <= _MAX_DOCUMENTS:
         raise ValueError("필라멘트 JSON 문서는 1개 이상 64개 이하로 가져오세요.")
-    if not isinstance(target_name, str) or not target_name.strip():
+    if not isinstance(target_name, str) or (not allow_empty_target and not target_name.strip()):
         raise ValueError("검토할 프리셋의 정확한 이름이 필요합니다.")
     if not isinstance(setup, dict):
         raise ValueError("setup은 JSON 객체여야 합니다.")
@@ -253,4 +256,109 @@ def resolve_profile_documents(documents: list[dict], target_name: str, setup: di
         status="resolved", field_sources=sources, resolved_profile=resolved,
         review=evaluate_profile(resolved, setup),
     )
+    return report
+
+
+def _invalidate_edited_validation(report):
+    """Invalidate a supplied positive claim without rewriting its source evidence."""
+    edit_review = report["edit_review"]
+    validation = report["resolved_profile"].get("validation", {})
+    claimed_status = validation.get("status")
+    if not isinstance(claimed_status, str) or claimed_status not in _POSITIVE_VALIDATION_STATUSES:
+        return
+
+    unresolved = edit_review["status"] == "baseline_unresolved"
+    review = report["review"]
+    review["validation_status"] = "stale"
+    review["can_prepare_profile"] = False
+    review["selected_profile_id"] = None
+    if review["decision"] == "ready_to_prepare":
+        review["decision"] = "needs_evidence"
+    review["reasons"].append({
+        "code": "VALIDATION_BASELINE_UNRESOLVED" if unresolved else "VALIDATION_SETTINGS_CHANGED",
+        "message": (
+            "원본 설정의 상속을 확인할 수 없어 기존 검증 보고를 현재 설정에 적용할 수 없습니다. 원본 파일과 검증 근거를 다시 확인하세요."
+            if unresolved else
+            "원본과 비교해 실제 적용 설정이 변경되었습니다. 기존 검증 보고를 변경된 값에 적용할 수 없으므로 다시 확인해야 합니다."
+        ),
+    })
+    review["calibration_actions"].append({
+        "action": "review",
+        "reason": "validation_baseline_unresolved" if unresolved else "validation_settings_changed",
+        "changed_fields": list(edit_review["changed_fields"]),
+    })
+    # A positive-sounding setup-only warning no longer describes applicability.
+    review["warnings"] = [
+        warning for warning in review["warnings"]
+        if not warning.startswith("VALIDATION_CLAIM_ONLY:")
+    ]
+    review["warnings"].append(
+        "VALIDATION_SETTINGS_STALE: 입력된 검증 주장은 원본 증거에 보존했습니다. 현재 편집본의 실물 검증을 뜻하지 않습니다."
+    )
+    edit_review["validation_invalidated"] = True
+
+
+def resolve_profile_documents(documents: list[dict], target_name: str, setup: dict,
+                              *, baseline: dict | None = None) -> dict:
+    """Resolve supplied values and optionally compare them with imported originals.
+
+    Each current/original document set has the same independent size/depth bounds.
+    ``baseline`` is user-supplied evidence, not an authenticated version or a
+    measurement. Only effective settings are compared; key ordering and edits to
+    unused or overridden ancestor values do not imply a configuration change.
+    """
+    report = _resolve_profile_documents(documents, target_name, setup)
+    report["imported_documents"] = []
+    report["edit_review"] = {
+        "status": "untracked",
+        "baseline_status": None,
+        "baseline_target_name": None,
+        "baseline_issues": [],
+        "changed_fields": [],
+        "validation_invalidated": False,
+    }
+    for source in report["field_sources"].values():
+        source["edited"] = None
+    if baseline is None:
+        return report
+    if not isinstance(baseline, dict) or set(baseline) != {"documents", "target_name"}:
+        raise ValueError("원본 비교에는 documents와 target_name만 필요합니다.")
+
+    original = _resolve_profile_documents(
+        baseline["documents"], baseline["target_name"], setup, allow_empty_target=True,
+    )
+    report["imported_documents"] = original["documents"]
+    edit_review = report["edit_review"]
+    edit_review.update(
+        baseline_status=original["status"],
+        baseline_target_name=baseline["target_name"],
+        baseline_issues=original["issues"],
+    )
+    report["warnings"].append(
+        "BASELINE_CLAIM_ONLY: 원본 비교는 사용자가 처음 제공한 JSON을 기준으로 합니다. 발행처 인증이나 측정 이력 확인을 대신하지 않습니다."
+    )
+    if report["status"] != "resolved":
+        return report
+    if original["status"] != "resolved":
+        edit_review["status"] = "baseline_unresolved"
+        _invalidate_edited_validation(report)
+        return report
+
+    current_settings = report["resolved_profile"]["settings"]
+    original_settings = original["resolved_profile"]["settings"]
+    changed_fields = sorted(
+        field for field in current_settings.keys() | original_settings.keys()
+        if field not in current_settings or field not in original_settings
+        or _json_bytes(current_settings[field]) != _json_bytes(original_settings[field])
+    )
+    edit_review["changed_fields"] = changed_fields
+    edit_review["status"] = "changed" if changed_fields else "unchanged"
+    changed_field_set = set(changed_fields)
+    for field, source in report["field_sources"].items():
+        source["edited"] = field in changed_field_set
+    if changed_fields:
+        report["warnings"].append(
+            "EDITED_VALUES_USER_INPUT: 수정됨으로 표시된 적용값은 현재 편집본에서 달라진 값입니다. 원본의 발행처 표기가 수정값의 인증을 뜻하지 않습니다."
+        )
+        _invalidate_edited_validation(report)
     return report
