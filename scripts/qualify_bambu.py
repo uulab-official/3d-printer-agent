@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Run one pinned, offline Bambu CLI bootstrap; never send a job to a printer.
+"""Run pinned, local Bambu CLI and application adapter smoke checks.
 
-This experiment uses the official CLI documentation's unchanged example configs
-and an original small cube. Success qualifies this native invocation only, not
-the application's adapter, arbitrary raw presets, or physical print quality.
-Only the standard library is required. Downloads and native output stay beneath
-the selected ignored work directory; evidence excludes the large runtime image.
+The bootstrap uses unchanged official example configs. Adapter checks use an
+explicitly synthetic minimum config, an original cube and an original example
+3MF. Native defaults fill unspecified settings; this is not a manufacturer preset
+or a physical print qualification. No job is sent to a printer. Downloads require
+network access; native execution is local, not network-isolated. Only the standard
+library is required. Evidence excludes the large downloaded runtime image.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import re
 import signal
 import stat
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -46,6 +48,7 @@ CONFIGS = (
 MAX_LOG_BYTES = 2 * 1024 * 1024
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_UNPACKED_BYTES = 256 * 1024 * 1024
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def sha256(path):
@@ -105,7 +108,10 @@ def run_command(argv, cwd, env, log_dir, label, timeout):
         result["returncode"] = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         result["timed_out"] = True
-        os.killpg(process.pid, signal.SIGKILL)
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         result["returncode"] = process.wait(timeout=10)
     for reader in readers:
         reader.join(timeout=10)
@@ -159,10 +165,10 @@ def read_config(path):
     return value
 
 
-def inspect_output(archive_path, exported_path):
+def inspect_output(archive_path, exported_path=None, expected_settings=None):
     if not archive_path.is_file() or not 0 < archive_path.stat().st_size <= MAX_OUTPUT_BYTES:
         raise ValueError("Native sliced 3MF is missing, empty or too large.")
-    exported = read_config(exported_path)
+    exported = read_config(exported_path) if exported_path is not None else None
     with zipfile.ZipFile(archive_path) as archive:
         entries = archive.infolist()
         if not entries or len(entries) > 2048 or sum(i.file_size for i in entries) > MAX_UNPACKED_BYTES:
@@ -194,10 +200,160 @@ def inspect_output(archive_path, exported_path):
     keys = ("printer_model", "printer_settings_id", "print_settings_id", "filament_settings_id",
             "nozzle_diameter", "curr_bed_type", "filament_extruder_variant", "printer_extruder_variant",
             "layer_height", "nozzle_temperature", "filament_flow_ratio", "filament_max_volumetric_speed")
-    return {"archive": {"path": str(archive_path), "bytes": archive_path.stat().st_size, "sha256": sha256(archive_path)},
-            "exported_config": {"path": str(exported_path), "sha256": sha256(exported_path), "key_count": len(exported)},
-            "gcode": gcodes, "project_settings": {key: settings[key] for key in keys if key in settings},
-            "exported_settings": {key: exported[key] for key in keys if key in exported}}
+    inspection = {"archive": {"path": str(archive_path), "bytes": archive_path.stat().st_size, "sha256": sha256(archive_path)},
+                  "gcode": gcodes, "project_settings_key_count": len(settings),
+                  "project_settings": {key: settings[key] for key in keys if key in settings}}
+    if exported is not None:
+        inspection.update(exported_config={"path": str(exported_path), "sha256": sha256(exported_path), "key_count": len(exported)},
+                          exported_settings={key: exported[key] for key in keys if key in exported})
+    if expected_settings is not None:
+        # The oracle is a separate handwritten fixture contract, never the
+        # adapter's plan/expected_settings or one of its test helpers.
+        inspection["independent_core_checks"] = [
+            {"name": key, "expected": expected, "actual": settings.get(key),
+             "passed": key in settings and settings[key] == expected}
+            for key, expected in expected_settings.items()
+        ]
+        (archive_path.parent / "native-project-settings.json").write_text(
+            json.dumps(settings, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return inspection
+
+
+def synthetic_fixture():
+    """Handwritten CI inputs, deliberately not a claimed user/vendor export.
+
+    source=user_export exercises the application's accepted bundle contract;
+    this fixture's actual provenance is synthetic and recorded separately.
+    These minimum settings depend on native defaults and must not be offered
+    to users as printer/material recommendations.
+    """
+    bundle = {
+        "source": "user_export", "plate_type": "High Temp Plate",
+        "machine": {
+            "from": "user", "type": "machine", "name": "PPA Synthetic Machine CI Only",
+            "printer_settings_id": "PPA Synthetic Machine CI Only",
+            "printer_model": "PPA Synthetic FFF CI Only", "printer_technology": "FFF",
+            "nozzle_diameter": ["0.4"],
+            "printable_area": ["0x0", "256x0", "256x256", "0x256"], "printable_height": "256",
+            "machine_start_gcode": "; SYNTHETIC CI ONLY - not a hardware preset\nG90\nM83",
+            "machine_end_gcode": "; SYNTHETIC CI ONLY\nM400",
+        },
+        "process": {
+            "from": "user", "type": "process", "name": "PPA Synthetic Process CI Only",
+            "print_settings_id": "PPA Synthetic Process CI Only",
+            "layer_height": "0.2", "initial_layer_print_height": "0.2",
+            "wall_loops": "2", "top_shell_layers": "3", "bottom_shell_layers": "3",
+            "sparse_infill_density": "15%", "outer_wall_speed": "40", "inner_wall_speed": "60",
+            "sparse_infill_speed": "80", "initial_layer_speed": "20",
+        },
+        "filaments": [{
+            "from": "user", "type": "filament", "name": "PPA Synthetic PLA CI Only",
+            "filament_settings_id": ["PPA Synthetic PLA CI Only"],
+            "filament_type": ["PLA"], "filament_diameter": ["1.75"], "filament_density": ["1.24"],
+            "filament_flow_ratio": ["1"], "filament_max_volumetric_speed": ["10"],
+            "nozzle_temperature": ["200"], "nozzle_temperature_initial_layer": ["205"],
+            "hot_plate_temp": ["50"], "hot_plate_temp_initial_layer": ["55"],
+        }],
+    }
+    # Intentionally written independently of prepare_slice's computed plan.
+    expected = {
+        "printer_settings_id": "PPA Synthetic Machine CI Only",
+        "print_settings_id": "PPA Synthetic Process CI Only",
+        "filament_settings_id": ["PPA Synthetic PLA CI Only"],
+        "printer_model": "PPA Synthetic FFF CI Only", "printer_technology": "FFF",
+        "nozzle_diameter": ["0.4"], "printable_area": ["0x0", "256x0", "256x256", "0x256"],
+        "printable_height": "256",
+        "machine_start_gcode": "; SYNTHETIC CI ONLY - not a hardware preset\nG90\nM83",
+        "machine_end_gcode": "; SYNTHETIC CI ONLY\nM400",
+        "layer_height": "0.2", "initial_layer_print_height": "0.2", "wall_loops": "2",
+        "top_shell_layers": "3", "bottom_shell_layers": "3", "sparse_infill_density": "15%",
+        "outer_wall_speed": "40", "inner_wall_speed": "60", "sparse_infill_speed": "80", "initial_layer_speed": "20",
+        "curr_bed_type": "High Temp Plate", "filament_type": ["PLA"], "filament_diameter": ["1.75"],
+        "filament_density": ["1.24"], "filament_flow_ratio": ["1"], "filament_max_volumetric_speed": ["10"],
+        "nozzle_temperature": ["200"], "nozzle_temperature_initial_layer": ["205"],
+        "hot_plate_temp": ["50"], "hot_plate_temp_initial_layer": ["55"],
+    }
+    return bundle, expected
+
+
+def adapter_smoke(executable, cube, evidence, env, report):
+    """Exercise the real public application functions against the native CLI."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from print_agent.slicer import execute_slice, prepare_slice
+
+    report.update(status="running", synthetic_fixture=True, source="handwritten_ci_fixture",
+                  contract_source_field="user_export", uses_native_defaults=True,
+                  manufacturer_preset=False, hardware_qualified=False, cases=[])
+    adapter_dir = evidence / "native-adapter"
+    adapter_dir.mkdir()
+    bundle, expected = synthetic_fixture()
+    (adapter_dir / "synthetic-bundle.json").write_text(json.dumps(bundle, indent=2) + "\n", encoding="utf-8")
+    (adapter_dir / "independent-core-expectations.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
+    example_dir = REPO_ROOT / "examples" / "cable_comb"
+    example_manifest_path = example_dir / "manifest.json"
+    example_manifest = read_config(example_manifest_path)
+    example = example_dir / "model.3mf"
+    expected_artifact = example_manifest["artifacts"]["three_mf"]
+    if (expected_artifact["filename"] != example.name or example.stat().st_size != expected_artifact["bytes"]
+            or sha256(example) != expected_artifact["sha256"]):
+        raise ValueError("Original example 3MF does not match its checked-in manifest.")
+    (adapter_dir / "original-example-manifest.json").write_bytes(example_manifest_path.read_bytes())
+    report["example_source"] = {"path": "examples/cable_comb/model.3mf", **expected_artifact,
+                                "manifest_sha256": sha256(example_manifest_path), "verified": True}
+    report["adapter_source_sha256"] = sha256(REPO_ROOT / "print_agent" / "slicer.py")
+    # execute_slice inherits the process environment. Reuse the isolated XDG
+    # directories used by bootstrap without changing HOME or any credentials.
+    old_xdg = {key: os.environ.get(key) for key in ("XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME")}
+    os.environ.update({key: env[key] for key in old_xdg})
+    try:
+        for label, source in (("original-cube-stl", cube), ("original-cable-comb-3mf", example)):
+            case_dir = adapter_dir / label
+            case_dir.mkdir()
+            case = {"name": label, "status": "running", "source_sha256": sha256(source)}
+            report["cases"].append(case)
+            plan = prepare_slice(source, case_dir / "job", bundle, executable_path=str(executable))
+            (case_dir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            if not plan.get("ready"):
+                case.update(status="failed", diagnostics=plan.get("diagnostics"))
+                continue
+            started = time.monotonic()
+            result = execute_slice(plan, timeout_seconds=180)
+            case["duration_seconds"] = round(time.monotonic() - started, 3)
+            (case_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            for stream in ("stdout", "stderr"):
+                (case_dir / f"adapter.{stream}.log").write_text(result.get(stream, ""), encoding="utf-8")
+            case.update(adapter_status=result.get("status"), bambu_version=result.get("bambu_version"),
+                        exit_code=result.get("exit_code"), argv=plan["argv"],
+                        adapter_checks=result.get("checks", []), output_sha256=result.get("output_sha256"))
+            output_path = Path(plan["output_path"])
+            try:
+                inspection = inspect_output(output_path, expected_settings=expected)
+                case["independent_output_inspection"] = inspection
+                checks = {
+                    "adapter_reports_sliced": result.get("status") == "sliced",
+                    "exact_native_version": result.get("bambu_version") == VERSION,
+                    "zero_exit_code": result.get("exit_code") == 0,
+                    "all_adapter_checks_pass": bool(result.get("checks")) and all(item.get("passed") is True for item in result["checks"]),
+                    "correct_output_path": result.get("output_path") == str(output_path),
+                    "correct_output_digest": result.get("output_sha256") == inspection["archive"]["sha256"],
+                    "independent_core_settings_match": all(item["passed"] for item in inspection["independent_core_checks"]),
+                    "printer_not_checked": result.get("printer_status") == "not_checked",
+                    "print_not_started": result.get("print_status") == "not_started",
+                }
+                case["qualification_checks"] = checks
+                case["status"] = "passed" if all(checks.values()) else "failed"
+            except Exception as exc:
+                case.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+            print(f"Application adapter {label}: {case['status']} (native status {result.get('status')}).", flush=True)
+    finally:
+        for key, previous in old_xdg.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+    report["status"] = "passed" if len(report["cases"]) == 2 and all(case["status"] == "passed" for case in report["cases"]) else "failed"
+    if report["status"] != "passed":
+        raise RuntimeError("Application adapter native smoke did not pass both original input cases; inspect plan/result/native evidence.")
 
 
 def main():
@@ -212,19 +368,23 @@ def main():
     for folder in (inputs, output, logs, runtime):
         folder.mkdir(parents=True, exist_ok=True)
     manifest = {
-        "schema_version": 1, "started_at": datetime.now(timezone.utc).isoformat(),
-        "scope": "native_cli_bootstrap_only", "status": "running", "adapter_qualified": False,
+        "schema_version": 2, "started_at": datetime.now(timezone.utc).isoformat(),
+        "scope": "native_bootstrap_and_synthetic_adapter_smoke", "status": "running",
+        "native_bootstrap": {"status": "not_run"}, "native_adapter_smoke": {"status": "not_run"},
+        "adapter_qualified": False,
         "raw_preset_resolution_qualified": False, "printer_connected": False, "physical_print_verified": False,
         "declared_release_version": VERSION, "release_commit": RELEASE_COMMIT, "reported_version": None,
         "platform": platform.platform(), "python": platform.python_version(),
+        "repository_commit": os.environ.get("GITHUB_SHA"), "qualification_script_sha256": sha256(Path(__file__)),
         "wiki_url": WIKI_URL, "sources": [], "commands": [],
-        "source_notes": "Official CLI examples remain unchanged, including inherits/include/variant/nil metadata. No automatic preset recommendation is made.",
+        "source_notes": "Official CLI examples remain unchanged. Separate adapter inputs are handwritten synthetic fixtures using native defaults, not user exports or manufacturer recommendations.",
         "license_notes": "Bambu Studio repository declares AGPL v3. External wiki attachments are attributed inputs, not relicensed as this project's MIT code; no attachment-specific license was observed.",
     }
     env = dict(os.environ)
     env.update({"XDG_CONFIG_HOME": str(runtime / "user-config"), "XDG_CACHE_HOME": str(runtime / "user-cache"),
                 "XDG_DATA_HOME": str(runtime / "user-data")})
     try:
+        manifest["native_bootstrap"]["status"] = "running"
         print("Downloading and verifying the pinned official runtime and CLI examples.", flush=True)
         runtime_source = download(APPIMAGE, runtime)
         manifest["sources"].append(runtime_source)
@@ -268,10 +428,22 @@ def main():
         for source in CONFIGS:
             if sha256(inputs / source["filename"]) != source["sha256"]:
                 raise RuntimeError("An original input changed during native execution.")
+        manifest["native_bootstrap"]["status"] = "passed"
+        print("Native bootstrap passed. Running separate synthetic application adapter checks.", flush=True)
+        adapter_smoke(executable, model, evidence, env, manifest["native_adapter_smoke"])
+        manifest["adapter_qualified"] = True
+        manifest["adapter_qualification_scope"] = "Pinned native version; synthetic single-filament core settings; original STL and 3MF only. Unspecified native defaults and physical printing remain unqualified."
         manifest["status"] = "passed"
-        print("Native bootstrap passed: readable plate G-code and project JSON are present. The application adapter and physical printing remain unqualified.", flush=True)
+        print("Native bootstrap and both application adapter smoke cases passed. No manufacturer preset or physical printing was qualified.", flush=True)
     except Exception as exc:
         manifest["status"] = "failed"
+        manifest["adapter_qualified"] = False
+        for stage in ("native_bootstrap", "native_adapter_smoke"):
+            if manifest[stage]["status"] == "running":
+                manifest[stage]["status"] = "failed"
+        for case in manifest["native_adapter_smoke"].get("cases", []):
+            if case["status"] == "running":
+                case.update(status="failed", error=f"{type(exc).__name__}: {exc}")
         manifest["error"] = f"{type(exc).__name__}: {exc}"
         print(manifest["error"], flush=True)
     finally:

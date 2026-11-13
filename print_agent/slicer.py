@@ -3,7 +3,9 @@
 Supported validation is a minimum, not a universal Bambu full-config schema:
 machine identity/FFF/bed geometry/nozzle/start/end G-code; process identity,
 layer heights, shells, infill and four speeds; filament identity, material,
-diameter/density/flow/MVS, nozzle temperatures and a shared bed-temperature pair.
+diameter/density/flow/MVS, nozzle temperatures and the selected plate's temperatures.
+Native profile metadata and JSON string representations are required; the explicit
+plate selection and read-back expectations are bound to the staged configuration.
 Unresolved inheritance, nonfinite numbers and host post-processing are rejected.
 Only those core settings are compared with the generated project. Other settings
 and actual native/physical printing remain unverified. No numeric print presets
@@ -44,11 +46,22 @@ _FILAMENT_FIELDS = (
     "filament_type", "filament_diameter", "filament_density", "filament_flow_ratio",
     "filament_max_volumetric_speed", "nozzle_temperature", "nozzle_temperature_initial_layer",
 )
-_BED_PREFIXES = ("cool_plate", "eng_plate", "hot_plate", "textured_plate", "supertack_plate")
+_PLATE_BED_PREFIXES = {
+    "Cool Plate": "cool_plate",
+    "Engineering Plate": "eng_plate",
+    "High Temp Plate": "hot_plate",
+    "Textured PEI Plate": "textured_plate",
+    "Supertack Plate": "supertack_plate",
+}
+_NATIVE_METADATA_FIELDS = frozenset({
+    "version", "name", "url", "type", "setting_id", "filament_id", "from",
+    "description", "instantiation", "is_custom",
+})
 _MAX_ARCHIVE_ENTRIES = 2048
 _MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 _MAX_MEMBER_BYTES = 256 * 1024 * 1024
 _MAX_CONFIG_BYTES = 8 * 1024 * 1024
+_MAX_SETTINGS_DEPTH = 32
 _MAX_LOG_CHARS = 65536
 _PROBE_CACHE: dict[tuple, dict] = {}
 _PROBE_LOCK = threading.Lock()
@@ -150,12 +163,34 @@ def _probe_cli(path: Path, timeout_seconds: float) -> dict:
             result["supported"] = completed.returncode == 0 and len(result["capabilities"]) == len(_REQUIRED_OPTIONS)
             if not result["supported"]:
                 result["diagnostics"].append("--help 응답에서 필요한 Bambu CLI 기능을 확인하지 못했습니다.")
+            if completed.returncode != 0:
+                stderr = _text(completed.stderr).strip()
+                if len(stderr) > 2000:
+                    stderr = stderr[:2000] + "\n[stderr truncated]"
+                result["diagnostics"].append(f"--help 종료 코드: {completed.returncode}" + (f"\n{stderr}" if stderr else ""))
         except subprocess.TimeoutExpired:
             result["diagnostics"].append("Bambu Studio --help 확인이 제한시간을 초과했습니다. 슬라이싱은 실행하지 않았습니다.")
         except OSError as exc:
             result["diagnostics"].append(f"Bambu Studio 실행 실패: {exc}")
         _PROBE_CACHE[key] = result
         return result
+
+
+def probe_environment(timeout: int = 3) -> dict:
+    """Explicitly probe an installed CLI; ordinary discovery remains file-only."""
+    environment = detect_environment()
+    environment["cli_supported"] = False
+    if not environment["available"]:
+        return environment
+    try:
+        probe = _probe_cli(Path(environment["path"]), timeout)
+        environment.update(cli_supported=probe["supported"], version=probe["version"],
+                           capabilities=list(probe["capabilities"]), diagnostics=list(probe["diagnostics"]))
+        if probe["supported"]:
+            environment["diagnostics"].append("--help에서 필요한 CLI 기능을 확인했습니다. 슬라이싱과 프린터 연결은 별도로 확인해야 합니다.")
+    except (OSError, ValueError, TypeError) as exc:
+        environment["diagnostics"].append(f"Bambu Studio CLI 확인 실패: {exc}")
+    return environment
 
 
 def _meaningful(value) -> bool:
@@ -169,7 +204,7 @@ def _meaningful(value) -> bool:
 def _reject_indirect_execution(value, location="config") -> None:
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in ("inherits", "include") and _meaningful(item):
+            if key in ("inherits", "include", "includes") and _meaningful(item):
                 raise ValueError(f"{location}.{key}: 상속을 해소한 full config가 필요합니다.")
             if key in ("post_process", "post_process_script", "post_process_scripts") and _meaningful(item):
                 raise ValueError(f"{location}.{key}: 호스트 후처리 프로그램 실행은 지원하지 않습니다.")
@@ -184,10 +219,35 @@ def _scalar(value):
 
 
 def _identity(config: dict, key: str) -> str:
-    value = _scalar(config.get(key, config.get("name")))
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{key} 또는 name에 full config의 식별자가 필요합니다.")
-    return value
+    name = config.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(f"name에 비어 있지 않은 native full config 이름이 필요합니다 ({key}).")
+    supplied = _scalar(config.get(key))
+    if _meaningful(supplied) and supplied != name:
+        raise ValueError(f"{key}가 name과 다릅니다. Bambu CLI는 name으로 식별자를 설정하므로 원본 full config의 두 값을 확인하세요.")
+    return name
+
+
+def _native_profile(config: dict, role: str, label: str) -> None:
+    """Check native JSON representation without filling defaults or variants."""
+    for key, value in config.items():
+        if key.casefold() in _NATIVE_METADATA_FIELDS:
+            valid = isinstance(value, str)
+        else:
+            # Native ConfigBase accepts strings or uniform arrays of strings,
+            # including two-dimensional string arrays. Preserve those as supplied.
+            valid = isinstance(value, str) or (isinstance(value, list) and (
+                all(isinstance(item, str) for item in value) or
+                all(isinstance(item, list) and all(isinstance(part, str) for part in item) for item in value)
+            ))
+        if not valid:
+            raise ValueError(f"{label}.{key}: native 설정은 문자열 또는 문자열 배열이어야 하며 메타데이터는 문자열이어야 합니다. 원본 내보내기 형식을 확인하세요.")
+    if not isinstance(config.get("name"), str) or not config["name"].strip():
+        raise ValueError(f"{label}.name: 비어 있지 않은 native full config 이름이 필요합니다.")
+    if config.get("type") != role:
+        raise ValueError(f"{label}.type: native 설정의 type은 '{role}'이어야 합니다.")
+    if config.get("from") not in ("system", "User", "user"):
+        raise ValueError(f"{label}.from: native 설정의 from은 system, User 또는 user여야 합니다.")
 
 
 def _numeric(value, key: str, minimum=0, inclusive=False, integer=False) -> None:
@@ -220,7 +280,14 @@ def _validate_bundle(bundle: dict) -> dict:
     machine, process, filaments = bundle.get("machine"), bundle.get("process"), bundle.get("filaments")
     if not isinstance(machine, dict) or not isinstance(process, dict) or not isinstance(filaments, list) or not 1 <= len(filaments) <= 16 or not all(isinstance(f, dict) for f in filaments):
         raise ValueError("machine, process와 1~16개의 filament full config가 필요합니다.")
+    plate_type = bundle.get("plate_type")
+    if not isinstance(plate_type, str) or plate_type not in _PLATE_BED_PREFIXES:
+        raise ValueError("plate_type에 사용할 플레이트를 명시하세요: " + ", ".join(_PLATE_BED_PREFIXES))
     _reject_indirect_execution(bundle)
+    _native_profile(machine, "machine", "machine")
+    _native_profile(process, "process", "process")
+    for index, filament in enumerate(filaments):
+        _native_profile(filament, "filament", f"filaments[{index}]")
     _required(machine, _MACHINE_FIELDS, "machine")
     _required(process, _PROCESS_FIELDS, "process")
     expected = {"printer_settings_id": _identity(machine, "printer_settings_id"),
@@ -259,13 +326,15 @@ def _validate_bundle(bundle: dict) -> dict:
         else:
             shell = key in ("wall_loops", "top_shell_layers", "bottom_shell_layers")
             _numeric(process[key], key, inclusive=shell, integer=shell)
+    selected_prefix = _PLATE_BED_PREFIXES[plate_type]
+    selected_bed_fields = (selected_prefix + "_temp", selected_prefix + "_temp_initial_layer")
+    for index, filament in enumerate(filaments):
+        _required(filament, selected_bed_fields, f"filaments[{index}]")
     common_bed_fields = []
-    for prefix in _BED_PREFIXES:
+    for prefix in _PLATE_BED_PREFIXES.values():
         pair = (prefix + "_temp", prefix + "_temp_initial_layer")
         if all(all(key in filament for key in pair) for filament in filaments):
             common_bed_fields.extend(pair)
-    if not common_bed_fields:
-        raise ValueError("모든 필라멘트에 공통으로 포함된 베드 온도/첫 레이어 온도 설정이 필요합니다.")
     for filament in filaments:
         _required(filament, _FILAMENT_FIELDS, "filament")
         _identity(filament, "filament_settings_id")
@@ -276,9 +345,12 @@ def _validate_bundle(bundle: dict) -> dict:
         for key in _FILAMENT_FIELDS[1:]:
             _numeric(filament[key], key)
         for key in common_bed_fields:
-            _numeric(filament[key], key, inclusive=True)
+            # Native Print::validate treats zero for the selected bed as an
+            # unsupported filament/plate combination. Other plates may retain it.
+            _numeric(filament[key], key, inclusive=key not in selected_bed_fields)
     expected.update({key: machine[key] for key in _MACHINE_FIELDS})
     expected.update({key: process[key] for key in _PROCESS_FIELDS})
+    expected["curr_bed_type"] = plate_type
     expected["filament_settings_id"] = [_identity(f, "filament_settings_id") for f in filaments]
     for key in (*_FILAMENT_FIELDS, *common_bed_fields):
         # Multi-variant arrays are retained; unfamiliar output mapping becomes needs_review.
@@ -292,6 +364,17 @@ def _hash(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _validate_settings_depth(settings: dict) -> None:
+    """Bound decoded project metadata before any recursive value inspection."""
+    pending = [(settings, 1)]
+    while pending:
+        value, depth = pending.pop()
+        if depth > _MAX_SETTINGS_DEPTH:
+            raise ValueError(f"프로젝트 설정 JSON의 중첩 깊이는 {_MAX_SETTINGS_DEPTH} 이하여야 합니다.")
+        children = value.values() if isinstance(value, dict) else value
+        pending.extend((child, depth + 1) for child in children if isinstance(child, (dict, list)))
 
 
 def _inspect_archive(path: Path, require_gcode: bool) -> tuple[dict | None, int]:
@@ -327,17 +410,23 @@ def _inspect_archive(path: Path, require_gcode: bool) -> tuple[dict | None, int]
                 raise ValueError("프로젝트 설정이 허용 크기를 초과했습니다.")
             try:
                 parsed = json.loads(archive.read(info))
-                settings = parsed if isinstance(parsed, dict) else None
-            except (ValueError, UnicodeError):
+                if not isinstance(parsed, dict):
+                    raise ValueError("프로젝트 설정은 JSON 객체여야 합니다.")
+                _validate_settings_depth(parsed)
+                settings = parsed
+            except (ValueError, UnicodeError, RecursionError) as exc:
+                if not require_gcode:
+                    raise ValueError(f"입력 3MF의 {config_name}을 검사할 수 없습니다. 읽을 수 있는 프로젝트 설정으로 다시 내보내세요: {exc}") from None
                 settings = None
         return settings, len(gcodes)
 
 
-def _build_argv(executable: str, job_dir: Path, input_path: Path, output: Path, filament_count: int) -> list[str]:
+def _build_argv(executable: str, job_dir: Path, input_path: Path, output: Path, filament_count: int, plate_type: str) -> list[str]:
     config = job_dir / "config"
     return [executable, "--load-settings", f"{config / 'machine.json'};{config / 'process.json'}",
             "--load-filaments", ";".join(str(config / f"filament-{index + 1}.json") for index in range(filament_count)),
-            "--slice", "0", "--outputdir", str(job_dir), "--export-3mf", str(output), str(input_path)]
+            "--curr-bed-type", plate_type, "--slice", "0", "--outputdir", str(job_dir),
+            "--export-3mf", output.name, str(input_path)]
 
 
 def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executable_path: str | None = None) -> dict:
@@ -378,6 +467,7 @@ def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executab
         bundle = validated["bundle"]
         profiles = [("machine.json", bundle["machine"]), ("process.json", bundle["process"])]
         profiles.extend((f"filament-{index + 1}.json", item) for index, item in enumerate(bundle["filaments"]))
+        profiles.append(("selection.json", {"source": bundle["source"], "plate_type": bundle["plate_type"]}))
         fingerprints = {}
         for filename, profile in profiles:
             path = config_dir / filename
@@ -391,8 +481,8 @@ def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executab
         output = job_dir / f"sliced-{uuid.uuid4().hex}.gcode.3mf"
         plan.update(ready=True, executable_path=str(executable), input_path=str(staged_input),
                     filament_count=len(bundle["filaments"]), output_path=str(output),
-                    expected_settings=validated["expected"], file_hashes=fingerprints,
-                    argv=_build_argv(str(executable), job_dir, staged_input, output, len(bundle["filaments"])))
+                    plate_type=bundle["plate_type"], expected_settings=validated["expected"], file_hashes=fingerprints,
+                    argv=_build_argv(str(executable), job_dir, staged_input, output, len(bundle["filaments"]), bundle["plate_type"]))
         plan["diagnostics"].append("최소 full-config 항목을 확인했습니다. 전체 Bambu 스키마·물리 출력 검증은 아니며 CLI 기능 확인은 실행 시 수행합니다.")
         return plan
     except (OSError, ValueError, TypeError, RecursionError, zipfile.BadZipFile, RuntimeError) as exc:
@@ -406,13 +496,14 @@ def _check(name: str, passed: bool, detail: str) -> dict:
 
 def _result(status="blocked", **values) -> dict:
     result = {"status": status, "exit_code": None, "output_path": None, "stdout": "", "stderr": "",
+              "bambu_version": None, "output_sha256": None,
               "checks": [], "estimated_time_seconds": None, "filament_grams": None,
               "printer_status": "not_checked", "print_status": "not_started"}
     result.update(values)
     return result
 
 
-def _validate_plan(plan: dict) -> tuple[Path, Path, Path]:
+def _validate_plan(plan: dict) -> tuple[Path, Path, Path, dict, list[str]]:
     job_dir = Path(plan["job_dir"]).resolve(strict=True)
     executable = Path(plan["executable_path"]).resolve(strict=True)
     source = Path(plan["input_path"]).resolve(strict=True)
@@ -421,17 +512,33 @@ def _validate_plan(plan: dict) -> tuple[Path, Path, Path]:
         raise ValueError("출력 파일은 작업 디렉터리의 새 파일이어야 합니다.")
     if not _executable(executable) or not source.is_relative_to(job_dir / "input") or not 1 <= plan["filament_count"] <= 16:
         raise ValueError("실행 계획의 경로나 필라멘트 개수가 유효하지 않습니다.")
-    expected_argv = _build_argv(str(executable), job_dir, source, output, plan["filament_count"])
-    if plan["argv"] != expected_argv:
-        raise ValueError("실행 계획의 CLI 인자가 변경되었습니다. 다시 준비하세요.")
-    required_files = [job_dir / "config/machine.json", job_dir / "config/process.json", source]
+    selection_path = job_dir / "config/selection.json"
+    required_files = [job_dir / "config/machine.json", job_dir / "config/process.json", selection_path, source]
     required_files.extend(job_dir / f"config/filament-{index + 1}.json" for index in range(plan["filament_count"]))
     for path in required_files:
         if path.is_symlink() or path.resolve().parent not in (job_dir / "config", job_dir / "input") or plan["file_hashes"].get(str(path)) != _hash(path):
             raise ValueError("준비 후 입력 또는 설정 파일이 변경되었습니다. 다시 준비하세요.")
     if not isinstance(plan["expected_settings"], dict) or not plan["expected_settings"]:
         raise ValueError("검증할 설정이 없는 실행 계획입니다.")
-    return job_dir, executable, output
+    selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    if not isinstance(selection, dict) or set(selection) != {"source", "plate_type"}:
+        raise ValueError("준비한 플레이트 선택 정보가 유효하지 않습니다. 다시 준비하세요.")
+    bundle = {
+        **selection,
+        "machine": json.loads((job_dir / "config/machine.json").read_text(encoding="utf-8")),
+        "process": json.loads((job_dir / "config/process.json").read_text(encoding="utf-8")),
+        "filaments": [json.loads((job_dir / f"config/filament-{index + 1}.json").read_text(encoding="utf-8"))
+                      for index in range(plan["filament_count"])],
+    }
+    validated = _validate_bundle(bundle)
+    if plan.get("plate_type") != selection["plate_type"]:
+        raise ValueError("실행 계획의 plate_type이 준비한 선택과 다릅니다. 다시 준비하세요.")
+    if plan["expected_settings"] != validated["expected"]:
+        raise ValueError("실행 계획의 검증 대상 설정이 준비한 설정 파일과 다릅니다. 다시 준비하세요.")
+    expected_argv = _build_argv(str(executable), job_dir, source, output, plan["filament_count"], selection["plate_type"])
+    if plan["argv"] != expected_argv:
+        raise ValueError("실행 계획의 CLI 인자가 변경되었습니다. 다시 준비하세요.")
+    return job_dir, executable, output, validated["expected"], expected_argv
 
 
 def _equivalent(expected, actual) -> bool:
@@ -456,24 +563,24 @@ def execute_slice(plan: dict, timeout_seconds: int = 180) -> dict:
     try:
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("timeout_seconds는 0보다 큰 유한 숫자여야 합니다.")
-        job_dir, executable, output = _validate_plan(plan)
+        job_dir, executable, output, expected_settings, argv = _validate_plan(plan)
         probe = _probe_cli(executable, timeout_seconds)
         if not probe["supported"]:
-            return _result(checks=[_check("cli_capabilities", False, "; ".join(probe["diagnostics"]))])
-    except (OSError, ValueError, TypeError, KeyError) as exc:
+            return _result(bambu_version=probe["version"], checks=[_check("cli_capabilities", False, "; ".join(probe["diagnostics"]))])
+    except (OSError, ValueError, TypeError, KeyError, RecursionError) as exc:
         return _result(checks=[_check("prepared", False, str(exc))])
     try:
         completed = subprocess.run(
-            list(plan["argv"]), cwd=str(job_dir), shell=False, stdin=subprocess.DEVNULL,
+            argv, cwd=str(job_dir), shell=False, stdin=subprocess.DEVNULL,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=timeout_seconds, check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        return _result("timed_out", stdout=_text(exc.stdout), stderr=_text(exc.stderr),
+        return _result("timed_out", bambu_version=probe["version"], stdout=_text(exc.stdout), stderr=_text(exc.stderr),
                        checks=[_check("process", False, "슬라이싱 제한시간을 초과했습니다. 출력은 검증되지 않았습니다.")])
     except OSError as exc:
-        return _result("failed", stderr=str(exc), checks=[_check("process", False, str(exc))])
-    result = _result("failed", exit_code=completed.returncode, stdout=_text(completed.stdout), stderr=_text(completed.stderr))
+        return _result("failed", bambu_version=probe["version"], stderr=str(exc), checks=[_check("process", False, str(exc))])
+    result = _result("failed", bambu_version=probe["version"], exit_code=completed.returncode, stdout=_text(completed.stdout), stderr=_text(completed.stderr))
     result["checks"].append(_check("process", completed.returncode == 0, f"CLI exit code: {completed.returncode}"))
     if completed.returncode != 0:
         return result
@@ -481,15 +588,17 @@ def execute_slice(plan: dict, timeout_seconds: int = 180) -> dict:
         if output.is_symlink() or not output.is_file() or not 0 < output.stat().st_size <= _MAX_ARCHIVE_BYTES:
             raise ValueError("이번 작업의 비어 있지 않은 출력 3MF를 확인하지 못했습니다.")
         settings, plate_count = _inspect_archive(output, require_gcode=True)
+        output_sha256 = _hash(output)
         result["checks"].append(_check("sliced_archive", True, f"ZIP 무결성과 {plate_count}개 G-code 파일을 확인했습니다."))
     except (OSError, ValueError, RuntimeError, zipfile.BadZipFile, NotImplementedError) as exc:
         result["checks"].append(_check("sliced_archive", False, str(exc)))
         return result
     result["output_path"] = str(output)
+    result["output_sha256"] = output_sha256
     if settings is None:
         result["checks"].append(_check("project_settings", False, "핵심 프로젝트 설정을 다시 읽을 수 없어 검토가 필요합니다."))
     else:
-        for key, expected in plan["expected_settings"].items():
+        for key, expected in expected_settings.items():
             present = key in settings
             equal = present and _equivalent(expected, settings[key])
             detail = "요청값과 일치합니다." if equal else ("출력 설정이 요청값과 다릅니다." if present else "출력에서 이 설정을 확인할 수 없습니다.")
