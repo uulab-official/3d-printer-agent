@@ -29,8 +29,14 @@ browser JavaScript, unittest, Node controller harness and Playwright CI.
       transitions. Resolve concrete issues with reproducing regressions.
 - [x] Verify locally: `python -m unittest discover -v`, UI syntax/controller
       tests, browser test discovery and Python wheel/static assets.
-- [ ] Publish reviewed change to `main`; inspect actual CI results and browser
+- [x] Publish reviewed change to `main`; inspect actual CI results and browser
       artifacts. Record exact verification results and final remote commit.
+
+Feature commit: `516ff0340e4ce8a0ddb5afe6a70037e269a7c9b2`.
+Application CI `43380405229` passed 215 Python / 48 controller / 20 real browser
+checks; native regression CI `43380405138` passed both existing adapter cases.
+Downloaded browser reports, six screenshots and native artifacts were inspected.
+Evidence-record follow-up changes documentation only.
 
 ## Review focus
 

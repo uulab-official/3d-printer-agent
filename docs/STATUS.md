@@ -18,6 +18,16 @@ Native slicing preparation now assembles supplied machine/process/filament files
 
 The original local validation is documented in [VERIFICATION.md](VERIFICATION.md). Current unit, package and browser results are recorded per commit in [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions). A workflow definition alone is not evidence of a successful run.
 
+### Studio preset archive checks — 2026-11-13
+
+[Application CI 43380405229](https://github.com/uulab-official/3d-printer-agent/actions/runs/43380405229), on feature commit `516ff0340e4ce8a0ddb5afe6a70037e269a7c9b2`, passed **215 Python tests, 48 controller tests and 20 real Chromium workflows** (10 desktop and 10 mobile viewport). There were no failed, flaky or skipped browser tests. Wheel build/install, packaged assets and execution outside the source tree passed.
+
+The new browser flows exercise typeless Studio filament archives, exact original text and byte hashes, missing-parent recovery, guided edits, save/reload/open, report download, mixed printer bundles, pasted-input preservation, repeated-import handling and atomic rejection. Six desktop/mobile screenshots were inspected. The two downloaded archive reports were independently compared with the exact committed synthetic ZIP fixture: archive/member hashes and all canonical document hashes match, the original 215 and edited 220 values remain separate, and desktop/mobile reports are byte-identical. These values are test data, not material recommendations.
+
+Independent review found and fixed malformed manifest types and forged ZIP prefix sizes/CRCs. Complete bounded DEFLATE/STORED stream checks now reject hidden trailing data; the exact counterexamples and full regression suite passed. Archive origins remain input receipts rather than authority or measurement claims. The source-derived fixtures do not qualify a captured GUI export, native preset installation or physical printing.
+
+[Native regression CI 43380405138](https://github.com/uulab-official/3d-printer-agent/actions/runs/43380405138) passed on the same feature commit. Actual Studio `02.09.01.70` sliced the original STL cube and CadQuery cable-comb 3MF through the unchanged adapter. Each passed 32 adapter checks and 30 independently recomputed setting comparisons. The downloaded evidence, exact committed adapter/script hashes and original geometry were rechecked separately. This tests the existing synthetic native path; it does not convert archive import into native qualification. Later evidence-record edits change documentation only.
+
 ### Native Bambu checks — 2026-11-13
 
 [Final application CI 43376181601](https://github.com/uulab-official/3d-printer-agent/actions/runs/43376181601), on `2e29040597b3f948a7bdb01bf5da34ebaf991a69`, passed **181 Python tests, 38 controller tests and 14 real Chromium workflows**, with no failed, flaky or skipped browser tests. Wheel build/install, packaged assets and execution outside the source tree passed. The helper's desktop/mobile screens and assembled file values were checked; final downloaded reports and archive integrity were verified. Subsequent evidence-record edits are documentation only.
