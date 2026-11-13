@@ -11,6 +11,7 @@ class Element {
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this._text=''; this.children=nodes; }
   setAttribute(name,value) { this.attributes[name]=value; }
+  removeAttribute(name) { delete this.attributes[name]; }
   querySelector() { return new Element(); }
   addEventListener(name,callback) { this.listeners[name]=callback; }
   focus() {}
@@ -19,7 +20,7 @@ function fixture() {
   const ids = new Map();
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
-    $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error,
+    $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder,
     state:{token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout},
@@ -34,15 +35,26 @@ function fixture() {
   }
   return context;
 }
+function profileFixture() {
+  const context=fixture();
+  Object.assign(context.state,{profileDocuments:[],profileTarget:0,profileRevision:0,profileImport:0,profileReport:null,profileDownloadUrl:null});
+  for(const name of ['profileName','invalidateProfile','renderProfileLibrary','importProfileFiles','selectProfileTarget','clearProfileLibrary','reviewProfile']) {
+    const match=new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
+    if(!match)throw new Error('Missing profile controller function: '+name);
+    const tail=source.slice(match.index),end=/\n  \}(?=\n|$)/.exec(tail);
+    vm.runInContext(tail.slice(0,end.index+4),context);
+  }
+  return context;
+}
 const job = () => ({
   id:'job-a',title:'Tray',artifacts:{stl:'/api/jobs/job-a/files/stl',sliced_three_mf:'/api/jobs/job-a/files/sliced_three_mf'},
   result:{template:'tray',parameters:{width:120},dimensions_mm:{x:120,y:80,z:35},volume_mm3:45072,geometry_status:'validated',checks:[],warnings:[],mesh:{vertices:[],faces:[]}},
   latest_slice:null,user_outcome:null,
 });
 (async()=>{
-  let failed=0;
+  let failed=0,passed=0;
   async function check(name,test) {
-    try { await test(); console.log('PASS',name); }
+    try { await test(); passed++; console.log('PASS',name); }
     catch(error) { failed++; console.log('FAIL',name,error.message); }
   }
   await check('Changing a template removes the previous job and preview target',()=>{
@@ -78,5 +90,47 @@ const job = () => ({
     assert.doesNotMatch(c.$('history-feedback').textContent,/Cannot read/);
     assert.equal(c.state.job,null);
   });
-  console.log('State regression checks:',5-failed,'passed,',failed,'failed');process.exitCode=failed?1:0;
+  await check('Profile edits revoke a previous report and hide both review and inheritance results',()=>{
+    const c=profileFixture();const revoked=[];
+    c.URL={revokeObjectURL:url=>revoked.push(url)};
+    c.state.profileDownloadUrl='blob:previous';c.state.profileReport={status:'resolved'};
+    c.$('profile-download').setAttribute('href','blob:previous');
+    c.invalidateProfile();
+    assert.deepEqual(revoked,['blob:previous']);assert.equal(c.state.profileReport,null);
+    for(const id of ['profile-result','profile-resolution','profile-download'])assert.equal(c.$(id).hidden,true);
+    assert.equal(c.$('profile-download').attributes.href,undefined);
+  });
+  await check('A late profile review cannot restore a result after inputs change',async()=>{
+    const c=profileFixture();c.$('profile-json').value='{}';
+    let resolve,rendered=0;c.api=()=>new Promise(done=>{resolve=done;});
+    c.renderProfile=()=>rendered++;c.renderProfileResolution=()=>rendered++;
+    const pending=c.reviewProfile();c.invalidateProfile();resolve({decision:'needs_input'});
+    await pending;assert.equal(rendered,0);assert.equal(c.state.profileReport,null);
+  });
+  await check('A late file read cannot overwrite a newer profile draft',async()=>{
+    const c=profileFixture();let resolve;
+    const input={files:[{name:'old.json',size:15,text:()=>new Promise(done=>{resolve=done;})}],value:'old.json'};
+    const pending=c.importProfileFiles(input);
+    c.$('profile-json').value='{"name":"New draft"}';c.invalidateProfile();
+    resolve('{"name":"Old preset"}');await pending;
+    assert.equal(c.$('profile-json').value,'{"name":"New draft"}');assert.equal(c.state.profileDocuments.length,0);
+  });
+  await check('A failed file import preserves the previous editable document and invalidates success',async()=>{
+    const c=profileFixture();const original={filename:'kept.json',profile:{name:'Kept'},draftText:'{"name":"Edited"}'};
+    c.state.profileDocuments=[original];c.$('profile-json').value=original.draftText;
+    await c.importProfileFiles({files:[{name:'bad.json',size:4,text:async()=>'{bad'}],value:'bad.json'});
+    assert.equal(c.state.profileDocuments.length,1);assert.equal(c.state.profileDocuments[0],original);
+    assert.equal(c.$('profile-json').value,original.draftText);assert.equal(c.$('profile-resolution').hidden,true);
+    assert.equal(c.$('profile-feedback').hidden,false);assert.match(c.$('profile-feedback').textContent,/bad.json/);
+  });
+  await check('Profile import refuses numbers that JSON parsing cannot preserve',async()=>{
+    for(const number of ['1e999','9007199254740993']) {
+      const c=profileFixture();c.$('profile-json').value='{"name":"Kept draft"}';
+      await c.importProfileFiles({files:[{name:'number.json',size:100,text:async()=>'{"name":"Numeric preset","vendor_value":'+number+'}'}],value:'number.json'});
+      assert.equal(c.state.profileDocuments.length,0);
+      assert.equal(c.$('profile-json').value,'{"name":"Kept draft"}');
+      assert.match(c.$('profile-feedback').textContent,/숫자/);
+    }
+  });
+  console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

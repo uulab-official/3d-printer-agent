@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from print_agent.app import create_app
+from tests.test_profiles import fixture_profile, fixture_setup
 
 
 class APITests(unittest.TestCase):
@@ -98,3 +99,89 @@ class APITests(unittest.TestCase):
         profile=self.client.post('/api/profiles/review',json={'profile':{},'setup':{}},headers=self.headers)
         self.assertEqual(profile.status_code,200)
         self.assertFalse(profile.json()['can_prepare_profile'])
+
+    def test_imported_presets_resolve_values_and_keep_original_evidence(self):
+        parent = fixture_profile()['settings']
+        parent['name'] = 'Synthetic parent; not a recommendation'
+        child = fixture_profile()
+        child['settings'] = {
+            'type': 'filament', 'name': 'Synthetic child; not a recommendation',
+            'inherits': parent['name'], 'nozzle_temperature': ['215'],
+        }
+        documents = [
+            {'filename': 'parent.json', 'profile': parent},
+            {'filename': 'child.json', 'profile': child},
+        ]
+        response = self.client.post('/api/profiles/resolve', json={
+            'documents': documents, 'target_name': child['settings']['name'],
+            'setup': fixture_setup(),
+        }, headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        report = response.json()
+        self.assertEqual(report['status'], 'resolved')
+        self.assertFalse(report['full_config'])
+        self.assertFalse(report['native_verified'])
+        self.assertEqual(report['setup'], fixture_setup())
+        self.assertEqual(report['resolved_profile']['settings']['nozzle_temperature'], ['215'])
+        self.assertEqual(report['resolved_profile']['settings']['filament_flow_ratio'], ['0.98'])
+        self.assertNotIn('inherits', report['resolved_profile']['settings'])
+        self.assertEqual(report['field_sources']['filament_flow_ratio']['filename'], 'parent.json')
+        self.assertEqual(report['field_sources']['nozzle_temperature']['filename'], 'child.json')
+        self.assertEqual(report['review']['decision'], 'ready_to_prepare')
+        self.assertEqual(report['review']['validation_status'], 'unverified')
+        for original, retained in zip(documents, report['documents']):
+            self.assertEqual(retained['profile'], original['profile'])
+            self.assertEqual(len(retained['sha256']), 64)
+
+    def test_missing_imported_parent_returns_actionable_report(self):
+        payload = {'documents': [{'filename': 'child.json', 'profile': {
+            'name': 'Child', 'type': 'filament', 'inherits': 'Missing parent',
+        }}], 'target_name': 'Child', 'setup': {}}
+        response = self.client.post('/api/profiles/resolve', json=payload, headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        report = response.json()
+        self.assertEqual(report['status'], 'needs_input')
+        self.assertIsNone(report['resolved_profile'])
+        self.assertIsNone(report['review'])
+        self.assertFalse(report['full_config'])
+        self.assertIn('Missing parent', str(report['issues']))
+        self.assertEqual(report['documents'][0]['profile']['inherits'], 'Missing parent')
+
+    def test_preset_import_shape_and_document_limits_are_enforced(self):
+        document = {'filename': 'profile.json', 'profile': {'name': 'Profile'}}
+        for payload in (
+            {'documents': [], 'target_name': 'Profile'},
+            {'documents': [document] * 65, 'target_name': 'Profile'},
+            {'documents': [{'filename': 'profile.json', 'profile': []}], 'target_name': 'Profile'},
+            {'documents': [{**document, 'open_path': '/tmp/preset.json'}], 'target_name': 'Profile'},
+            {'documents': [document], 'target_name': ''},
+            {'documents': [document], 'target_name': 'Profile', 'execute': True},
+        ):
+            with self.subTest(payload_keys=list(payload)):
+                response = self.client.post('/api/profiles/resolve', json=payload, headers=self.headers)
+                self.assertEqual(response.status_code, 422, response.text)
+
+    def test_preset_import_uses_existing_local_request_boundary(self):
+        payload = {'documents': [{'filename': 'p.json', 'profile': {'name': 'Profile'}}], 'target_name': 'Profile'}
+        self.assertEqual(self.client.post('/api/profiles/resolve', json=payload).status_code, 403)
+        self.assertEqual(self.client.post('/api/profiles/resolve', json=payload,
+            headers={**self.headers, 'Origin': 'https://untrusted.example'}).status_code, 403)
+        response = self.client.post('/api/profiles/resolve', content=b'x' * (2 * 1024 * 1024 + 1),
+            headers={**self.headers, 'Content-Type': 'application/json'})
+        self.assertEqual(response.status_code, 413)
+
+    def test_deeply_nested_import_is_an_actionable_input_error(self):
+        nested = 'synthetic leaf'
+        for _ in range(500):
+            nested = [nested]
+        for location in ('profile', 'setup'):
+            with self.subTest(location=location):
+                profile = {'name': 'Deep synthetic preset'}
+                setup = {}
+                (profile if location == 'profile' else setup)['vendor_notes'] = nested
+                payload = {'documents': [{'filename': 'deep.json', 'profile': profile}],
+                           'target_name': profile['name'], 'setup': setup}
+                with TestClient(self.app, raise_server_exceptions=False) as client:
+                    response = client.post('/api/profiles/resolve', json=payload, headers=self.headers)
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn('중첩', response.json()['detail'])

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — 2026-11-13
+
+- Import related filament JSON files, select and edit a target, and add missing parents without losing the collection.
+- Resolve supported explicit single-parent inheritance with exact names, preserved documents, canonical JSON hashes and per-field assignment history.
+- Review the result against the supplied setup and download the evidence report; changed inputs invalidate prior results and late responses.
+- Report missing parents, duplicates, cycles and unsupported include/variant/nil constructs without inventing settings or claiming a full Studio configuration.
+
 ## 0.1.0 — 2026-11-12
 
 Initial open-source development release.

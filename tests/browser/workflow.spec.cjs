@@ -192,3 +192,142 @@ test('a rejected CAD request remains inspectable in history without a fake model
   await noHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('failed-job-history.png'), fullPage: true });
 });
+
+function presetUpload(name, profile) {
+  return { name, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(profile)) };
+}
+
+// Synthetic settings prove data flow only; they are not printing recommendations.
+function inheritedPresetFixture() {
+  const setup = {
+    printer_model: 'Fixture Printer', printer_preset: 'Fixture Printer 0.4 nozzle',
+    nozzle_diameter: 0.4, plate_type: 'Textured PEI Plate', extruder: 'fixture_extruder',
+    feed_mode: 'external_spool', material_id: 'fixture:synthetic-pla', material_identity_status: 'exact',
+  };
+  const base = {
+    type: 'filament', name: 'Synthetic Base', instantiation: 'false',
+    description: '<img src=x onerror="window.fixtureExecuted=true">',
+    nozzle_temperature: ['205'], nozzle_temperature_initial_layer: ['205'],
+    filament_flow_ratio: ['0.98'], filament_max_volumetric_speed: ['12'],
+    textured_plate_temp: ['55'], textured_plate_temp_initial_layer: ['55'],
+  };
+  const child = {
+    id: 'synthetic-child',
+    settings: { type: 'filament', name: 'Synthetic Child', inherits: 'Synthetic Base', nozzle_temperature: ['215'], compatible_printers: ['Fixture Printer 0.4 nozzle'] },
+    scope: Object.fromEntries(Object.entries(setup).filter(([key]) => key !== 'material_identity_status')),
+    source: { authority: 'user', publisher: 'Synthetic fixture; not a manufacturer' },
+  };
+  return { base, child, setup };
+}
+
+test('imported presets recover a missing parent, preserve overrides and export evidence without stale results', async ({ page }, testInfo) => {
+  const { base, child, setup } = inheritedPresetFixture();
+  await openView(page, 'profiles');
+  await page.locator('#profile-file').setInputFiles(presetUpload('child.json', child));
+  await expect(page.locator('#profile-target option')).toHaveCount(1);
+  await expect(page.locator('#profile-target')).toHaveValue('0');
+  const missingResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  const missing = await (await missingResponse).json();
+  expect(missing.status).toBe('needs_input');
+  expect(missing.resolved_profile).toBeNull();
+  await expect(page.locator('#profile-resolution-issues')).toContainText('Synthetic Base');
+  await expect(page.locator('#profile-result')).toBeHidden();
+  await expect(page.locator('#review-profile')).toBeEnabled();
+
+  await page.locator('#profile-file').setInputFiles(presetUpload('base.json', base));
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  await expect(page.locator('#profile-target')).toHaveValue('0');
+  await expect(page.locator('#profile-resolution')).toBeHidden();
+  await expect(page.locator('#profile-download')).toBeHidden();
+  expect(JSON.parse(await page.locator('#profile-json').inputValue())).toEqual(child);
+
+  const edited = structuredClone(child);
+  edited.settings.nozzle_temperature = ['220'];
+  await page.locator('#profile-json').fill(JSON.stringify(edited));
+  for (const [name, value] of Object.entries(setup)) {
+    const field = page.locator(`.setup-grid [name="${name}"]`);
+    if (name === 'material_identity_status') await field.selectOption(value);
+    else await field.fill(String(value));
+  }
+  const resolvedResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  const resolved = await (await resolvedResponse).json();
+  expect(resolved.status).toBe('resolved');
+  expect(resolved.full_config).toBe(false);
+  expect(resolved.native_verified).toBe(false);
+  expect(resolved.chain.map(item => item.name)).toEqual(['Synthetic Base', 'Synthetic Child']);
+  expect(resolved.resolved_profile.settings.nozzle_temperature).toEqual(['220']);
+  expect(resolved.resolved_profile.settings.filament_flow_ratio).toEqual(['0.98']);
+  expect(resolved.field_sources.nozzle_temperature.history.map(item => item.value)).toEqual([['205'], ['220']]);
+  expect(resolved.field_sources.filament_flow_ratio.inherited).toBe(true);
+  await expect(page.locator('#profile-chain')).toContainText('Synthetic Base');
+  await expect(page.locator('#profile-fields tr[data-field="nozzle_temperature"] td').first()).toHaveText('["220"]');
+  await expect(page.locator('#profile-fields tr[data-field="filament_flow_ratio"]')).toContainText('base.json');
+  await expect(page.locator('#profile-decision')).toHaveText('프로필 준비 가능');
+  await expect(page.locator('#profile-resolution img')).toHaveCount(0);
+  expect(await page.evaluate(() => window.fixtureExecuted)).toBeUndefined();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#profile-download').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('filament-review.json');
+  const file = testInfo.outputPath('filament-review.json');
+  await download.saveAs(file);
+  const report = JSON.parse(await fs.readFile(file, 'utf8'));
+  expect(report.documents[0].profile.settings.nozzle_temperature).toEqual(['220']);
+  expect(report.imported_documents[0].profile).toEqual(child);
+  expect(report.imported_documents[1].profile).toEqual(base);
+  expect(report.edited_filenames).toEqual(['child.json']);
+  expect(report.setup).toEqual(setup);
+  expect(report.full_config).toBe(false);
+  expect(report.native_verified).toBe(false);
+  expect(report.documents.every(document => /^[a-f0-9]{64}$/.test(document.sha256))).toBe(true);
+  await noHorizontalOverflow(page);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: testInfo.outputPath('filament-inheritance.png'), fullPage: true });
+
+  await expect(page.locator('#review-profile')).toBeEnabled();
+  await page.locator('#setup-nozzle').fill('0.6');
+  await expect(page.locator('#profile-result')).toBeHidden();
+  await expect(page.locator('#profile-resolution')).toBeHidden();
+  await expect(page.locator('#profile-download')).not.toHaveAttribute('href');
+  await page.locator('#profile-target').selectOption('1');
+  expect(JSON.parse(await page.locator('#profile-json').inputValue())).toEqual(base);
+  await page.locator('#profile-target').selectOption('0');
+  expect(JSON.parse(await page.locator('#profile-json').inputValue())).toEqual(edited);
+  await page.locator('#profile-clear').click();
+  await expect(page.locator('#profile-library')).toBeHidden();
+  await page.locator('#profile-json').fill('{}');
+  const standalone = page.waitForResponse(response => response.url().endsWith('/api/profiles/review'));
+  await page.locator('#review-profile').click();
+  expect((await standalone).status()).toBe(200);
+  await expect(page.locator('#profile-resolution')).toBeHidden();
+});
+
+test('unsupported includes and malformed imports stay visible without claiming a resolved preset', async ({ page }, testInfo) => {
+  const { base, child } = inheritedPresetFixture();
+  child.settings.include = ['Unresolved template'];
+  await openView(page, 'profiles');
+  await page.locator('#profile-file').setInputFiles([presetUpload('child.json', child), presetUpload('base.json', base)]);
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  const response = page.waitForResponse(result => result.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  const blocked = await (await response).json();
+  expect(blocked.status).toBe('blocked');
+  expect(blocked.resolved_profile).toBeNull();
+  expect(blocked.review).toBeNull();
+  await expect(page.locator('#profile-resolution-issues')).not.toBeEmpty();
+  await expect(page.locator('#profile-fields table')).toHaveCount(0);
+  await expect(page.locator('#profile-result')).toBeHidden();
+  await expect(page.locator('#review-profile')).toBeEnabled();
+  const previous = await page.locator('#profile-json').inputValue();
+  await page.locator('#profile-file').setInputFiles({ name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{broken') });
+  await expect(page.locator('#profile-feedback')).toContainText('broken.json');
+  await expect(page.locator('#profile-json')).toHaveValue(previous);
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  await expect(page.locator('#profile-resolution')).toBeHidden();
+  await expect(page.locator('#profile-download')).not.toHaveAttribute('href');
+  await noHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('filament-import-error.png'), fullPage: true });
+});

@@ -18,6 +18,7 @@ from . import __version__
 from .geometry import generate_model, template_catalog
 from .offers import compare_offers
 from .planner import plan_from_text, plan_with_llm, provider_config
+from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
 from .schemas import GeometryRequest
 from .slicer import detect_environment, execute_slice, prepare_slice
@@ -111,6 +112,17 @@ class ProfilePayload(StrictPayload):
     setup: dict = Field(default_factory=dict)
 
 
+class ProfileDocumentPayload(StrictPayload):
+    filename: str = Field(min_length=1, max_length=240)
+    profile: dict
+
+
+class ProfileResolvePayload(StrictPayload):
+    documents: list[ProfileDocumentPayload] = Field(min_length=1, max_length=64)
+    target_name: str = Field(min_length=1, max_length=256)
+    setup: dict = Field(default_factory=dict)
+
+
 class CalibrationPayload(StrictPayload):
     records: list[dict] = Field(max_length=100)
     changes: dict
@@ -199,6 +211,14 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.post('/api/profiles/review')
     def profile_review(payload: ProfilePayload):
         return evaluate_profile(payload.profile,payload.setup)
+
+    @app.post('/api/profiles/resolve')
+    def profile_resolve(payload: ProfileResolvePayload):
+        return resolve_profile_documents(
+            [document.model_dump() for document in payload.documents],
+            payload.target_name,
+            payload.setup,
+        )
 
     @app.post('/api/calibrations/review')
     def calibration_review(payload: CalibrationPayload):

@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false };
+  const state = { token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -151,9 +151,19 @@
   }
 
   function parseObject(value, label) {
-    let parsed;
-    try { parsed = JSON.parse(value); }
-    catch { throw new Error(`${label}의 JSON 문법을 확인해 주세요. 중괄호와 따옴표가 맞아야 합니다.`); }
+    let parsed, unsupportedNumber = false;
+    try {
+      parsed = JSON.parse(value, (_key, item) => {
+        if (typeof item === "number" && (!Number.isFinite(item) || (Number.isInteger(item) && !Number.isSafeInteger(item)))) {
+          unsupportedNumber = true;
+          throw new Error("Unsupported JSON number");
+        }
+        return item;
+      });
+    } catch {
+      if (unsupportedNumber) throw new Error(`${label}의 숫자를 정확하게 보존할 수 없습니다. 유한한 숫자와 안전한 범위의 정수를 사용해 주세요.`);
+      throw new Error(`${label}의 JSON 문법을 확인해 주세요. 중괄호와 따옴표가 맞아야 합니다.`);
+    }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${label}은 JSON 객체여야 합니다.`);
     return parsed;
   }
@@ -463,7 +473,7 @@
       toast(`${file.name} 파일을 불러왔습니다. 검토 버튼을 눌러 확인하세요.`);
     } catch (error) { showNotice(feedbackId, error.message, "error"); }
   }
-  $("profile-file").addEventListener("change", (event) => readFile(event.target, $("profile-json"), "profile-feedback"));
+  $("profile-file").addEventListener("change", (event) => importProfileFiles(event.target));
   $("slicer-file").addEventListener("change", (event) => readFile(event.target, $("slicer-json"), "slice-feedback"));
 
   $("outcome-form").addEventListener("submit", async (event) => {
@@ -479,9 +489,89 @@
     } catch (error) { showNotice("outcome-feedback", error.message, "error"); }
   });
 
-  $("profile-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
+  function profileName(profile) {
+    const settings = profile && Object.hasOwn(profile, "settings") ? profile.settings : profile;
+    return settings && typeof settings.name === "string" ? settings.name : "";
+  }
+
+  function invalidateProfile() {
+    state.profileRevision += 1;
+    state.profileReport = null;
+    if (state.profileDownloadUrl) URL.revokeObjectURL(state.profileDownloadUrl);
+    state.profileDownloadUrl = null;
+    $("profile-download").removeAttribute("href");
+    ["profile-result", "profile-resolution", "profile-download"].forEach((id) => { $(id).hidden = true; });
     hideNotice("profile-feedback");
+  }
+
+  function renderProfileLibrary() {
+    $("profile-library").hidden = state.profileDocuments.length === 0;
+    const select = $("profile-target");
+    select.replaceChildren(...state.profileDocuments.map((entry, index) => {
+      let name = profileName(entry.profile);
+      try { name = profileName(JSON.parse(entry.draftText)); } catch { /* Keep the last imported name while JSON is being edited. */ }
+      const option = node("option", "", `${name || "이름 미확인"} · ${entry.filename}`);
+      option.value = String(index);
+      return option;
+    }));
+    select.value = String(state.profileTarget);
+    $("profile-library-summary").textContent = `${state.profileDocuments.length}개 파일 · 선택한 JSON을 아래에서 편집할 수 있습니다. 원본은 보고서에 함께 보존합니다.`;
+  }
+
+  async function importProfileFiles(input) {
+    const files = Array.from(input.files || []);
+    if (!files.length) return;
+    input.value = "";
+    invalidateProfile();
+    const revision = state.profileRevision;
+    const importId = ++state.profileImport;
+    if (state.profileDocuments[state.profileTarget]) state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
+    try {
+      if (state.profileDocuments.length + files.length > 64) throw new Error("한 번에 검토할 파일은 최대 64개입니다. 파일 모음을 비우고 필요한 파일만 다시 선택해 주세요.");
+      if (files.reduce((sum, file) => sum + file.size, 0) > 2 * 1024 * 1024) throw new Error("가져올 JSON 파일의 합계는 2 MiB 이하여야 합니다.");
+      const imported = await Promise.all(files.map(async (file) => {
+        const profile = parseObject(await file.text(), file.name);
+        return { filename: file.name, profile, draftText: JSON.stringify(profile, null, 2) };
+      }));
+      if (revision !== state.profileRevision || importId !== state.profileImport) return;
+      const documents = [...state.profileDocuments, ...imported];
+      const submitted = documents.map((entry) => ({ filename: entry.filename, profile: parseObject(entry.draftText, entry.filename) }));
+      if (new TextEncoder().encode(JSON.stringify(submitted)).byteLength > 2 * 1024 * 1024) throw new Error("기존 파일을 포함한 JSON 합계가 2 MiB를 넘습니다. 필요한 파일만 선택해 주세요.");
+      const firstImport = state.profileDocuments.length === 0;
+      state.profileDocuments = documents;
+      if (firstImport) {
+        state.profileTarget = 0;
+        $("profile-json").value = documents[0].draftText;
+      }
+      renderProfileLibrary();
+      showNotice("profile-feedback", `${files.length}개 파일을 추가했습니다. 검토할 프로필을 선택한 뒤 프로필 검토하기를 누르세요.`, "info");
+    } catch (error) {
+      if (revision === state.profileRevision && importId === state.profileImport) showNotice("profile-feedback", error.message, "error");
+    }
+  }
+
+  function selectProfileTarget() {
+    if (state.profileDocuments[state.profileTarget]) state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
+    const index = Number($("profile-target").value);
+    if (!Number.isInteger(index) || !state.profileDocuments[index]) return;
+    state.profileTarget = index;
+    $("profile-json").value = state.profileDocuments[index].draftText;
+    invalidateProfile();
+    renderProfileLibrary();
+  }
+
+  function clearProfileLibrary() {
+    invalidateProfile();
+    state.profileImport += 1;
+    state.profileDocuments = [];
+    state.profileTarget = 0;
+    renderProfileLibrary();
+    showNotice("profile-feedback", "파일 모음을 비웠습니다. 선택했던 JSON은 입력창에 남아 있으며 단일 프로필로 검토할 수 있습니다.");
+  }
+
+  async function reviewProfile() {
+    invalidateProfile();
+    const revision = state.profileRevision;
     try {
       await withBusy($("review-profile"), "프로필 검토 중", async () => {
         const profile = parseObject($("profile-json").value, "필라멘트 프로필");
@@ -489,11 +579,94 @@
         document.querySelectorAll(".setup-grid [name]").forEach((input) => {
           setup[input.name] = input.name === "nozzle_diameter" && input.value !== "" ? input.valueAsNumber : input.value.trim();
         });
-        renderProfile(await api("/api/profiles/review", { profile, setup }));
+        if (state.profileDocuments.length) {
+          state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
+          const documents = state.profileDocuments.map((entry) => ({ filename: entry.filename, profile: parseObject(entry.draftText, entry.filename) }));
+          const targetName = profileName(profile);
+          if (!targetName.trim()) throw new Error("선택한 프로필의 name에 정확한 이름이 필요합니다. 이름 필드는 소문자 name으로 입력해 주세요.");
+          const originals = state.profileDocuments.map((entry) => ({ filename: entry.filename, profile: entry.profile }));
+          const edited = documents.filter((entry, index) => JSON.stringify(entry.profile) !== JSON.stringify(originals[index].profile)).map((entry) => entry.filename);
+          const result = await api("/api/profiles/resolve", { documents, target_name: targetName, setup });
+          if (revision !== state.profileRevision) return;
+          renderProfileResolution({ ...result, setup, imported_documents: originals, edited_filenames: edited });
+          if (result.review) renderProfile(result.review);
+        } else {
+          const result = await api("/api/profiles/review", { profile, setup });
+          if (revision === state.profileRevision) renderProfile(result);
+        }
       });
-    } catch (error) { showNotice("profile-feedback", error.message, "error"); }
+    } catch (error) {
+      if (revision === state.profileRevision) showNotice("profile-feedback", error.message, "error");
+    }
+  }
+
+  function renderProfileResolution(result) {
+    state.profileReport = result;
+    $("profile-resolution").hidden = false;
+    const statuses = { resolved: ["명시된 설정 연결 확인", "success"], needs_input: ["상속 파일 필요", "warning"], blocked: ["해석 조건 확인 필요", "warning"] };
+    const [label, tone] = statuses[result.status] || ["해석 결과 확인 필요", "neutral"];
+    setBadge("profile-resolution-status", label, tone);
+    $("profile-resolution-issues").replaceChildren(...(result.issues || []).map((issue) => node("li", "", issue.message || issue.code)));
+    $("profile-chain").replaceChildren(...(result.chain || []).map((entry, index) => {
+      const item = node("li");
+      item.append(node("strong", "", `${index + 1}. ${entry.name}`), node("small", "", entry.filename));
+      const hash = node("small", "", `JSON SHA-256 · ${(entry.sha256 || "").slice(0, 12)}…`);
+      hash.title = entry.sha256 || "";
+      item.append(hash);
+      return item;
+    }));
+    $("profile-resolution-warnings").replaceChildren(...(result.warnings || []).map((warning) => node("p", "", friendly(warning))));
+    const entries = Object.entries(result.field_sources || {});
+    const area = $("profile-fields");
+    area.replaceChildren();
+    if (entries.length) {
+      const table = node("table", "profile-fields-table");
+      const head = node("thead");
+      const headings = node("tr");
+      ["설정", "명시된 값", "값의 출처"].forEach((title) => headings.append(node("th", "", title)));
+      head.append(headings);
+      const body = node("tbody");
+      for (const [field, source] of entries) {
+        const row = node("tr");
+        row.dataset.field = field;
+        const heading = node("th", "", fieldNames[field] || field);
+        heading.scope = "row";
+        if (fieldNames[field]) heading.append(node("small", "", field));
+        const value = result.resolved_profile?.settings?.[field];
+        const cell = node("td", "", JSON.stringify(value));
+        const origin = node("td", "", source.preset_name);
+        origin.append(node("small", "", source.filename), node("small", "", source.inherited ? "부모에서 상속" : "선택한 프로필에 명시"));
+        if (source.history?.length > 1) {
+          const details = node("details");
+          details.append(node("summary", "", `덮어쓰기 기록 ${source.history.length}건`));
+          const list = node("ol");
+          source.history.forEach((assignment) => list.append(node("li", "", `${assignment.preset_name} (${assignment.filename}) · ${JSON.stringify(assignment.value)}`)));
+          details.append(list);
+          origin.append(details);
+        }
+        row.append(heading, cell, origin);
+        body.append(row);
+      }
+      table.append(head, body);
+      area.append(table);
+    }
+    const serialized = JSON.stringify(result, null, 2);
+    $("profile-resolution-report").textContent = serialized;
+    if (state.profileDownloadUrl) URL.revokeObjectURL(state.profileDownloadUrl);
+    state.profileDownloadUrl = URL.createObjectURL(new Blob([serialized], { type: "application/json" }));
+    $("profile-download").href = state.profileDownloadUrl;
+    $("profile-download").hidden = false;
+  }
+
+  $("profile-form").addEventListener("submit", (event) => { event.preventDefault(); reviewProfile(); });
+  $("profile-form").addEventListener("input", (event) => {
+    if (event.target.id === "profile-file") return;
+    if (event.target.id === "profile-json" && state.profileDocuments[state.profileTarget]) state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
+    invalidateProfile();
   });
-  $("profile-form").addEventListener("input", () => { $("profile-result").hidden = true; });
+  $("profile-target").addEventListener("change", selectProfileTarget);
+  $("profile-clear").addEventListener("click", clearProfileLibrary);
+  window.addEventListener("beforeunload", () => { if (state.profileDownloadUrl) URL.revokeObjectURL(state.profileDownloadUrl); });
 
   function renderProfile(result) {
     $("profile-result").hidden = false;
