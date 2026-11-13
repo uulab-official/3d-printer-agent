@@ -131,14 +131,29 @@
         <section class="card slicer-card" aria-labelledby="slicer-heading">
           <div class="card-heading"><div><span class="step-label">다음 단계</span><h2 id="slicer-heading">Bambu Studio로 출력 준비</h2></div><span id="slicer-status" class="badge badge-neutral">환경 확인 중</span></div>
           <p id="slicer-description" class="muted">이 컴퓨터의 Bambu Studio 설치와 명령줄 기능을 확인합니다.</p>
+          <button id="probe-slicer" class="button button-secondary" type="button" disabled>설치된 슬라이서 확인</button>
+          <div id="slicer-probe-feedback" class="notice slicer-probe-feedback" role="status" hidden></div>
           <div class="notice notice-info compact-notice"><p>이 단계는 슬라이스 파일을 준비합니다. 프린터 연결이나 실제 출력 시작은 수행하지 않습니다.</p></div>
           <details id="slicer-details" class="settings-details">
             <summary>전체 슬라이서 설정으로 준비하기</summary>
+            <section class="slicer-file-helper" aria-labelledby="slicer-files-heading">
+              <h3 id="slicer-files-heading">설정 파일을 골라 묶음 만들기</h3>
+              <p class="field-help">Bambu Studio CLI용 전체 machine·process·filament JSON을 선택하세요. 재료 검토 보고서나 상속이 남은 부분 프리셋은 전체 설정을 대신하지 않습니다. 파일의 상속 필드나 값을 지우거나 채우지 않습니다.</p>
+              <div class="slicer-file-grid">
+                <label class="slicer-file-control" for="slicer-machine-file">프린터 전체 설정 · machine<input id="slicer-machine-file" type="file" accept=".json,application/json"><span id="slicer-machine-summary" class="field-help">선택한 파일 없음</span></label>
+                <label class="slicer-file-control" for="slicer-process-file">출력 공정 전체 설정 · process<input id="slicer-process-file" type="file" accept=".json,application/json"><span id="slicer-process-summary" class="field-help">선택한 파일 없음</span></label>
+                <label class="slicer-file-control" for="slicer-filament-files">필라멘트 전체 설정 · 1~16개<input id="slicer-filament-files" type="file" accept=".json,application/json" multiple><span id="slicer-filaments-summary" class="field-help">선택한 파일 없음</span></label>
+                <label for="slicer-plate">이번 출력의 플레이트<select id="slicer-plate"><option value="">직접 선택하세요</option><option value="Cool Plate">쿨 플레이트 · Cool Plate</option><option value="Engineering Plate">엔지니어링 · Engineering Plate</option><option value="High Temp Plate">고온 · High Temp Plate</option><option value="Textured PEI Plate">텍스처 PEI · Textured PEI Plate</option><option value="Supertack Plate">슈퍼택 · Supertack Plate</option></select></label>
+              </div>
+              <p class="field-help">필라멘트는 표시된 순서로 포함합니다. 다시 선택하면 해당 종류의 선택을 교체합니다. 파일과 최종 요청은 각각 8 MiB까지 읽을 수 있습니다. 원본 파일은 수정하지 않습니다.</p>
+              <div class="button-row"><button id="assemble-slicer" class="button button-secondary" type="button" disabled>설정 묶음 만들기</button><button id="cancel-slicer-assembly" class="text-button" type="button" disabled>편집 취소</button><span id="slicer-helper-status" class="field-help" role="status">파일과 플레이트를 선택하세요.</span></div>
+              <div id="slicer-helper-feedback" class="notice" role="status" hidden></div>
+            </section>
             <div class="slicer-layout">
               <div>
                 <div class="label-row"><label for="slicer-json">전체 구성 JSON</label><label class="file-button">JSON 파일 열기<input id="slicer-file" type="file" accept=".json,application/json"></label></div>
-                <textarea id="slicer-json" class="code-input" rows="8" spellcheck="false" placeholder='{"machine": {}, "process": {}, "filaments": [], "source": "user_export"}'></textarea>
-                <p class="field-help">machine, process, filaments의 전체 설정이 필요합니다. 상속이 해결되지 않은 부분 프로필은 사용할 수 없습니다.</p>
+                <textarea id="slicer-json" class="code-input" rows="8" spellcheck="false" placeholder='{"machine": {}, "process": {}, "filaments": [], "plate_type": "사용 중인 플레이트", "source": "user_export"}'></textarea>
+                <p class="field-help">묶음을 직접 입력하거나 JSON 파일로 열 수도 있습니다. 위의 파일 선택을 편집 중이라면 먼저 묶음을 만들거나 편집을 취소하세요. 완성한 전체 설정은 실행 계획에서 다시 검토합니다.</p>
                 <div class="button-row"><button id="prepare-slice" class="button button-secondary" type="button" disabled>설정과 실행 계획 검토</button><button id="execute-slice" class="button button-primary" type="button" disabled>슬라이싱 실행</button></div>
               </div>
               <div><div id="slice-feedback" class="notice notice-info" role="status"><p>모델을 생성하고 전체 설정을 제공하면 실행 계획을 확인할 수 있습니다.</p></div><div id="slice-result"></div></div>

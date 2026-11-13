@@ -56,6 +56,8 @@ node tests/test_ui_state.cjs
 
 These tests use temporary files and synthetic slicer/provider responses. They do not require a real printer, Bambu account, or paid LLM credentials. A controller test using DOM doubles is different from a browser test. Report native slicer, browser, live-provider, and physical-print checks separately.
 
+The separate [native Bambu workflow](.github/workflows/native-bambu.yml) executes a digest-pinned official Linux release on Ubuntu 24.04. It preserves the official CLI example inputs for a bootstrap check and separately exercises the application's adapter with explicitly synthetic settings on original STL/3MF geometry. It needs no printer credentials. `python scripts/qualify_bambu.py --work-dir qa-output/native-bambu` runs the same qualification on a compatible Linux machine with the required runtime libraries; use a fresh output directory. The script downloads a roughly 256 MB native executable, verifies its digest and runs it locally. Logs and generated settings remain in ignored `qa-output/`; they are evidence for that version and fixture, not production print presets. See [BAMBU_STUDIO.md](docs/BAMBU_STUDIO.md) and [VERIFICATION.md](docs/VERIFICATION.md).
+
 For a behavior change, add a focused regression test that fails for the reported problem. Documentation-only changes generally need link and command review rather than new tests. See the repository's workflows for checks required by CI.
 
 ## Make a reviewable change

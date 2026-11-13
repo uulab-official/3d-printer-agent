@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -139,6 +139,8 @@
   }
 
   function invalidateCurrentJob(message) {
+    cancelSlicerReads();
+    renderSlicerFiles();
     if (!state.job) return;
     state.job = null;
     state.slicePrepared = false;
@@ -364,6 +366,7 @@
   function renderJob(job) {
     const result = job.result;
     if (!result) throw new Error("작업에 모델 결과가 없습니다.");
+    cancelSlicerReads();
     state.job = job;
     state.slicePrepared = false;
     $("model-result").hidden = false;
@@ -392,13 +395,23 @@
     $("slice-result").replaceChildren();
     showNotice("slice-feedback", state.environment.available ? "전체 설정을 제공하고 실행 계획을 먼저 검토해 주세요." : "Bambu Studio를 사용할 수 없어 현재 환경에서는 슬라이싱을 실행할 수 없습니다.");
     if (job.latest_slice) renderSliceResult(job.latest_slice.plan || {}, job.latest_slice.execution, true);
+    if (state.slicerStaged) resetSlicePreparation("선택 중인 설정 파일이 있습니다. 묶음을 만들거나 편집을 취소한 뒤 이 모델의 실행 계획을 검토해 주세요.");
+    renderSlicerFiles();
     updateWorkflowControls();
   }
 
   function updateSliceControls() {
-    const canPrepare = Boolean(state.token && state.job && state.environment.available && !state.workflowBusy);
+    const reading = Object.keys(state.slicerPending).length > 0;
+    const busy = state.workflowBusy;
+    const canPrepare = Boolean(state.token && state.job && state.environment.available && state.environment.cli_supported !== false && !busy && !state.slicerStaged && !reading);
     if (!$("prepare-slice").dataset.busy) $("prepare-slice").disabled = !canPrepare;
     if (!$("execute-slice").dataset.busy) $("execute-slice").disabled = !canPrepare || !state.slicePrepared;
+    $("probe-slicer").disabled = busy || !state.token || !state.environment.available;
+    $("assemble-slicer").disabled = busy || reading || !state.slicerStaged;
+    $("cancel-slicer-assembly").disabled = busy || (!reading && !state.slicerStaged);
+    $("slicer-json").disabled = busy || state.slicerStaged || Boolean(state.slicerPending.bundle);
+    $("slicer-file").disabled = busy || state.slicerStaged;
+    for (const id of ["slicer-machine-file", "slicer-process-file", "slicer-filament-files", "slicer-plate"]) $(id).disabled = busy || Boolean(state.slicerPending.bundle);
   }
 
   function resetSlicePreparation(message) {
@@ -415,7 +428,7 @@
     updateSliceControls();
   }
 
-  $("slicer-json").addEventListener("input", () => resetSlicePreparation("전체 설정이 바뀌었습니다. 설정과 실행 계획을 다시 검토해 주세요."));
+  $("slicer-json").addEventListener("input", manualSlicerChanged);
 
   function renderSliceResult(plan, execution, recorded = false) {
     const area = $("slice-result");
@@ -430,6 +443,8 @@
       const grams = execution.filament_grams;
       summary.append(node("p", "", Number.isFinite(seconds) ? `슬라이서 예상 시간: ${numberFormat.format(seconds / 60)}분` : "출력 시간: 슬라이서에서 확인된 정보 없음"));
       summary.append(node("p", "", Number.isFinite(grams) ? `슬라이서 예상 사용량: ${numberFormat.format(grams)}g` : "재료 사용량: 슬라이서에서 확인된 정보 없음"));
+      if (execution.bambu_version) summary.append(node("p", "", `확인한 Bambu Studio 버전: ${execution.bambu_version}`));
+      if (execution.output_sha256) summary.append(node("p", "", `생성 파일 SHA-256: ${execution.output_sha256}`));
       area.append(summary);
       const details = node("details", "help-details");
       details.append(node("summary", "", "실행 기록과 검사 결과"), node("pre", "", JSON.stringify(execution, null, 2)));
@@ -450,6 +465,7 @@
   async function runSlice(execute) {
     const button = execute ? $("execute-slice") : $("prepare-slice");
     try {
+      if (state.slicerStaged || Object.keys(state.slicerPending).length) throw new Error("설정 파일을 선택 중입니다. 묶음을 만들거나 편집을 취소한 뒤 실행 계획을 검토해 주세요.");
       await withWorkflow(button, execute ? "슬라이싱 실행 중" : "전체 설정 검토 중", async () => {
         const jobId = state.job?.id;
         if (!jobId) throw new Error("먼저 현재 제작안의 모델을 생성해 주세요.");
@@ -467,20 +483,182 @@
   $("prepare-slice").addEventListener("click", () => runSlice(false));
   $("execute-slice").addEventListener("click", () => runSlice(true));
 
-  async function readFile(input, textarea, feedbackId) {
-    const file = input.files[0];
-    if (!file) return;
+  function cancelSlicerReads() {
+    state.slicerContext += 1;
+    state.slicerPending = {};
+  }
+
+  function renderSlicerFiles() {
+    for (const kind of ["machine", "process", "filaments"]) {
+      const entries = kind === "filaments" ? state.slicerFiles.filaments : state.slicerFiles[kind] ? [state.slicerFiles[kind]] : [];
+      const label = entries.map((entry, index) => `${kind === "filaments" ? `${index + 1}. ` : ""}${entry.filename} · ${entry.profile.name} (${entry.profile.type})`).join("\n");
+      $(`slicer-${kind}-summary`).textContent = `${label || "선택한 파일 없음"}${state.slicerPending[kind] ? "\n새 파일 읽는 중…" : ""}`;
+    }
+    const reading = Object.keys(state.slicerPending).length > 0;
+    $("slicer-helper-status").textContent = reading ? "파일 읽기가 끝나면 묶음을 만들 수 있습니다." : state.slicerStaged ? "선택을 편집 중입니다. 이전 실행 계획은 해제되었습니다." : state.slicerFiles.machine ? "묶음을 만들었습니다. 아래 JSON과 실행 계획을 확인하세요." : "파일과 플레이트를 선택하세요.";
+    updateSliceControls();
+  }
+
+  function slicerBundle(files = state.slicerFiles) {
+    return { source: "user_export", plate_type: $("slicer-plate").value, machine: files.machine?.profile || {}, process: files.process?.profile || {}, filaments: files.filaments.map((entry) => entry.profile) };
+  }
+
+  function checkSlicerBundleSize(bundle) {
+    const request = { job_id: state.job?.id || "0".repeat(32), config_bundle: bundle, execute: false };
+    if (new TextEncoder().encode(JSON.stringify(request)).byteLength > 8 * 1024 * 1024) throw new Error("설정 묶음을 포함한 전체 요청은 8 MiB 이하여야 합니다. 기존 입력과 선택한 파일은 유지했습니다.");
+  }
+
+  async function readSlicerFiles(kind, input) {
+    const files = Array.from(input.files || []);
+    if (!files.length || !["machine", "process", "filaments"].includes(kind)) return;
+    input.value = "";
+    const context = state.slicerContext;
+    const request = (state.slicerRequests[kind] || 0) + 1;
+    state.slicerRequests[kind] = request;
+    state.slicerPending[kind] = request;
+    state.slicerStaged = true;
+    resetSlicePreparation("설정 파일을 선택하고 있습니다. 묶음을 만들거나 편집을 취소한 뒤 다시 검토해 주세요.");
+    renderSlicerFiles();
+    hideNotice("slicer-helper-feedback");
     try {
-      if (file.size > 2 * 1024 * 1024) throw new Error("2MB 이하의 JSON 파일을 선택해 주세요.");
+      const maximum = kind === "filaments" ? 16 : 1;
+      if (files.length > maximum) throw new Error(kind === "filaments" ? "필라멘트 파일은 1~16개를 선택해 주세요." : "이 종류의 설정 파일은 하나만 선택해 주세요.");
+      if (files.some((file) => file.size > 8 * 1024 * 1024) || files.reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) throw new Error("선택한 JSON 파일의 합계는 8 MiB 이하여야 합니다.");
+      const expectedType = kind === "filaments" ? "filament" : kind;
+      const imported = await Promise.all(files.map(async (file) => {
+        const profile = parseObject(await file.text(), file.name);
+        if (typeof profile.name !== "string" || !profile.name.trim() || profile.type !== expectedType) throw new Error(`${file.name}: name과 type=${expectedType}가 있는 Bambu 전체 설정 파일을 선택해 주세요. 재료 검토 보고서는 사용할 수 없습니다.`);
+        return { filename: file.name, profile };
+      }));
+      if (context !== state.slicerContext || request !== state.slicerRequests[kind]) return;
+      const candidate = { ...state.slicerFiles, [kind]: kind === "filaments" ? imported : imported[0] };
+      checkSlicerBundleSize(slicerBundle(candidate));
+      state.slicerFiles = candidate;
+      showNotice("slicer-helper-feedback", `${imported.length}개 파일을 선택했습니다. 전체 설정의 지원 여부는 묶음을 만든 뒤 실행 계획에서 확인합니다.`);
+    } catch (error) {
+      if (context === state.slicerContext && request === state.slicerRequests[kind]) showNotice("slicer-helper-feedback", error.message, "error");
+    } finally {
+      if (context === state.slicerContext && request === state.slicerRequests[kind]) delete state.slicerPending[kind];
+      renderSlicerFiles();
+    }
+  }
+
+  function changeSlicerPlate() {
+    state.slicerStaged = true;
+    resetSlicePreparation("플레이트 선택을 바꿨습니다. 설정 묶음을 다시 만든 뒤 실행 계획을 검토해 주세요.");
+    renderSlicerFiles();
+  }
+
+  function assembleSlicerBundle() {
+    if (state.workflowBusy || Object.keys(state.slicerPending).length) throw new Error("진행 중인 작업과 파일 읽기가 끝난 뒤 묶음을 만들어 주세요.");
+    const plates = ["Cool Plate", "Engineering Plate", "High Temp Plate", "Textured PEI Plate", "Supertack Plate"];
+    if (!plates.includes($("slicer-plate").value)) throw new Error("이번 출력에서 사용할 플레이트를 직접 선택해 주세요.");
+    if (!state.slicerFiles.machine || !state.slicerFiles.process || state.slicerFiles.filaments.length < 1) throw new Error("프린터·출력 공정 파일과 필라멘트 파일 1개 이상을 선택해 주세요.");
+    const bundle = slicerBundle();
+    checkSlicerBundleSize(bundle);
+    $("slicer-json").value = JSON.stringify(bundle, null, 2);
+    state.slicerStaged = false;
+    cancelSlicerReads();
+    resetSlicePreparation("선택한 파일과 플레이트로 묶음을 만들었습니다. 설정과 실행 계획을 검토해 주세요.");
+    renderSlicerFiles();
+    showNotice("slicer-helper-feedback", "파일의 값을 그대로 묶었습니다. 설정 검증이나 슬라이싱을 완료한 것은 아닙니다.", "success");
+    return bundle;
+  }
+
+  function cancelSlicerAssembly() {
+    cancelSlicerReads();
+    state.slicerFiles = { machine: null, process: null, filaments: [] };
+    state.slicerStaged = false;
+    $("slicer-plate").value = "";
+    for (const id of ["slicer-machine-file", "slicer-process-file", "slicer-filament-files"]) $(id).value = "";
+    resetSlicePreparation("파일 선택을 취소했습니다. 기존 전체 구성 JSON을 유지했으며 실행 계획은 다시 검토해야 합니다.");
+    renderSlicerFiles();
+    hideNotice("slicer-helper-feedback");
+  }
+
+  function manualSlicerChanged() {
+    cancelSlicerReads();
+    state.slicerFiles = { machine: null, process: null, filaments: [] };
+    state.slicerStaged = false;
+    $("slicer-plate").value = "";
+    resetSlicePreparation("전체 설정이 바뀌었습니다. 설정과 실행 계획을 다시 검토해 주세요.");
+    renderSlicerFiles();
+    hideNotice("slicer-helper-feedback");
+  }
+
+  async function readSlicerBundle(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    input.value = "";
+    cancelSlicerReads();
+    const context = state.slicerContext;
+    state.slicerPending.bundle = true;
+    resetSlicePreparation("전체 구성 파일을 읽고 있습니다. 완료 후 실행 계획을 다시 검토해 주세요.");
+    renderSlicerFiles();
+    try {
+      if (file.size > 8 * 1024 * 1024) throw new Error("8 MiB 이하의 전체 구성 JSON 파일을 선택해 주세요.");
       const text = await file.text();
-      if (input.disabled) throw new Error("진행 중인 요청이 끝난 뒤 파일을 다시 선택해 주세요.");
-      textarea.value = text;
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-      toast(`${file.name} 파일을 불러왔습니다. 검토 버튼을 눌러 확인하세요.`);
-    } catch (error) { showNotice(feedbackId, error.message, "error"); }
+      const bundle = parseObject(text, file.name);
+      if (context !== state.slicerContext) return;
+      checkSlicerBundleSize(bundle);
+      $("slicer-json").value = text;
+      manualSlicerChanged();
+      toast(`${file.name} 파일을 불러왔습니다. 실행 계획을 검토해 주세요.`);
+    } catch (error) {
+      if (context === state.slicerContext) showNotice("slice-feedback", error.message, "error");
+    } finally {
+      if (context === state.slicerContext) delete state.slicerPending.bundle;
+      renderSlicerFiles();
+    }
+  }
+
+  function renderSlicerEnvironment() {
+    const environment = state.environment;
+    const available = Boolean(environment.available);
+    const supported = environment.cli_supported;
+    setBadge("environment-badge", available ? "Bambu Studio 감지됨" : "슬라이서 사용 불가", available ? "blue" : "neutral");
+    setBadge("slicer-status", !available ? "현재 환경에서 사용 불가" : supported === true ? "CLI 기능 확인됨" : supported === false ? "CLI 실행 조건 확인 필요" : "실행 파일 감지됨", supported === true ? "blue" : supported === false ? "warning" : "neutral");
+    $("slicer-description").textContent = available
+      ? "실행 파일을 찾았습니다. 설치된 슬라이서 확인을 누르면 버전과 필요한 명령줄 기능을 확인합니다. 모델과 전체 설정의 슬라이싱은 별도 단계입니다."
+      : "Bambu Studio 실행 파일을 찾지 못했습니다. 설치·실행 경로를 설정한 뒤 앱을 다시 열어 주세요. 설정 묶음 작성과 모델 파일 다운로드는 사용할 수 있습니다.";
+    const details = [];
+    if (environment.path) details.push(`실행 파일: ${environment.path}`);
+    if (supported !== undefined) {
+      details.push(`확인한 버전: ${environment.version || "확인하지 못함"}`);
+      details.push(`확인한 명령줄 옵션: ${(environment.capabilities || []).join(", ") || "확인하지 못함"}`);
+    }
+    details.push(...(environment.diagnostics || []));
+    if (details.length) showNotice("slicer-probe-feedback", supported === true ? "필요한 명령줄 기능을 확인했습니다. 실제 슬라이스 파일과 실물 출력은 별도 검증이 필요합니다." : supported === false ? "필요한 명령줄 기능을 확인하지 못했습니다." : "설치 환경에서 확인한 정보", supported === false ? "warning" : "info", details);
+    else hideNotice("slicer-probe-feedback");
+    updateSliceControls();
+  }
+
+  async function probeSlicer() {
+    if (!state.environment.available) return;
+    try {
+      await withWorkflow($("probe-slicer"), "슬라이서 확인 중", async () => {
+        resetSlicePreparation("설치된 슬라이서의 명령줄 기능을 확인하고 있습니다. 기존 실행 계획은 다시 검토해야 합니다.");
+        state.environment = { ...state.environment, cli_supported: undefined, version: null, capabilities: [], diagnostics: [] };
+        renderSlicerEnvironment();
+        const environment = await api("/api/slicer/probe", {});
+        state.environment = environment;
+        renderSlicerEnvironment();
+      });
+    } catch (error) { showNotice("slicer-probe-feedback", error.message, "error"); }
+    finally { updateSliceControls(); }
   }
   $("profile-file").addEventListener("change", (event) => importProfileFiles(event.target));
-  $("slicer-file").addEventListener("change", (event) => readFile(event.target, $("slicer-json"), "slice-feedback"));
+  $("slicer-file").addEventListener("change", (event) => readSlicerBundle(event.target));
+  $("slicer-machine-file").addEventListener("change", (event) => readSlicerFiles("machine", event.target));
+  $("slicer-process-file").addEventListener("change", (event) => readSlicerFiles("process", event.target));
+  $("slicer-filament-files").addEventListener("change", (event) => readSlicerFiles("filaments", event.target));
+  $("slicer-plate").addEventListener("change", changeSlicerPlate);
+  $("assemble-slicer").addEventListener("click", () => {
+    try { assembleSlicerBundle(); }
+    catch (error) { showNotice("slicer-helper-feedback", error.message, "error"); }
+  });
+  $("cancel-slicer-assembly").addEventListener("click", cancelSlicerAssembly);
+  $("probe-slicer").addEventListener("click", probeSlicer);
 
   $("outcome-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1441,13 +1619,7 @@
       $("brand-name").textContent = name.replace(/^3D\s+/i, "");
       document.title = `${name} · 로컬 작업 공간`;
       $("app-version").textContent = data.app?.version ? `Version ${data.app.version}` : "버전 정보 없음";
-      const available = Boolean(state.environment.available);
-      setBadge("environment-badge", available ? "Bambu Studio 감지됨" : "슬라이서 사용 불가", available ? "blue" : "neutral");
-      setBadge("slicer-status", available ? "실행 파일 감지됨" : "현재 환경에서 사용 불가", available ? "blue" : "neutral");
-      $("slicer-description").textContent = available
-        ? "Bambu Studio 실행 파일을 찾았습니다. 모델과 전체 설정을 검토한 뒤 슬라이싱을 준비할 수 있습니다."
-        : "현재 환경에서 Bambu Studio를 사용할 수 없습니다. 생성한 파일은 내려받을 수 있고, 이곳의 슬라이싱 실행은 비활성화되어 있습니다.";
-      if (!available && state.environment.diagnostics?.length) showNotice("slice-feedback", "환경 확인 사항", "info", state.environment.diagnostics);
+      renderSlicerEnvironment();
       const llmOption = $("plan-mode").querySelector('option[value="llm"]');
       llmOption.disabled = !state.provider.configured;
       llmOption.textContent = state.provider.configured ? "LLM 모드 · 설정 있음" : "LLM 모드 · 미설정";

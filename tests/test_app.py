@@ -54,6 +54,46 @@ class APITests(unittest.TestCase):
         response = self.client.post('/api/plan', content=b'x'*(2*1024*1024+1),headers={**self.headers,'Content-Type':'application/json'})
         self.assertEqual(response.status_code, 413)
 
+    def test_slicer_probe_is_explicit_authenticated_and_accepts_no_command(self):
+        environment = {'available': True, 'path': '/configured/bambu-studio',
+                       'version': '02.09.01.70', 'cli_supported': True,
+                       'capabilities': ['slice'], 'diagnostics': [], 'printer_status': 'not_checked'}
+        with patch('print_agent.app.probe_environment', return_value=environment, create=True) as probe:
+            self.assertEqual(self.client.get('/api/bootstrap').status_code, 200)
+            probe.assert_not_called()
+            self.assertEqual(self.client.post('/api/slicer/probe', json={}).status_code, 403)
+            self.assertEqual(self.client.post('/api/slicer/probe', json={},
+                headers={**self.headers, 'Origin': 'https://untrusted.example'}).status_code, 403)
+            self.assertEqual(self.client.post('/api/slicer/probe', json={'path': '/some/other/program'},
+                headers=self.headers).status_code, 422)
+            probe.assert_not_called()
+            response = self.client.post('/api/slicer/probe', json={}, headers=self.headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json(), environment)
+            probe.assert_called_once_with()
+
+    def test_slice_request_allows_full_config_budget_but_remains_bounded(self):
+        store = self.app.state.store
+        bundle = {'large_native_field': 'x' * (2 * 1024 * 1024)}
+        plan = {'ready': False, 'diagnostics': ['Synthetic API boundary fixture']}
+        with patch.object(store, 'get', return_value={'status': 'geometry_validated'}), \
+             patch.object(store, 'artifact_path', return_value=Path(self.temp.name) / 'model.3mf'), \
+             patch.object(store, 'directory', return_value=Path(self.temp.name)), \
+             patch.object(store, 'record_slice'), \
+             patch('print_agent.app.prepare_slice', return_value=plan) as prepare, \
+             patch('print_agent.app.execute_slice') as execute:
+            response = self.client.post('/api/slice', json={'job_id': 'synthetic-job',
+                'config_bundle': bundle, 'execute': False}, headers=self.headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json(), {'plan': plan, 'execution': None})
+            self.assertEqual(prepare.call_args.args[2], bundle)
+            execute.assert_not_called()
+            response = self.client.post('/api/slice', content=b'x' * (8 * 1024 * 1024 + 1),
+                headers={**self.headers, 'Content-Type': 'application/json'})
+            self.assertEqual(response.status_code, 413)
+            self.assertIn('8 MiB', response.json()['detail'])
+            prepare.assert_called_once()
+
     def test_invalid_host_rejected(self):
         self.assertEqual(self.client.get('/api/bootstrap',headers={'Host':'untrusted.example'}).status_code, 400)
 

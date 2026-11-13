@@ -18,6 +18,8 @@ Output: {decision:blocked|needs_input|needs_evidence|ready_to_prepare,compatibil
 Do not hardcode unverifiable numeric temperatures or broad AMS rules. Validate empty/nonfinite settings; direct mismatch blocks. Temperature/MVS changes make K stale; nozzle/hotend/material changes recheck relevant calibrations; plate changes should not invalidate K by themselves.
 
 ## Slicer worker
+The initial contract below is superseded by [BAMBU_STUDIO.md](BAMBU_STUDIO.md) for native metadata, explicit `plate_type`, `probe_environment()`, staged selection verification and version/output-digest fields.
+
 Implement `detect_environment() -> dict`, `prepare_slice(input_path:Path,job_dir:Path,config_bundle:dict,executable_path:str|None=None) -> dict`, `execute_slice(plan:dict,timeout_seconds:int=180) -> dict`.
 Environment from PPA_BAMBU_PATH only or known OS paths/PATH. No browser supplied executable overrides at API layer. Env output {available,path,version,capabilities,printer_status:'not_checked',diagnostics:list[str]}.
 Config bundle uses {machine:<full JSON>,process:<full JSON>,filaments:[<full JSON>],source:'user_export'}; write normalized machine.json/process.json/filament-1.json names in private job_dir/config. Reject unresolved inherits/include, missing full-config identity and necessary settings. Do not claim a universal complete-schema check; supported validation requirements documented. CLI argv arrays only, shell=False. Never overwrite input; fresh output path; no arbitrary CLI flags. Plan output includes {ready,argv,output_path,job_dir,expected_settings,diagnostics}. Missing executable produces ready=false and useful diagnostics, not fabricated results.

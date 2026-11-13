@@ -1,0 +1,64 @@
+name: Native Bambu CLI qualification
+
+on:
+  push:
+    branches: [main, qualification/bambu-2.9]
+    paths:
+      - "print_agent/**"
+      - "examples/**"
+      - "scripts/qualify_bambu.py"
+      - ".github/workflows/native-bambu.yml"
+      - "tests/test_slicer.py"
+  pull_request:
+    paths:
+      - "print_agent/**"
+      - "examples/**"
+      - "scripts/qualify_bambu.py"
+      - ".github/workflows/native-bambu.yml"
+      - "tests/test_slicer.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-bambu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-bootstrap:
+    name: Pinned Studio 2.9.1 bootstrap and adapter smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONUNBUFFERED: "1"
+      PPA_LLM_BASE_URL: ""
+      PPA_LLM_MODEL: ""
+      PPA_LLM_API_KEY: ""
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install native runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libwebkit2gtk-4.1-0 libgl1 libxkbcommon0 libdbus-1-3
+
+      - name: Run actual native bootstrap and application adapter smoke
+        run: python scripts/qualify_bambu.py --work-dir qa-output/native-bambu
+
+      - name: Upload native evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-bambu-evidence
+          path: qa-output/native-bambu/evidence/
+          retention-days: 7
+          if-no-files-found: warn

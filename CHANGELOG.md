@@ -2,6 +2,12 @@
 
 ## Unreleased — 2026-11-13
 
+- Assemble native machine/process/filament JSON files with an explicit plate choice; preserve source objects, manual input, and staged-change invalidation.
+- Add an authenticated, explicit installed-slicer probe and `doctor --probe-slicer`, keeping ordinary discovery free of native execution.
+- Correct native export filenames, preset metadata/JSON representations and setting-ID expectations; bind plate temperatures and read-back to the selected native plate.
+- Require the supported native root machine classification and an exact process compatibility entry; explain unsupported user-machine lineage before launching Studio.
+- Revalidate staged configuration and expected values before execution; record the observed Studio version and verified archive SHA-256.
+- Bound native project-setting JSON depth, block unreadable input metadata and report malformed output as needing review; reject unsupported zero temperatures on the selected plate while retaining unselected values.
 - Save and reopen named filament workspaces with imported originals, exact unfinished drafts, selected target and setup; revision checks prevent cross-tab overwrites.
 - Edit common nozzle/flow/volumetric/plate settings while retaining inheritance and value representation; remove individual documents or restore imported originals.
 - Compare effective settings with the original chain and invalidate positive validation claims after inherited edits or an unavailable baseline, retaining the source evidence.

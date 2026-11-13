@@ -165,6 +165,15 @@ main { max-width: 1460px; padding: 37px 42px 24px; margin: 0 auto; }
 .slicer-card { margin-top: 24px; }
 .slicer-card > .muted { font-size: 12px; }
 .slicer-layout { display: grid; grid-template-columns: 1fr .9fr; gap: 25px; margin-top: 22px; }
+.slicer-file-helper { padding: 20px; margin-top: 20px; background: #f8faff; border: 1px solid var(--line); border-radius: 10px; }
+.slicer-file-helper h3 { font-size: 14px; color: #526987; margin-bottom: 7px; }
+.slicer-file-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+.slicer-file-grid > label { min-width: 0; }
+.slicer-file-control input { font-size: 11px; padding: 9px; }
+.slicer-file-control .field-help { display: block; white-space: pre-line; overflow-wrap: anywhere; font-weight: 400; }
+.slicer-file-helper .button-row { align-items: center; }
+.slicer-file-helper .button-row .field-help { margin-top: 0; }
+.slicer-probe-feedback, .slicer-output p { overflow-wrap: anywhere; }
 .settings-details { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); }
 summary { color: #637c9f; font-size: 12px; font-weight: 600; list-style-position: outside; margin-left: 15px; }
 summary:hover { color: var(--blue); }
@@ -312,6 +321,7 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
   .preview-stage { aspect-ratio: 1.8; min-height: 330px; }
   .preview-footer { flex-direction: row; }
   .slicer-layout { grid-template-columns: 1fr; }
+  .slicer-file-grid { grid-template-columns: 1fr; }
   .two-column-layout { grid-template-columns: 1fr; }
   .workspace-grid { grid-template-columns: 1fr; gap: 22px; }
   .setup-grid { grid-template-columns: 1fr 1fr; }

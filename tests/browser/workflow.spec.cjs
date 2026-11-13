@@ -97,6 +97,43 @@ test('Korean request creates real CAD, downloads it, records an outcome, and inv
   expect(content.subarray(0, 2).toString()).toBe('PK');
   expect(crypto.createHash('sha256').update(content).digest('hex')).toBe(manifest.artifacts.three_mf.sha256);
 
+  // File assembly uses the real generated job, but does not imply native slicing.
+  // This browser project deliberately has no installed Bambu executable.
+  const bundle = nativeConfigFixture();
+  await page.locator('#slicer-details > summary').click();
+  await expect(page.locator('#probe-slicer')).toBeDisabled();
+  const previousBundle = '{ "source": "user_export", "unfinished": "keep until assembled" }';
+  await page.locator('#slicer-json').fill(previousBundle);
+  await page.locator('#slicer-machine-file').setInputFiles(presetUpload('machine.json', bundle.machine));
+  await expect(page.locator('#slicer-machine-summary')).toContainText(bundle.machine.name);
+  await expect(page.locator('#slicer-json')).toBeDisabled();
+  await expect(page.locator('#slicer-json')).toHaveValue(previousBundle);
+  await page.locator('#slicer-process-file').setInputFiles(presetUpload('process.json', bundle.process));
+  await expect(page.locator('#slicer-process-summary')).toContainText(bundle.process.name);
+  await page.locator('#slicer-filament-files').setInputFiles(presetUpload('filament.json', bundle.filaments[0]));
+  await expect(page.locator('#slicer-filaments-summary')).toContainText(bundle.filaments[0].name);
+  await expect(page.locator('#slicer-plate')).toHaveValue('');
+  await expect(page.locator('#prepare-slice')).toBeDisabled();
+  await expect(page.locator('#execute-slice')).toBeDisabled();
+  await page.locator('#slicer-plate').selectOption(bundle.plate_type);
+  await expect(page.locator('#assemble-slicer')).toBeEnabled();
+  await page.locator('#assemble-slicer').click();
+  await expect(page.locator('#slicer-json')).toBeEnabled();
+  expect(JSON.parse(await page.locator('#slicer-json').inputValue())).toEqual(bundle);
+  await expect(page.locator('#slicer-helper-feedback')).toContainText('파일의 값을 그대로');
+  await expect(page.locator('#execute-slice')).toBeDisabled();
+  await fs.writeFile(testInfo.outputPath('assembled-slicer-config.json'), await page.locator('#slicer-json').inputValue());
+  await noHorizontalOverflow(page);
+  await page.locator('.slicer-card').screenshot({ path: testInfo.outputPath('native-config-helper.png') });
+  await page.locator('#slicer-machine-file').setInputFiles({ name: 'malformed-machine.json', mimeType: 'application/json', buffer: Buffer.from('{bad') });
+  await expect(page.locator('#slicer-helper-feedback')).toContainText('malformed-machine.json');
+  await expect(page.locator('#slicer-machine-summary')).toContainText(bundle.machine.name);
+  expect(JSON.parse(await page.locator('#slicer-json').inputValue())).toEqual(bundle);
+  await page.locator('#cancel-slicer-assembly').click();
+  await expect(page.locator('#slicer-json')).toBeEnabled();
+  expect(JSON.parse(await page.locator('#slicer-json').inputValue())).toEqual(bundle);
+  await expect(page.locator('#prepare-slice')).toBeDisabled();
+
   const notes = `Browser CI: ${testInfo.project.name}; no physical print performed.`;
   await page.locator('#outcome-result').selectOption('not_tested');
   await page.locator('#outcome-notes').fill(notes);
@@ -195,6 +232,30 @@ test('a rejected CAD request remains inspectable in history without a fake model
 
 function presetUpload(name, profile) {
   return { name, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(profile)) };
+}
+
+// Native-shaped synthetic inputs exercise UI preservation, not print settings.
+function nativeConfigFixture() {
+  return {
+    source: 'user_export', plate_type: 'High Temp Plate',
+    machine: {
+      name: 'Browser fixture machine 0.4 nozzle', type: 'machine', from: 'system',
+      printer_model: 'Browser fixture machine', printer_technology: 'FFF',
+      nozzle_diameter: ['0.4'], printable_area: ['0x0', '200x0', '200x200', '0x200'], printable_height: '200',
+      machine_start_gcode: '; synthetic fixture start', machine_end_gcode: '; synthetic fixture end',
+    },
+    process: {
+      name: 'Browser fixture process', type: 'process', from: 'user',
+      compatible_printers: ['Browser fixture machine 0.4 nozzle'],
+      layer_height: '0.2', initial_layer_print_height: '0.2', wall_loops: '2', top_shell_layers: '4', bottom_shell_layers: '4',
+      sparse_infill_density: '15%', outer_wall_speed: '50', inner_wall_speed: '75', sparse_infill_speed: '100', initial_layer_speed: '20',
+    },
+    filaments: [{
+      name: 'Browser fixture filament', type: 'filament', from: 'user', filament_type: ['PLA'],
+      filament_diameter: ['1.75'], filament_density: ['1.2'], filament_flow_ratio: ['1'], filament_max_volumetric_speed: ['10'],
+      nozzle_temperature: ['210'], nozzle_temperature_initial_layer: ['215'], hot_plate_temp: ['55'], hot_plate_temp_initial_layer: ['55'],
+    }],
+  };
 }
 
 // Synthetic settings prove data flow only; they are not printing recommendations.

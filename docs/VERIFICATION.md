@@ -2,6 +2,37 @@
 
 작성일: 2026-11-12. 이 문서는 초기 로컬 검사와 후속 GitHub Actions에서 관측한 결과, 미검증 범위를 구분합니다. 제품의 일반적인 성공률이나 실제 출력 품질의 인증이 아닙니다.
 
+## 2026-11-13 실제 Bambu Studio 실행 검증
+
+첫 native 조사 실행은 [43374511491](https://github.com/uulab-official/3d-printer-agent/actions/runs/43374511491), 커밋 `d14dce3fbcac3d115f4d11448eac304d00fe38e0`에서 성공했습니다. Ubuntu 24.04에 필요한 WebKit/GL 라이브러리를 설치하고 공식 v02.09.01.70 AppImage를 다운로드했습니다. 실행 전 255,822,328바이트와 SHA-256 `668dabb1be53c758189ed6bc89935285dea5e0af46216546b1bafd6882e9aff0`을 확인했습니다. 실제 `--help`가 보고한 버전은 `02.09.01.70`입니다.
+
+공식 CLI 문서의 machine/process/filament 예제 세 파일은 별도 고정 해시로 확인하고 **상속·include·variant·nil 정보를 변경하지 않은 상태**로 사용했습니다. 직접 작성한 10 × 10 × 2 mm 큐브 STL을 네이티브 CLI로 실행한 결과는 다음과 같습니다.
+
+| 확인 항목 | 관측 결과 |
+|---|---|
+| 프로세스 종료 코드 | 0 |
+| 생성된 3MF | 33,207바이트, ZIP 무결성 통과 |
+| 3MF SHA-256 | `56c739d8cd3745bdbbfea42d88543360ec64fd518188ecf6b7d255ffdb679820` |
+| G-code | `Metadata/plate_1.gcode`, 79,888바이트, 이동 명령 820줄 |
+| 프로젝트 설정 | 632개 필드. machine/process/filament 이름이 native settings ID와 일치 |
+| 선택한 플레이트 | 요청·출력 모두 `Textured PEI Plate` |
+
+[native 산출물](https://github.com/uulab-official/3d-printer-agent/actions/runs/43374511491/artifacts/14013877818)을 내려받아 입력·출력 해시, ZIP CRC, G-code, 설정 ID와 플레이트를 별도로 대조했습니다. 산출물 ZIP SHA-256은 `9c17bc31889297a6d20eae7481220d3f24c42e28a652370452b98f2c800f6aab`이며 2026-11-20까지 보관됩니다.
+
+이 첫 실행은 CLI 직접 호출의 증거입니다. 앱 어댑터를 통과했다는 의미는 아닙니다. 로그에는 `Invalid T command (T65535)`와 화면 없는 환경의 GLFW/Wayland 오류도 남아 있습니다. G-code 파일 생성과 설정 보존을 관측했으며, 명령의 실물 적합성이나 미리보기 렌더링을 인증하지 않습니다. 공식 예제의 여러 압출기 variant도 그대로 남아 있어 해당 파일을 앱의 해소된 full-config 입력으로 취급하지 않습니다.
+
+로컬 Debian 실행 환경에서는 동일 AppImage의 `--help`가 누락된 `libwebkit2gtk-4.1.so.0` 때문에 종료 코드 127을 반환했습니다. 시스템 패키지를 설치할 권한이 없어 Ubuntu CI에서 실제 native 검증을 수행했습니다. 이 구체적인 설치 실패를 명시적 probe 진단에 표시하는 회귀 검사를 추가했습니다.
+
+### 실제 실행으로 발견한 추가 계약
+
+첫 앱 어댑터 실행 [43375168823](https://github.com/uulab-official/3d-printer-agent/actions/runs/43375168823), 커밋 `d0a67c16d8366ab2fdda14e920893fbaffa64fd6`은 STL·3MF 모두 native 종료 코드 239, 내부 코드 -17로 실패했습니다. 어댑터는 두 결과를 `failed`로 반환하고 출력 파일·해시를 성공 결과로 승격하지 않았습니다. 원인은 합성 machine의 `from: "user"`에 시스템 부모가 없고 process에 명시적 호환 목록이 없었던 것입니다.
+
+고정한 upstream 소스에서 이 동작을 확인했습니다. CLI는 `from: "system"`인 machine에는 `name`을 시스템 이름으로 사용하고, user machine에는 `inherits`를 사용합니다. 새 process의 `compatible_printers`가 해당 이름과 정확히 일치해야 합니다. 이에 따라 현재 지원하는 해소된 루트 구성의 계약을 명시하고, 사용자 machine 계보·누락 또는 불일치한 process 호환 목록을 준비 단계에서 설명과 함께 차단합니다. 사용자 파일의 `from`이나 상속·호환 목록을 자동으로 바꾸지는 않습니다.
+
+별도의 합성 CI fixture에는 명시적인 native 루트 분류와 그 이름을 참조하는 process 호환 목록을 사용합니다. 이 분류는 제조사 출처를 뜻하지 않으며, 실제 provenance는 합성 입력으로 기록합니다. native 기본값에 의존하는 최소 설정이라 실제 장비용 추천 프리셋으로 배포하지 않습니다.
+
+독립 코드 검토에서는 출력 설정의 1,200단계 배열이 재귀 비교에서 오류를 일으키고, 64단계의 비정상 래핑이 정상값으로 비교되는 문제를 재현했습니다. 디코딩한 설정의 컨테이너 깊이를 32로 제한하고 JSON 파서의 재귀 오류도 처리했습니다. 손상된 입력 프로젝트 설정은 준비 전에 차단하며, 손상된 출력 설정은 `needs_review`로 반환합니다. 선택 플레이트의 온도 0이 native에서 미지원 조합을 뜻하는 규칙도 확인해 준비 단계에서 거절하고, 미선택 플레이트의 0은 보존합니다.
+
 ## 2026-11-13 필라멘트 작업 저장·편집 CI 검증
 
 [GitHub Actions 실행 43371025397](https://github.com/uulab-official/3d-printer-agent/actions/runs/43371025397)은 기능 커밋 `101c87fea6bb27852b24bd3f18b0545c12c06915`에서 전체 성공했습니다.

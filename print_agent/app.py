@@ -21,7 +21,7 @@ from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
 from .schemas import GeometryRequest
-from .slicer import detect_environment, execute_slice, prepare_slice
+from .slicer import detect_environment, execute_slice, prepare_slice, probe_environment
 from .storage import JobStore
 from .workspaces import ProfileWorkspaceStore, WorkspaceConflict
 
@@ -55,12 +55,12 @@ class LocalSessionMiddleware:
                 return await reject(403, '다른 웹사이트의 요청은 허용하지 않습니다.')
             if headers.get('content-type','').split(';')[0].strip().lower() != 'application/json':
                 return await reject(415, 'JSON 요청 본문이 필요합니다.')
-            # These requests retain both imported originals and editable drafts.
-            # Resolver/store validation still bounds each document set separately.
+            # Full native configs and retained original/draft collections need
+            # the same bounded import budget. Individual validators still apply.
             path = scope['path']
-            stores_originals = (path == '/api/profiles/resolve' or path == '/api/profile-workspaces'
-                                or path.startswith('/api/profile-workspaces/'))
-            max_body = MAX_WORKSPACE_BODY if stores_originals else MAX_BODY
+            large_import = (path in ('/api/slice', '/api/profiles/resolve', '/api/profile-workspaces')
+                            or path.startswith('/api/profile-workspaces/'))
+            max_body = MAX_WORKSPACE_BODY if large_import else MAX_BODY
             size_message = f'요청 전체는 {max_body // (1024 * 1024)} MiB 이하여야 합니다.'
             try:
                 if int(headers.get('content-length','0')) > max_body:
@@ -168,6 +168,10 @@ class SlicePayload(StrictPayload):
     execute: bool = False
 
 
+class SlicerProbePayload(StrictPayload):
+    """Only the server-configured executable may be probed."""
+
+
 class OutcomePayload(StrictPayload):
     result: Literal['success','failure','not_tested']
     notes: str = Field(default='', max_length=4000)
@@ -201,6 +205,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     def bootstrap():
         return {'app':{'name':'3D Printer Agent','version':__version__},'templates':template_catalog(),
                 'environment':detect_environment(),'provider':provider_config(),'session_token':token}
+
+    @app.post('/api/slicer/probe')
+    def slicer_probe(_payload: SlicerProbePayload):
+        with SLICER_LOCK:
+            return probe_environment()
 
     @app.post('/api/plan')
     async def plan(payload: PlanPayload):

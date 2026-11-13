@@ -12,6 +12,8 @@ The filament workflow now imports related JSON documents, selects an editable ta
 
 Named filament workspaces preserve original documents, exact unfinished drafts, the selected target and all setup inputs across app restarts. A separate SQLite store uses revision checks for atomic updates and conflicts. Common-setting controls edit the selected draft while preserving inheritance and original evidence. Baseline comparison invalidates positive validation claims after effective settings change, including inherited parent changes. Reopening a saved workspace restores inputs and requires a fresh review. See [FILAMENT_WORKSPACES.md](FILAMENT_WORKSPACES.md).
 
+Native slicing preparation now assembles supplied machine/process/filament files with an explicit plate selection, validates native metadata and value representations, and rechecks staged configuration hashes and derived expectations before execution. An explicit UI/doctor probe reports the installed CLI's observed version/capabilities. Verified archive results include their SHA-256 and native version. See [BAMBU_STUDIO.md](BAMBU_STUDIO.md) for the supported subset and usage.
+
 The original local validation is documented in [VERIFICATION.md](VERIFICATION.md). Current unit, package and browser results are recorded per commit in [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions). A workflow definition alone is not evidence of a successful run.
 
 ### Saved filament workspace checks — 2026-11-13
@@ -38,7 +40,7 @@ Repository adoption checks passed locally and in a fresh GitHub Actions environm
 
 ## Remaining qualifications
 
-Actual Bambu Studio versions, macOS/Windows native installation, real LLM servers and physical printing require separate qualification. The original local environment blocked Chromium IPC; the later successful GitHub Actions run supplies the separate real-browser evidence. Mobile viewport emulation is not a test on a physical phone.
+Native results are version- and fixture-specific; see [VERIFICATION.md](VERIFICATION.md) for observed Linux Studio execution. macOS/Windows native installation, other Studio versions, real LLM servers and physical printing require separate qualification. The original local environment blocked Chromium IPC; the later successful GitHub Actions run supplies the separate real-browser evidence. Mobile viewport emulation is not a test on a physical phone.
 
 Source authenticity checks, Studio default/include/variant resolution, MakerWorld access/customization and live product collection are future capabilities. Many current official presets require those additional resolution rules. No external platform API is assumed to be available or authorized until verified.
 

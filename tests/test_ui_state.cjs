@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
-const names = ['node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory'];
+const names = ['node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer'];
 class Element {
   constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
   set textContent(value) { this._text=String(value); this.children=[]; }
@@ -21,7 +21,7 @@ function fixture() {
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
     $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder,
-    state:{token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false},
+    state:{token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{}},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
     viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},renderTemplates(){},toast(){},
@@ -81,6 +81,106 @@ const job = () => ({
     try {assert.equal(c.$('generate-button').disabled,true);}catch(error){failure=error;}
     resolve({plan:{ready:false,diagnostics:[]},execution:null});await pending;
     if(failure)throw failure;assert.equal(c.$('generate-button').disabled,false);
+  });
+  await check('Staged native files invalidate old slice downloads and block execution until assembled',async()=>{
+    const c=fixture();c.state.job=job();c.state.slicePrepared=true;c.$('slicer-json').value='{"old":"manual"}';
+    const machine={name:'Fixture machine',type:'machine',from:'User',nozzle_diameter:['0.4']};
+    await c.readSlicerFiles('machine',{files:[{name:'machine.json',size:100,text:async()=>JSON.stringify(machine)}],value:'machine.json'});
+    assert.equal(c.state.slicerStaged,true);assert.equal(c.state.slicePrepared,false);
+    assert.equal(c.state.job.artifacts.sliced_three_mf,undefined);assert.equal(c.$('prepare-slice').disabled,true);assert.equal(c.$('execute-slice').disabled,true);
+    assert.equal(c.$('slicer-json').value,'{"old":"manual"}');
+    let requests=0;c.api=async()=>{requests++;};await c.runSlice(true);assert.equal(requests,0);
+    c.cancelSlicerAssembly();assert.equal(c.$('slicer-json').value,'{"old":"manual"}');assert.equal(c.$('prepare-slice').disabled,false);
+    assert.equal(c.$('execute-slice').disabled,true);
+  });
+  await check('Native helper preserves file values, filament order and explicit plate choice',async()=>{
+    const c=fixture();c.state.job=job();
+    const machine={name:'Machine',type:'machine',from:'system',nozzle_diameter:['0.4'],custom:['001','2']};
+    const process={name:'Process',type:'process',from:'User',layer_height:'0.2'};
+    const filaments=[{name:'A',type:'filament',from:'user',nozzle_temperature:['215']},{name:'B',type:'filament',from:'User',nozzle_temperature:['220']}];
+    for(const [kind,profiles] of [['machine',[machine]],['process',[process]],['filaments',filaments]]) {
+      await c.readSlicerFiles(kind,{files:profiles.map((profile,index)=>({name:`${kind}-${index}.json`,size:100,text:async()=>JSON.stringify(profile)})),value:'file'});
+    }
+    assert.throws(()=>c.assembleSlicerBundle(),/플레이트/);
+    c.$('slicer-plate').value='Textured PEI Plate';c.changeSlicerPlate();c.assembleSlicerBundle();
+    assert.deepEqual(JSON.parse(c.$('slicer-json').value),{source:'user_export',plate_type:'Textured PEI Plate',machine,process,filaments});
+    assert.equal(c.state.slicerStaged,false);assert.equal(c.state.slicePrepared,false);assert.equal(c.$('prepare-slice').disabled,false);
+    assert.equal(c.$('execute-slice').disabled,true);
+  });
+  await check('Malformed replacement and excessive filament selections preserve the accepted stage',async()=>{
+    const c=fixture();const original={name:'Kept machine',type:'machine',from:'User'};
+    c.state.slicerFiles.machine={filename:'kept.json',profile:original};c.$('slicer-json').value='{"kept":"bundle"}';
+    await c.readSlicerFiles('machine',{files:[{name:'bad.json',size:4,text:async()=>'{bad'}],value:'bad.json'});
+    assert.equal(c.state.slicerFiles.machine.profile,original);assert.equal(c.$('slicer-json').value,'{"kept":"bundle"}');
+    assert.match(c.$('slicer-helper-feedback').textContent,/bad.json/);
+    let reads=0;await c.readSlicerFiles('filaments',{files:Array.from({length:17},()=>({name:'f.json',size:10,text:async()=>{reads++;return '{}';}})),value:'file'});
+    assert.equal(reads,0);assert.equal(c.state.slicerFiles.filaments.length,0);assert.match(c.$('slicer-helper-feedback').textContent,/16/);
+  });
+  await check('A late native file read cannot overwrite a new job or manual configuration',async()=>{
+    for(const change of ['job','manual']) {
+      const c=fixture();c.state.job=job();let finish;
+      const pending=c.readSlicerFiles('machine',{files:[{name:'old.json',size:100,text:()=>new Promise(done=>{finish=done;})}],value:'old.json'});
+      if(change==='job')c.renderJob({...job(),id:'new-job',artifacts:{}});
+      else {c.$('slicer-json').value='{"new":"manual"}';c.manualSlicerChanged();}
+      finish('{"name":"Old machine","type":"machine","from":"User"}');await pending;
+      assert.equal(c.state.slicerFiles.machine,null);assert.deepEqual(plain(c.state.slicerPending),{});
+      if(change==='manual')assert.equal(c.$('slicer-json').value,'{"new":"manual"}');
+    }
+  });
+  await check('Independent native file reads can finish in either order without losing a selection',async()=>{
+    const c=fixture();let machineDone,processDone;
+    const machine=c.readSlicerFiles('machine',{files:[{name:'m.json',size:100,text:()=>new Promise(done=>{machineDone=done;})}],value:'m.json'});
+    const process=c.readSlicerFiles('process',{files:[{name:'p.json',size:100,text:()=>new Promise(done=>{processDone=done;})}],value:'p.json'});
+    processDone('{"name":"P","type":"process","from":"User"}');await process;
+    machineDone('{"name":"M","type":"machine","from":"User"}');await machine;
+    assert.equal(c.state.slicerFiles.machine.profile.name,'M');assert.equal(c.state.slicerFiles.process.profile.name,'P');
+    assert.deepEqual(plain(c.state.slicerPending),{});
+  });
+  await check('A newer selection replaces an older pending file of the same native kind',async()=>{
+    const c=fixture();let oldDone,newDone;
+    const older=c.readSlicerFiles('machine',{files:[{name:'old.json',size:100,text:()=>new Promise(done=>{oldDone=done;})}],value:'old.json'});
+    const newer=c.readSlicerFiles('machine',{files:[{name:'new.json',size:100,text:()=>new Promise(done=>{newDone=done;})}],value:'new.json'});
+    newDone('{"name":"New","type":"machine","from":"User"}');await newer;
+    oldDone('{"name":"Old","type":"machine","from":"User"}');await older;
+    assert.equal(c.state.slicerFiles.machine.filename,'new.json');assert.equal(c.state.slicerFiles.machine.profile.name,'New');
+    assert.deepEqual(plain(c.state.slicerPending),{});
+  });
+  await check('Native helper rejects oversized aggregate requests without dropping accepted files',async()=>{
+    const c=fixture();const machine={name:'Large machine',type:'machine',from:'user',description:'x'.repeat(7*1024*1024)};
+    c.state.slicerFiles.machine={filename:'machine.json',profile:machine};c.$('slicer-json').value='{"kept":"manual"}';
+    const process=JSON.stringify({name:'Large process',type:'process',from:'user',description:'x'.repeat(2*1024*1024)});
+    await c.readSlicerFiles('process',{files:[{name:'process.json',size:process.length,text:async()=>process}],value:'process.json'});
+    assert.equal(c.state.slicerFiles.machine.profile,machine);assert.equal(c.state.slicerFiles.process,null);
+    assert.equal(c.$('slicer-json').value,'{"kept":"manual"}');assert.match(c.$('slicer-helper-feedback').textContent,/8 MiB/);
+    let reads=0;await c.readSlicerFiles('machine',{files:[{name:'too-large.json',size:8*1024*1024+1,text:async()=>{reads++;return '{}';}}],value:'large.json'});
+    assert.equal(reads,0);assert.equal(c.state.slicerFiles.machine.profile,machine);
+  });
+  await check('Whole-bundle file read cannot replace a newer manual edit',async()=>{
+    const c=fixture();c.state.job=job();let finish;
+    const pending=c.readSlicerBundle({files:[{name:'old.json',size:100,text:()=>new Promise(done=>{finish=done;})}],value:'old.json'});
+    c.$('slicer-json').value='{"new":"manual"}';c.manualSlicerChanged();
+    finish('{"old":"bundle"}');await pending;
+    assert.equal(c.$('slicer-json').value,'{"new":"manual"}');assert.deepEqual(plain(c.state.slicerPending),{});
+  });
+  await check('A real CLI probe result distinguishes file detection from supported command-line capabilities',async()=>{
+    const c=fixture();c.state.job=job();c.state.slicePrepared=true;let finish;
+    c.api=(path,body)=>{assert.equal(path,'/api/slicer/probe');assert.deepEqual(plain(body),{});return new Promise(done=>{finish=done;});};
+    const pending=c.probeSlicer();assert.equal(c.$('generate-button').disabled,true);assert.equal(c.$('slicer-machine-file').disabled,true);assert.equal(c.state.slicePrepared,false);
+    finish({available:true,path:'/test/bambu-studio',version:'2.9.1.70',capabilities:['--slice'],diagnostics:['Missing expected option'],cli_supported:false});
+    await pending;assert.equal(c.$('prepare-slice').disabled,true);assert.equal(c.$('execute-slice').disabled,true);
+    assert.match(c.$('slicer-probe-feedback').textContent,/2.9.1.70/);assert.match(c.$('slicer-probe-feedback').textContent,/Missing expected option/);
+    assert.equal(c.state.environment.cli_supported,false);assert.equal(c.$('generate-button').disabled,false);
+  });
+  await check('Execution summaries show only returned native version and output digest evidence',()=>{
+    const c=fixture();c.renderSliceResult({}, {status:'sliced',bambu_version:'2.9.1.70',output_sha256:'a'.repeat(64),estimated_time_seconds:null,filament_grams:null,checks:[]});
+    assert.match(c.$('slice-result').textContent,/2.9.1.70/);assert.match(c.$('slice-result').textContent,new RegExp('a'.repeat(64)));
+  });
+  await check('A failed new probe does not leave an earlier CLI success badge looking current',async()=>{
+    const c=fixture();c.state.environment={available:true,path:'/test/bambu-studio',cli_supported:true,version:'old',capabilities:['--slice'],diagnostics:[]};
+    c.renderSlicerEnvironment();assert.match(c.$('slicer-status').textContent,/CLI 기능 확인됨/);
+    c.api=async()=>{throw new Error('Connection failed');};await c.probeSlicer();
+    assert.equal(c.state.environment.cli_supported,undefined);assert.equal(c.$('slicer-status').textContent,'실행 파일 감지됨');
+    assert.match(c.$('slicer-probe-feedback').textContent,/Connection failed/);
   });
   await check('Failed history opens the recorded cause without dereferencing a model',async()=>{
     const c=fixture();const failedJob={id:'failed-job',title:'모델 생성 실패',status:'failed',created_at:'2026-11-12T00:00:00Z',result:null,events:[{type:'generation_failed',message:'벽과 바닥 안쪽에 양수 크기의 공간이 필요합니다.'}]};

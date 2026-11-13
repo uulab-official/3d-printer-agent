@@ -65,7 +65,7 @@ CI는 Python 검사와 패키지 설치, UI 상태 검사, 실제 Chromium에서
 | 내보내기 | STL·STEP·3MF·재생산용 Python·SHA-256 manifest | 실제 파일 생성 및 STEP 재읽기 검사 |
 | 재료 설정 | 여러 JSON의 상속·출처 검토, 주요 수치 편집, 원본·초안·사용 조건 저장 및 다시 열기 | 가져온 명시값만 해석. 수정 후 검증 주장을 재검토하며 Studio 전체 구성·제조사 인증은 미구현 |
 | 교정 변경 검토 | K, flow ratio, MVS 기록의 재검토 필요성 판정 | API 제공. 측정이나 프린터 저장은 하지 않음 |
-| Bambu Studio | 실행 파일 탐지, full config 준비, CLI 어댑터 | 현재 개발 환경에 미설치. 테스트용 실행 대역으로 계약 검증 |
+| Bambu Studio | 명시적 CLI 확인, 설정 파일 묶음 도우미, 플레이트 지정, CLI 실행과 결과 검토 | 버전별 native 검증은 [연동 안내](docs/BAMBU_STUDIO.md)와 검증 기록 참조. 실물 출력은 미검증 |
 | 구매 비교 | 직접 입력한 가격·중량·배송비로 kg당 단가 계산 | 실시간 가격·재고·쿠폰은 수집하지 않음 |
 | 작업 기록 | 생성 파라미터·파일·이벤트·사용자 출력 결과 | 사용자 결과는 `user_reported`로 구분 |
 | LLM 연결 | OpenAI-compatible Chat Completions 어댑터 | 합성 서버 응답으로 계약 검증. 실제 모델 연결은 미검증 |
@@ -179,11 +179,16 @@ $env:PPA_BAMBU_PATH = "C:\Program Files\Bambu Studio\bambu-studio.exe"
 
 위 경로는 예시입니다. 앱이 실행 파일을 찾았다는 것과 해당 버전의 CLI가 검증됐다는 것을 구분합니다. Linux AppImage는 시스템 실행에 필요한 환경이 별도로 필요할 수 있습니다. Mac/Windows 경로 발견 코드는 있지만 해당 OS의 native 실행은 아직 시험하지 않았습니다.
 
+화면의 **설치된 슬라이서 확인** 버튼 또는 `python -m print_agent doctor --probe-slicer`로 설치된 프로그램의 `--help`를 명시적으로 실행하고 버전·필수 옵션·진단을 확인할 수 있습니다. 평소 앱을 열거나 일반 `doctor`를 실행할 때는 프로그램을 실행하지 않습니다.
+
+모델을 만든 뒤 full config 패널에서 machine 파일 1개, process 파일 1개, filament 파일 1~16개와 사용할 플레이트를 선택해 입력 묶음을 만들 수 있습니다. JSON 직접 편집도 지원합니다. 파일을 추가로 선택하거나 플레이트를 바꾸면 이전 준비가 해제되며, 새 묶음을 조합하거나 변경을 취소해야 다음 단계로 진행할 수 있습니다.
+
 슬라이싱 입력 묶음은 다음 구조입니다.
 
 ```json
 {
   "source": "user_export",
+  "plate_type": "Textured PEI Plate",
   "machine": {},
   "process": {},
   "filaments": [{}]
@@ -194,7 +199,13 @@ $env:PPA_BAMBU_PATH = "C:\Program Files\Bambu Studio\bambu-studio.exe"
 
 어댑터의 지원 검사 범위는 식별자, FFF 장비·노즐·출력 영역, 시작/종료 G-code, 레이어·벽·인필·일부 속도, 재료·지름·밀도·flow·MVS·노즐·베드 온도입니다. 전체 Bambu 스키마를 검증하지 않습니다. 호스트 후처리 프로그램과 임의 CLI 옵션은 허용하지 않습니다.
 
+각 파일에는 native 형식의 `name`, `type`, `from`과 문자열·문자열 배열 설정이 필요합니다. 선택한 플레이트에 대응하는 온도와 첫 레이어 온도를 모든 필라멘트에서 확인합니다. CLI의 정확한 플레이트 값, 설정 ID 규칙, 지원 범위는 [Bambu Studio 연동 안내](docs/BAMBU_STUDIO.md)에 정리했습니다.
+
+현재 프린터 전체 설정은 `from: "system"`인 해소된 native 루트 구성과 정확히 연결된 process `compatible_printers` 목록을 지원합니다. 사용자 프린터 프리셋의 시스템 부모 계보를 해석하는 경로는 아직 지원하지 않아 이유와 함께 차단합니다. `from`이나 호환 목록을 임의로 바꾸는 방법으로 이를 해결하지 않습니다.
+
 실행 결과는 종료 코드만으로 성공 처리하지 않습니다. 새로운 3MF의 ZIP 무결성, 비어 있지 않은 G-code, 핵심 설정 read-back을 검사합니다. 설정을 확인하지 못하거나 요청값과 다르면 `needs_review`입니다. 이 파일을 실제 프린터에 보내는 동작은 구현하지 않았습니다.
+
+준비한 파일과 플레이트 선택을 해시로 묶고 실행 전에 다시 검증합니다. 결과에는 실제 확인한 Studio 버전과 검증한 3MF의 SHA-256을 기록합니다. 출력 시간·필라멘트 무게는 계속 미확인으로 표시합니다.
 
 ## 로컬 또는 웹 LLM
 
