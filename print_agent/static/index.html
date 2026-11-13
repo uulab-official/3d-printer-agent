@@ -70,7 +70,28 @@
           <span class="page-tag">치수 단위 · mm</span>
         </div>
 
-        <div class="section-heading"><h2>추천 제작 템플릿</h2><span>직접 수정할 수 있는 시작점</span></div>
+        <section id="discovery" class="discovery-section" aria-labelledby="discovery-heading">
+          <div class="discovery-heading"><div><p class="eyebrow">SIX SMALL STARTS</p><h2 id="discovery-heading">내 일상에 쓸모 있는 첫 출력</h2><p>이 저장소의 원본 설계 6가지에서 시작해 보세요. 먼저 용도를 고르고, 놓을 곳을 실측해 보세요.</p></div><span class="badge badge-neutral">로컬 원본 시작점</span></div>
+          <form id="discovery-form" novalidate>
+            <fieldset class="discovery-purpose-field"><legend>어디에 쓰고 싶나요?</legend><div id="discovery-purpose" class="purpose-buttons" aria-label="시작점 용도"></div></fieldset>
+            <details class="discovery-space" open><summary>놓을 공간으로 좁히기 <span>선택 · mm</span></summary>
+              <p id="space-help" class="muted compact">아는 치수만 입력하세요. 가로·세로는 90° 회전도 비교합니다. 프린터 크기나 출력 가능 여부를 확인하는 조건은 아닙니다.</p>
+              <div class="space-inputs"><label for="space-width">공간 가로 · mm<input id="space-width" type="number" min="0" max="10000" step="any" placeholder="예: 160" aria-describedby="space-help"></label><label for="space-depth">공간 세로 · mm<input id="space-depth" type="number" min="0" max="10000" step="any" placeholder="예: 100" aria-describedby="space-help"></label><label for="space-height">공간 높이 · mm<input id="space-height" type="number" min="0" max="10000" step="any" placeholder="모르면 비워 두세요" aria-describedby="space-help"></label><button id="discovery-submit" class="button button-secondary" type="submit" disabled>조건으로 찾기</button></div>
+            </details>
+          </form>
+          <div id="discovery-feedback" class="notice" role="status" hidden></div>
+          <p id="discovery-summary" class="discovery-summary" role="status">시작점을 불러오는 중입니다.</p>
+          <div id="discovery-cards" class="discovery-grid" aria-label="시작점 살펴보기"></div>
+          <section id="discovery-detail" class="project-detail" aria-labelledby="discovery-detail-title" hidden>
+            <div class="project-detail-heading"><div><span class="step-label">살펴보는 시작점 · 아래 버튼으로 제작안에 적용</span><h3 id="discovery-detail-title"></h3><p id="discovery-detail-reason"></p></div><button id="discovery-apply" class="button button-primary" type="button">이 시작점으로 치수 준비 <span aria-hidden="true">↓</span></button></div>
+            <div class="project-guidance"><div><h4>먼저 측정해 주세요</h4><ul id="discovery-measurements"></ul></div><div><h4>만들기 전에 알아둘 점</h4><ul id="discovery-limits"></ul></div></div>
+            <p id="discovery-fit" class="project-fit-note"></p><details class="source-details"><summary>시작 설계의 출처와 이용 조건</summary><div id="discovery-origin" class="project-source"></div></details>
+            <div id="discovery-replace-confirm" class="replacement-confirm" role="group" aria-labelledby="discovery-confirm-label" hidden><strong id="discovery-confirm-label">현재 제작안을 이 시작점의 치수로 바꿀까요?</strong><p>입력 중인 치수가 바뀌고 현재 미리보기와 다운로드가 해제됩니다. 생성한 파일은 작업 기록에서 다시 열 수 있습니다.</p><div><button id="discovery-confirm-apply" type="button" class="button button-primary">제작안 바꾸기</button><button id="discovery-cancel-apply" type="button" class="button button-secondary">현재 제작안 유지</button></div></div>
+          </section>
+          <p class="discovery-footnote">기본 외곽 크기만 비교합니다. 치수를 수정한 뒤에는 공간·내용물과 다시 비교해 주세요. 재료·출력 시간·가격·실물 성공은 추정하지 않습니다.</p>
+        </section>
+
+        <div class="section-heading"><h2>기본 제작 템플릿</h2><span>직접 치수로 시작하기</span></div>
         <div id="template-cards" class="template-grid" aria-label="제작 템플릿 선택"><p class="muted">템플릿을 불러오는 중입니다.</p></div>
 
         <div class="model-workspace">
@@ -92,6 +113,7 @@
             <section class="card parameter-card" aria-labelledby="parameter-heading">
               <div class="card-heading"><div><span class="step-label">02 · 치수 확인</span><h2 id="parameter-heading" tabindex="-1">내게 맞게 조정하기</h2></div><button id="reset-parameters" class="text-button" type="button" disabled>기본값으로</button></div>
               <p id="parameter-description" class="muted compact">템플릿을 선택하면 수정할 치수가 표시됩니다.</p>
+              <div class="source-details draft-source-details"><p class="source-label">현재 제작안의 시작 설계</p><div id="draft-source" class="project-source" hidden></div><button id="detach-source" class="text-button" type="button" hidden>출처 연결 해제 · 치수 유지</button><p class="muted compact">시작점을 적용하면 출처가 함께 기록됩니다. 기본 템플릿과 요청 해석은 새 제작안으로 시작합니다.</p></div>
               <form id="model-form">
                 <div id="parameter-fields" class="parameter-grid"></div>
                 <p class="field-help defaults-note">각 입력 아래에 템플릿 기본값을 표시합니다. 형상 조건은 생성할 때 다시 확인합니다.</p>
@@ -119,6 +141,7 @@
 
             <section id="model-result" class="card result-card" aria-labelledby="result-heading" hidden>
               <div class="card-heading"><div><span class="step-label">생성한 파일</span><h2 id="result-heading">모델 파일이 준비됐어요</h2></div><span class="badge badge-warning">실물 출력 미검증</span></div>
+              <section id="generated-source-record" class="source-details generated-source-details" aria-label="생성한 모델의 시작 설계 기록" hidden><p class="source-label">생성한 모델의 시작 설계 기록</p><div id="generated-source" class="project-source" hidden></div></section>
               <div id="model-metrics" class="metric-grid"></div>
               <div id="model-checks" class="check-list"></div>
               <div id="model-warnings" class="warning-list"></div>

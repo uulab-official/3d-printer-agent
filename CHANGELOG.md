@@ -2,6 +2,10 @@
 
 ## Unreleased — 2026-11-13
 
+- Discover six original starting projects by purpose and optional placement-space dimensions, with measurement guidance and explicit horizontal-rotation results.
+- Prepare a selected project's editable dimensions without generating CAD automatically; preserve unfinished drafts while browsing and require an explicit choice before replacing them.
+- Record server-resolved recipe identity, original parameters and actual customizations in generated jobs, manifests and bundles; reject stale or spoofed source selections before job creation.
+- Keep recommendation responses separate from current model state; discard obsolete responses and retain existing work through invalid input, failed requests and reconnects.
 - Edit a selected filament profile's supplied applicability and source in a guided form, separately from the current-use setup, without hand-writing an envelope.
 - Apply numeric and evidence edits together; preserve raw originals, unknown fields, value representations, inheritance and archive origins through cancel/save/reopen.
 - Report selected-target scope/source/validation changes separately from effective settings; invalidate positive claims for changed scope or validation while keeping source-only corrections distinct.

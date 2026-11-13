@@ -8,6 +8,8 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 The app generates three parameterized CAD models; reviews user-supplied filament evidence and calibration changes; prepares Bambu CLI jobs; calculates user-entered delivered prices; and stores job artifacts and user reports. The optional LLM adapter only proposes supported typed model parameters. The Korean UI provides the same operations locally.
 
+A local discovery catalog supplies six original starting projects across those three geometry templates. Purpose and optional placement-space filters compare the recipe's outer dimensions, including explicit horizontal rotation; they do not infer printer compatibility or physical fit. Browsing leaves current work intact, and a separate action prepares editable dimensions. Generation resolves the selected recipe against the server catalog and saves its identity, original parameters and customization record in the job, manifest and bundle. Source-free clients and historical jobs remain supported. See [PROJECT_DISCOVERY.md](PROJECT_DISCOVERY.md).
+
 The filament workflow now imports related JSON documents, selects an editable target, resolves supported explicit single-parent inheritance, shows each value's source and assignment history, and exports an evidence report with the submitted setup. Missing parents can be added to the collection. Changes invalidate old results. See [FILAMENT_PRESETS.md](FILAMENT_PRESETS.md) for the supported subset and official-source references. This does not fill Studio defaults or certify a full native configuration.
 
 Studio `.bbsflmt`, `.bbscfg` and preset `.zip` imports add filament documents directly, retain exact archive/member byte identity outside the original profile, and report excluded printer/process documents. The bounded parser does not extract files or execute Studio. Collection imports preserve pasted profiles and unfinished drafts, skip identical originals, reject conflicting names, and commit only after complete validation. Origin round-trips through saved workspaces and review reports. See [FILAMENT_ARCHIVES.md](FILAMENT_ARCHIVES.md) for source-derived format support and limits; a successful import does not resolve missing system parents or native variants.
@@ -80,7 +82,7 @@ Source authenticity checks, Studio default/include/variant resolution, MakerWorl
 
 1. **Exact filament to usable settings:** identify a product and hardware setup, retrieve attributable source material, resolve full preset inheritance, and show unknown/conflicting values.
 2. **One real Bambu setup:** verify the installed Studio version, full configuration, slice read-back and measured physical result for one known printer/nozzle/plate/filament combination.
-3. **Beginner discovery and customization:** introduce useful-object recommendations and model-source-aware edits, with original files and reuse conditions recorded.
+3. **Broader beginner discovery and customization:** extend the implemented six local starting projects with verified external sources and additional supported edits, recording original files and reuse conditions.
 4. **Website and local companion:** add a hosted discovery surface with an explicitly paired local execution component; keep heavy CAD/native work on the user's machine.
 5. **Condition-aware shopping and memory:** compare observed offers under matching purchase conditions and reuse outcomes only for matching setups.
 

@@ -4,6 +4,10 @@ Repository: https://github.com/uulab-official/3d-printer-agent (paths below are 
 Runtime: Python 3.12.14; cadquery 2.7.0; fastapi 0.141.1; uvicorn 0.52.1; pydantic 2.13.4; httpx 0.28.1.
 The ownership notes below record the initial parallel implementation only. Current contribution guidance is in CONTRIBUTING.md and AGENTS.md. Shared input schemas live in print_agent/schemas.py.
 
+## Local project discovery
+
+The additive catalog, recommendation and generation-source contracts are in [PROJECT_DISCOVERY.md](PROJECT_DISCOVERY.md). `print_agent/discovery.py` owns strict discovery/selection models and pure matching; the geometry schema remains unchanged. Bootstrap includes the catalog, `POST /api/discovery` compares optional placement dimensions, and the API-only model payload accepts an optional server-validated `project_selection`. Source snapshots are stored separately from executable geometry parameters. The current six recipes reuse the existing three templates; their selection does not establish print readiness or physical fit.
+
 ## Geometry worker
 Implement `generate_model(spec: GeometryRequest, output_dir: Path) -> dict` and `template_catalog() -> list[dict]`.
 GeometryRequest fields: template enum tray|cable_comb|magnet_frame; width=120, depth=80, height=35, wall=2, bottom=2, dividers=0, slots=5, cable_diameter=6, inset_diameter=52, inset_depth=2, fit_clearance=0.3. All lengths mm. GeometryRequest generic finite/range validation exists; geometry worker validates actual cross-field/geometry constraints per template. The default object is an open-top tray; dividers add internal partitions along width. Cable comb is an open-top cable cradle with rounded channels across depth (not a snapping clamp). Magnet frame has a circular inset pocket for a disc; fit_clearance is extra diameter, not per-side; no claim of magnet-retention or strength.

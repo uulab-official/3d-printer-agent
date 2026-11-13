@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
-const names = ['node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer'];
+const names = ['node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 class Element {
   constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
   set textContent(value) { this._text=String(value); this.children=[]; }
@@ -15,16 +15,18 @@ class Element {
   querySelector() { return new Element(); }
   addEventListener(name,callback) { this.listeners[name]=callback; }
   focus() {}
+  checkValidity() { return !this.validity || this.validity.valid !== false; }
+  reportValidity() { return this.checkValidity(); }
 }
 function fixture() {
   const ids = new Map();
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
     $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa,
-    state:{token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{}},
+    state:{token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
-    viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},renderTemplates(){},toast(){},
+    viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
   };
   vm.createContext(context);
   for (const name of names) {
@@ -79,6 +81,7 @@ function selectedProfile(context, profile, origin) {
   context.state.workspaceSavedSignature=context.workspaceSignature();
   return draftText;
 }
+const project = (id='idea') => ({id,title:'Idea title',template:'tray',purpose:'organization',parameters:{template:'tray',width:90,depth:60,height:18},description:'Original idea',reason:'Useful',measurements:['Measure'],limits:['Not tested'],recipe_sha256:'a'.repeat(64),source:{kind:'repository_original',repository:'https://github.com/uulab-official/3d-printer-agent',path:'print_agent/geometry.py',creator:'uulab-official',license:'MIT'}});
 const job = () => ({
   id:'job-a',title:'Tray',artifacts:{stl:'/api/jobs/job-a/files/stl',sliced_three_mf:'/api/jobs/job-a/files/sliced_three_mf'},
   result:{template:'tray',parameters:{width:120},dimensions_mm:{x:120,y:80,z:35},volume_mm3:45072,geometry_status:'validated',checks:[],warnings:[],mesh:{vertices:[],faces:[]}},
@@ -90,6 +93,99 @@ const job = () => ({
     try { await test(); passed++; console.log('PASS',name); }
     catch(error) { failed++; console.log('FAIL',name,error.message); }
   }
+  await check('Browsing and filtering preserve exact unfinished draft and generated source',()=>{
+    const c=fixture(),saved=job(); c.state.job=saved;c.state.projectSource={id:'saved',recipe_sha256:'b'.repeat(64)};
+    c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true,valid:false};c.$('request-text').value='keep text';
+    c.setDiscoveryCatalog({purposes:[{id:'all',title:'전체'}],projects:[project()]});c.browseProject('idea');c.discoveryFiltersChanged();
+    assert.equal(c.state.job,saved);assert.equal(c.$('parameter-width').value,'');assert.equal(c.state.projectSource.id,'saved');assert.equal(c.$('request-text').value,'keep text');
+  });
+  await check('Numerically equivalent edited strings still require replacement confirmation and survive cancel',()=>{
+    const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.$('parameter-width').value='120.0';c.browseProject('idea');c.requestProjectApplication();
+    assert.equal(c.state.projectReplacement?.id,'idea');assert.equal(c.state.parameters.width,120);assert.equal(c.$('parameter-width').value,'120.0');
+    c.cancelProjectApplication();assert.equal(c.$('parameter-width').value,'120.0');assert.equal(c.state.projectSource,null);
+  });
+  await check('A refreshed catalog makes preserved old recipe cards stale until a fresh recommendation',async()=>{
+    const c=fixture(),oldProject=project(),newProject={...project(),recipe_sha256:'b'.repeat(64)};c.setDiscoveryCatalog({purposes:[],projects:[oldProject]});c.browseProject('idea');
+    const savedSource=project(),savedJob=job();c.state.projectSource=savedSource;c.state.job=savedJob;c.$('parameter-width').value='120.0';c.$('request-text').value='keep request';
+    c.setDiscoveryCatalog({purposes:[],projects:[newProject]},true);assert.equal(c.state.discoveryStale,true);assert.equal(c.$('discovery-apply').disabled,true);assert.match(c.$('discovery-summary').textContent,/이전 조건/);
+    c.requestProjectApplication();assert.equal(c.state.projectReplacement,null);assert.equal(c.state.discoveryMatches[0].project.recipe_sha256,oldProject.recipe_sha256);assert.equal(c.state.projectSource,savedSource);assert.equal(c.state.job,savedJob);assert.equal(c.$('parameter-width').value,'120.0');assert.equal(c.$('request-text').value,'keep request');
+    c.api=async()=>({matches:[{project:newProject}],excluded_count:0});await c.recommendProjects();c.browseProject('idea');assert.equal(c.state.discoveryStale,false);assert.equal(c.$('discovery-apply').disabled,false);assert.equal(c.state.discoveryMatches[0].project.recipe_sha256,newProject.recipe_sha256);
+  });
+  await check('Explicit application asks before replacing invalid live input and cancel preserves it',()=>{
+    const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true,valid:false};
+    c.browseProject('idea');c.requestProjectApplication();assert.equal(c.state.projectReplacement.id,'idea');assert.equal(c.$('parameter-width').value,'');
+    c.cancelProjectApplication();assert.equal(c.state.projectReplacement,null);assert.equal(c.$('parameter-width').value,'');
+    c.requestProjectApplication();c.confirmProjectApplication();assert.equal(c.state.parameters.width,90);assert.equal(c.state.projectSource.id,'idea');
+  });
+  await check('Detach preserves input text and invalidates a generated result',()=>{
+    const c=fixture();c.state.projectSource=project();c.state.job=job();c.$('parameter-width').value='001.20';c.$('request-text').value='keep';
+    c.detachProjectSource();assert.equal(c.$('parameter-width').value,'001.20');assert.equal(c.$('request-text').value,'keep');assert.equal(c.state.projectSource,null);assert.equal(c.state.job,null);
+  });
+  await check('Partial placement numbers are rejected instead of becoming missing axes',()=>{
+    const c=fixture();c.$('space-width').value='';c.$('space-width').validity={badInput:true,valid:false};assert.throws(()=>c.discoveryQuery(),/가로/);
+  });
+  await check('Late recommendations cannot replace results after filter edits or catalog reload',async()=>{
+    for(const mutate of [c=>{c.$('space-width').value='10';c.discoveryFiltersChanged();},c=>c.setDiscoveryCatalog({purposes:[],projects:[project('new')]}),c=>{c.$('space-height').value='9';}]) {
+      const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});let done;c.api=()=>new Promise(resolve=>{done=resolve;});const pending=c.recommendProjects();mutate(c);done({matches:[],excluded_count:1});await pending;assert.equal(c.state.discoveryMatches.length,1);
+    }
+  });
+  await check('Workflow guards block discovery application, confirmation, and detach handlers',()=>{
+    const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.browseProject('idea');c.state.projectReplacement=project();c.state.projectSource=project();c.state.workflowBusy=true;
+    c.requestProjectApplication();c.confirmProjectApplication();c.detachProjectSource();assert.equal(c.state.parameters.width,120);assert.equal(c.state.projectSource.id,'idea');
+  });
+  await check('Generic/reset drafts clear source and successful text plans clear it',async()=>{
+    const c=fixture();c.state.projectSource=project();c.applyDraft('tray');assert.equal(c.state.projectSource,null);
+    c.state.projectSource=project();c.$('request-text').value='request';c.api=async()=>({status:'ready',parameters:{template:'tray',width:100}});await c.preparePlan();assert.equal(c.state.projectSource,null);assert.equal(c.state.parameters.width,100);
+  });
+  await check('History and generated source use the saved snapshot rather than today’s catalog',async()=>{
+    const c=fixture(),value=job();value.design_source={kind:'project_catalog',project_id:'idea',recipe_sha256:'b'.repeat(64),recipe:{...project(),title:'Saved old title'}};
+    c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.changeView=()=>{};c.api=async path=>path==='/api/jobs'?{jobs:[value]}:value;await c.loadHistory();
+    await c.$('history-list').children[0].children.find(child=>child.listeners.click).listeners.click();
+    assert.match(c.$('generated-source').textContent,/Saved old title/);assert.equal(c.state.projectSource.recipe_sha256,'b'.repeat(64));assert.match(c.$('draft-source').textContent,/Saved old title/);
+  });
+  await check('Generation sends only source identity and stale conflict preserves draft for detach',async()=>{
+    const c=fixture();c.state.projectSource=project();c.$('parameter-width').value='97';c.document.querySelectorAll=selector=>selector==='[data-parameter]'?[Object.assign(new Element(),{dataset:{parameter:'width'},valueAsNumber:97})]:[];
+    let body;c.api=async(path,payload)=>{body=plain(payload);const error=new Error('Recipe changed');error.status=409;throw error;};await c.generateModel();
+    assert.deepEqual(body.project_selection,{id:'idea',recipe_sha256:'a'.repeat(64)});assert.equal(body.width,97);assert.equal(c.$('parameter-width').value,'97');assert.match(c.$('model-feedback').textContent,/출처 연결/);assert.equal(c.state.projectSource.id,'idea');
+  });
+  await check('Changed filters and failed requests visibly invalidate old placement comparisons',async()=>{
+    const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.state.discoveryMatches=[{project:project(),space_fit:{status:'fits'}}];c.browseProject('idea');
+    c.$('space-width').value='2';c.discoveryFiltersChanged();assert.equal(c.state.discoveryStale,true);assert.equal(c.$('discovery-apply').disabled,true);assert.doesNotMatch(c.$('discovery-cards').textContent,/입력한 축의 공간 크기와 비교됨/);
+    c.api=async()=>{throw new Error('offline');};await c.recommendProjects();assert.equal(c.state.discoveryStale,true);assert.equal(c.$('discovery-apply').disabled,true);
+  });
+  await check('Reconnecting preserves browsed results and exact active source even when catalog changes',()=>{
+    const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.browseProject('idea');c.state.projectSource=project();c.state.job=job();c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true};
+    c.setDiscoveryCatalog({purposes:[],projects:[project('new')]},true);assert.equal(c.state.discoveryBrowsed,'idea');assert.equal(c.state.discoveryMatches[0].project.id,'idea');assert.equal(c.state.projectSource.id,'idea');assert.equal(c.$('parameter-width').value,'');assert.equal(c.state.job.id,'job-a');
+  });
+  await check('Newer recommendation wins and late failures cannot replace its result',async()=>{
+    const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});const replies=[];c.api=()=>new Promise((resolve,reject)=>replies.push({resolve,reject}));
+    const older=c.recommendProjects();c.$('space-width').value='100';c.discoveryFiltersChanged();const newer=c.recommendProjects();replies[1].resolve({matches:[{project:project('new')}],excluded_count:0});await newer;replies[0].reject(new Error('old failure'));await older;
+    assert.equal(c.state.discoveryMatches[0].project.id,'new');assert.doesNotMatch(c.$('discovery-feedback').textContent,/old failure/);assert.equal(c.state.discoveryPending,false);
+  });
+  await check('A free-text plan cannot replace parameter strings edited while its response was pending',async()=>{
+    const c=fixture();c.$('request-text').value='first';c.state.projectSource=project();let done;c.api=()=>new Promise(resolve=>{done=resolve;});const pending=c.preparePlan();c.$('request-text').value='newer';done({status:'ready',parameters:{template:'tray',width:70}});await pending;assert.equal(c.state.parameters.width,120);assert.equal(c.state.projectSource.id,'idea');
+  });
+  await check('Placement rotation never rewrites starting geometry and source metadata stays text',()=>{
+    const c=fixture(),p=project();p.source.creator='<img onerror=alert(1)>';c.setDiscoveryCatalog({purposes:[],projects:[p]});c.state.discoveryMatches=[{project:p,space_fit:{status:'fits_rotated'}}];c.$('parameter-width').value='120';c.browseProject('idea');c.requestProjectApplication();assert.equal(c.state.parameters.width,90);assert.match(c.$('draft-source').textContent,/<img onerror/);assert.equal(c.state.projectSource.parameters.depth,60);
+    const metadata=c.$('draft-source').children.find(element=>element.className==='source-metadata');assert(metadata);assert.match(metadata.textContent,/geometry.py/);assert.doesNotMatch(c.$('draft-source').children.filter(element=>element!==metadata).map(element=>element.textContent).join(' '),/geometry.py|repository_original/);
+  });
+  await check('A failed refresh makes old fit labels stale even when filter values stayed unchanged',async()=>{
+    const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.state.discoveryMatches=[{project:project(),space_fit:{status:'fits'}}];c.browseProject('idea');c.api=async()=>{throw new Error('offline');};await c.recommendProjects();
+    assert.equal(c.state.discoveryStale,true);assert.equal(c.$('discovery-apply').disabled,true);assert.doesNotMatch(c.$('discovery-cards').textContent,/입력한 축의 공간 크기와 비교됨/);assert.match(c.$('discovery-summary').textContent,/이전 조건/);
+  });
+  await check('Actual bootstrap retry preserves a newer partial draft and applied source',async()=>{
+    const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.browseProject('idea');c.state.projectSource=project();c.state.job=job();let done;c.api=()=>new Promise(resolve=>{done=resolve;});const pending=c.bootstrap();
+    c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true};c.$('request-text').value='new draft';c.$('space-width').value='21';c.discoveryFiltersChanged();
+    done({session_token:'new',templates:c.state.templates,discovery:{purposes:[],projects:[project('new')]},environment:{}});await pending;
+    assert.equal(c.$('parameter-width').value,'');assert.equal(c.$('request-text').value,'new draft');assert.equal(c.$('space-width').value,'21');assert.equal(c.state.projectSource.id,'idea');assert.equal(c.state.job.id,'job-a');assert.equal(c.state.discoveryMatches[0].project.id,'idea');
+  });
+  await check('A generated response cannot relabel a changed live draft as the generated result',async()=>{
+    const c=fixture(),input=Object.assign(new Element(),{dataset:{parameter:'width'},value:'120',valueAsNumber:120});c.document.querySelectorAll=selector=>selector==='[data-parameter]'?[input]:[];let done;c.api=()=>new Promise(resolve=>{done=resolve;});
+    const pending=c.generateModel();input.value='121';done(job());await pending;assert.equal(c.state.job,null);assert.match(c.$('model-feedback').textContent,/작업 기록/);
+  });
+  await check('An old empty result is labelled as previous conditions after a filter edit',()=>{
+    const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.state.discoveryMatches=[];c.discoveryFiltersChanged();assert.match(c.$('discovery-summary').textContent,/이전 조건/);assert.match(c.$('discovery-cards').textContent,/이전 조건/);
+  });
   await check('Changing a template removes the previous job and preview target',()=>{
     const c=fixture();c.state.job=job();c.applyDraft('cable_comb');
     assert.equal(c.state.job,null);assert.equal(c.$('model-result').hidden,true);assert.equal(c.viewer.mesh,null);

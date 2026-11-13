@@ -17,6 +17,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import __version__
+from .discovery import (
+    DiscoveryRequest, ProjectSelection, StaleProjectSelection,
+    project_catalog, recommend_projects, resolve_project_selection,
+)
 from .geometry import generate_model, template_catalog
 from .offers import compare_offers
 from .planner import plan_from_text, plan_with_llm, provider_config
@@ -119,6 +123,11 @@ class PlanPayload(StrictPayload):
     mode: Literal['templates','llm'] = 'templates'
 
 
+class ModelPayload(GeometryRequest):
+    """A source reference accompanies geometry; it never becomes CAD parameters."""
+    project_selection: ProjectSelection | None = None
+
+
 class ProfilePayload(StrictPayload):
     profile: dict = Field(default_factory=dict)
     setup: dict = Field(default_factory=dict)
@@ -204,6 +213,10 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     async def workspace_conflict(_request, exception):
         return JSONResponse({'detail': str(exception)}, status_code=409)
 
+    @app.exception_handler(StaleProjectSelection)
+    async def stale_project_selection(_request, exception):
+        return JSONResponse({'detail': str(exception)}, status_code=409)
+
     @app.exception_handler(ValueError)
     async def value_error(_request, exception):
         return JSONResponse({'detail':str(exception)}, status_code=422)
@@ -215,7 +228,12 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.get('/api/bootstrap')
     def bootstrap():
         return {'app':{'name':'3D Printer Agent','version':__version__},'templates':template_catalog(),
-                'environment':detect_environment(),'provider':provider_config(),'session_token':token}
+                'discovery':project_catalog(), 'environment':detect_environment(),
+                'provider':provider_config(),'session_token':token}
+
+    @app.post('/api/discovery')
+    def discovery(payload: DiscoveryRequest):
+        return recommend_projects(payload)
 
     @app.post('/api/slicer/probe')
     def slicer_probe(_payload: SlicerProbePayload):
@@ -227,12 +245,15 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         return await plan_with_llm(payload.text) if payload.mode == 'llm' else plan_from_text(payload.text)
 
     @app.post('/api/models')
-    def models(payload: GeometryRequest):
+    def models(payload: ModelPayload):
+        spec = GeometryRequest.model_validate(payload.model_dump(exclude={'project_selection'}))
+        design_source = (resolve_project_selection(payload.project_selection, spec)
+                         if payload.project_selection is not None else None)
         job_id, folder = store.reserve()
         try:
             with CAD_LOCK:
-                result = generate_model(payload,folder)
-            return store.finish(job_id,result)
+                result = generate_model(spec,folder)
+            return store.finish(job_id,result,design_source=design_source)
         except ValueError as exc:
             store.fail(job_id,str(exc))
             raise

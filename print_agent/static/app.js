@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -136,6 +136,7 @@
     $("reset-parameters").disabled = busy || !state.template;
     $("save-outcome").disabled = busy || !state.job;
     updateSliceControls();
+    updateDiscoveryControls();
   }
 
   function invalidateCurrentJob(message) {
@@ -143,6 +144,7 @@
     renderSlicerFiles();
     if (!state.job) return;
     state.job = null;
+    renderProjectSource("generated-source", null);
     state.slicePrepared = false;
     viewer.clear();
     $("model-result").hidden = true;
@@ -220,6 +222,250 @@
   document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => changeView(button.dataset.view)));
   closeMenu();
 
+  function discoverySignature() {
+    return JSON.stringify([state.discoveryPurpose, ...["width", "depth", "height"].map((axis) => {
+      const input = $(`space-${axis}`);
+      return [input.value, Boolean(input.validity?.badInput), input.validity?.valid !== false];
+    })]);
+  }
+
+  function discoveryQuery() {
+    const available_space = {};
+    for (const [axis, label] of [["width", "가로"], ["depth", "세로"], ["height", "높이"]]) {
+      const input = $(`space-${axis}`);
+      if (input.validity?.badInput || input.validity?.valid === false) throw new Error(`놓을 공간의 ${label}를 0보다 크고 10000 이하인 mm 숫자로 완성해 주세요.`);
+      if (input.value === "") continue;
+      const value = Number(input.value);
+      if (!Number.isFinite(value) || value <= 0 || value > 10000) throw new Error(`놓을 공간의 ${label}를 0보다 크고 10000 이하인 mm 숫자로 입력해 주세요.`);
+      available_space[axis] = value;
+    }
+    return { purpose: state.discoveryPurpose, available_space };
+  }
+
+  function discoveryFiltersChanged() {
+    state.discoveryRevision += 1;
+    state.discoveryRequest += 1;
+    state.discoveryPending = false;
+    state.discoveryStale = true;
+    cancelProjectApplication();
+    renderDiscovery();
+    showNotice("discovery-feedback", "조건을 바꿨습니다. ‘조건으로 찾기’를 누르면 아래 시작점을 다시 비교합니다.");
+    updateDiscoveryControls();
+  }
+
+  function setDiscoveryCatalog(catalog, preserveBrowsing = false) {
+    state.discoveryEpoch += 1;
+    state.discoveryRequest += 1;
+    state.discoveryPending = false;
+    state.discovery = catalog || { purposes: [], projects: [] };
+    state.projectReplacement = null;
+    // Reconnecting refreshes discovery only. It never reapplies a draft or a job's source.
+    if (!preserveBrowsing) {
+      state.discoveryMatches = state.discovery.projects.map((project) => ({ project, space_fit: { status: "not_checked" } }));
+      state.discoveryBrowsed = null;
+      state.discoveryStale = Boolean(state.discoveryRevision);
+    } else {
+      // Preserved matches identify the previous catalog, even when filters did not change.
+      state.discoveryStale = true;
+    }
+    const purposes = $("discovery-purpose");
+    purposes.replaceChildren();
+    for (const purpose of state.discovery.purposes) {
+      const button = node("button", "purpose-button", purpose.title);
+      button.type = "button";
+      button.dataset.purpose = purpose.id;
+      button.addEventListener("click", () => {
+        if (state.workflowBusy || state.discoveryPurpose === purpose.id) return;
+        state.discoveryPurpose = purpose.id;
+        discoveryFiltersChanged();
+      });
+      purposes.append(button);
+    }
+    renderDiscovery();
+    if (state.discoveryRevision || preserveBrowsing) showNotice("discovery-feedback", "연결을 새로 확인했습니다. 입력한 조건은 그대로입니다. ‘조건으로 찾기’로 결과를 갱신해 주세요.");
+    else hideNotice("discovery-feedback");
+  }
+
+  function renderDiscovery() {
+    const list = $("discovery-cards");
+    list.replaceChildren();
+    const matches = state.discoveryMatches || [];
+    $("discovery-summary").textContent = matches.length ? `${matches.length}개의 시작점 · ${state.discoveryStale ? "이전 조건의 결과 · 다시 찾아주세요" : "카드를 눌러 측정할 곳을 살펴보세요"}` : state.discoveryStale ? "이전 조건의 결과 · 조건으로 다시 찾아주세요" : "조건에 맞는 시작점이 없습니다";
+    if (!matches.length) {
+      const empty = node("div", "discovery-empty");
+      empty.append(node("h3", "", state.discoveryStale ? "이전 조건에는 맞는 기본 크기가 없었어요" : "이 공간에 맞는 기본 크기가 없어요"), node("p", "", "용도나 공간 조건을 바꾸거나, 아래 기본 템플릿에서 직접 치수를 조정해 보세요. 크기는 자동으로 줄이지 않습니다."));
+      list.append(empty);
+    }
+    for (const match of matches) {
+      const project = match.project;
+      const button = node("button", "project-card");
+      button.type = "button";
+      button.dataset.projectId = project.id;
+      button.setAttribute("aria-pressed", String(state.discoveryBrowsed === project.id));
+      const art = node("span", `project-art project-art-${project.template}`);
+      art.setAttribute("aria-hidden", "true");
+      const shape = node("span", "project-shape");
+      const divisions = project.template === "cable_comb" ? project.parameters.slots : (project.parameters.dividers || 0);
+      for (let i = 0; i < Math.min(divisions || 0, 5); i += 1) shape.append(node("i"));
+      art.append(shape);
+      const size = project.parameters || {};
+      button.append(art, node("strong", "project-title", project.title), node("span", "project-description", project.description), node("span", "project-size", `${size.width} × ${size.depth} × ${size.height} mm`));
+      if (!state.discoveryStale && match.space_fit?.status === "fits_rotated") button.append(node("span", "project-fit", "가로·세로를 90° 돌려 놓는 크기"));
+      else if (!state.discoveryStale && match.space_fit?.status === "fits") button.append(node("span", "project-fit", "입력한 축의 공간 크기와 비교됨"));
+      button.append(node("span", "project-more", "측정 안내 보기 ↗"));
+      button.addEventListener("click", () => browseProject(project.id));
+      list.append(button);
+    }
+    renderProjectDetail();
+    updateDiscoveryControls();
+  }
+
+  function browseProject(id) {
+    if (state.workflowBusy) return;
+    if (!(state.discoveryMatches || []).some((match) => match.project.id === id)) return;
+    state.discoveryBrowsed = id;
+    cancelProjectApplication();
+    renderDiscovery();
+  }
+
+  function renderProjectDetail() {
+    const match = (state.discoveryMatches || []).find((item) => item.project.id === state.discoveryBrowsed);
+    const area = $("discovery-detail");
+    area.hidden = !match;
+    if (!match) return;
+    const project = match.project;
+    $("discovery-detail-title").textContent = project.title;
+    $("discovery-detail-reason").textContent = project.reason;
+    $("discovery-measurements").replaceChildren(...(project.measurements || []).map((text) => node("li", "", text)));
+    $("discovery-limits").replaceChildren(...(project.limits || []).map((text) => node("li", "", text)));
+    $("discovery-fit").textContent = state.discoveryStale ? "표시된 시작점은 이전 조건의 결과입니다. 현재 조건으로 다시 찾은 뒤 치수를 준비해 주세요." : match.space_fit?.status === "fits_rotated" ? "가로·세로를 90° 돌려 놓았을 때 입력한 축에 들어가는 기본 크기입니다. 제작 치수는 회전하거나 줄이지 않습니다." : match.space_fit?.status === "fits" ? "입력한 축의 놓을 공간과 기본 외곽 크기를 비교했습니다. 입력하지 않은 축은 확인하지 않았습니다." : "놓을 공간은 아직 비교하지 않았습니다. 아래 안내에 따라 실측해 주세요.";
+    renderProjectSource("discovery-origin", project);
+    $("discovery-replace-confirm").hidden = !state.projectReplacement;
+  }
+
+  function renderProjectSource(id, source) {
+    const area = $(id);
+    area.replaceChildren();
+    area.hidden = !source;
+    if (id === "generated-source") $("generated-source-record").hidden = !source;
+    if (!source) return;
+    const recipe = source.recipe || source;
+    const origin = recipe.source || {};
+    area.append(node("strong", "", recipe.title || "로컬 원본 시작점"));
+    area.append(node("p", "", `출처 · ${origin.creator || "미기록"} · ${origin.license || "이용 조건 미기록"}`));
+    const metadata = node("details", "source-metadata");
+    metadata.append(node("summary", "", "원본 경로와 시작점 식별자"));
+    if (origin.kind) metadata.append(node("p", "", `원본 종류 · ${origin.kind}`));
+    if (origin.repository) metadata.append(node("p", "source-path", origin.repository));
+    if (origin.path) metadata.append(node("p", "source-path", origin.path));
+    if (source.recipe_sha256) metadata.append(node("p", "source-hash", `시작점 SHA-256 · ${source.recipe_sha256}`));
+    if (source.customized) area.append(node("p", "", `시작점에서 수정한 치수 · ${(source.changed_parameters || []).map((key) => fieldNames[key] || key).join(", ")}`));
+    area.append(node("p", "source-scope", "시작 설계의 기록입니다. 실물 출력·고정력·끼워맞춤을 검증한 표시는 아닙니다."), metadata);
+  }
+
+  function updateDiscoveryControls() {
+    const busy = state.workflowBusy;
+    $("discovery-submit").disabled = busy || !state.token || !state.discovery;
+    $("discovery-submit").textContent = state.discoveryPending ? "새 조건으로 다시 찾기" : "조건으로 찾기";
+    $("discovery-cards").setAttribute("aria-busy", String(Boolean(state.discoveryPending)));
+    document.querySelectorAll(".purpose-button").forEach((button) => {
+      button.disabled = busy;
+      button.setAttribute("aria-pressed", String(button.dataset.purpose === state.discoveryPurpose));
+    });
+    document.querySelectorAll(".project-card").forEach((button) => { button.disabled = busy; });
+    $("discovery-apply").disabled = busy || !state.discoveryBrowsed || state.discoveryStale;
+    $("discovery-confirm-apply").disabled = busy || state.discoveryStale || !state.projectReplacement;
+    $("discovery-cancel-apply").disabled = busy;
+    $("detach-source").hidden = !state.projectSource;
+    $("detach-source").disabled = busy || !state.projectSource;
+  }
+
+  function draftHasChanges() {
+    if (state.job || $("request-text").value.trim()) return true;
+    const template = state.templates.find((item) => item.id === state.template);
+    return (template?.editable_fields || []).some((key) => {
+      const input = $(`parameter-${key}`);
+      return input.validity?.badInput || input.validity?.valid === false || input.value === "" || input.value !== String(state.parameters[key]);
+    });
+  }
+
+  function requestProjectApplication() {
+    if (state.workflowBusy || state.discoveryStale) return;
+    const match = (state.discoveryMatches || []).find((item) => item.project.id === state.discoveryBrowsed);
+    if (!match) return;
+    if (draftHasChanges()) {
+      state.projectReplacement = match.project;
+      $("discovery-replace-confirm").hidden = false;
+      updateDiscoveryControls();
+      $("discovery-confirm-apply").focus({ preventScroll: true });
+    } else applyProject(match.project);
+  }
+
+  function confirmProjectApplication() {
+    if (state.workflowBusy || state.discoveryStale || !state.projectReplacement) return;
+    applyProject(state.projectReplacement);
+  }
+
+  function cancelProjectApplication() {
+    if (state.workflowBusy) return;
+    state.projectReplacement = null;
+    $("discovery-replace-confirm").hidden = true;
+  }
+
+  function applyProject(project) {
+    if (state.workflowBusy) return;
+    applyDraft(project.template, project.parameters, project);
+    hideNotice("plan-feedback");
+    showNotice("model-feedback", "시작점의 치수를 준비했습니다. 내 물건과 공간에 맞게 확인한 뒤 모델을 생성해 주세요.");
+    $("parameter-heading").focus({ preventScroll: true });
+  }
+
+  function detachProjectSource() {
+    if (state.workflowBusy || !state.projectSource) return;
+    state.projectSource = null;
+    invalidateCurrentJob("출처 연결을 해제했습니다. 현재 치수로 새 모델을 생성해 주세요.");
+    renderProjectSource("draft-source", null);
+    updateDiscoveryControls();
+  }
+
+  async function recommendProjects() {
+    if (state.workflowBusy || !state.discovery) return;
+    let query;
+    try { query = discoveryQuery(); }
+    catch (error) { showNotice("discovery-feedback", error.message, "error"); return; }
+    const request = ++state.discoveryRequest, epoch = state.discoveryEpoch, signature = discoverySignature();
+    state.discoveryPending = true;
+    state.discoveryStale = true;
+    state.projectReplacement = null;
+    renderDiscovery();
+    showNotice("discovery-feedback", "로컬 시작점의 기본 크기를 비교하고 있습니다. 조건을 바꾸면 이전 응답은 적용하지 않습니다.");
+    try {
+      const result = await api("/api/discovery", query);
+      if (request !== state.discoveryRequest || epoch !== state.discoveryEpoch || signature !== discoverySignature()) return;
+      state.discoveryStale = false;
+      state.discoveryMatches = result.matches || [];
+      state.discoveryBrowsed = null;
+      state.projectReplacement = null;
+      renderDiscovery();
+      showNotice("discovery-feedback", `${result.excluded_count || 0}개는 입력한 공간보다 커서 제외했습니다. 놓을 공간의 외곽 크기만 비교하며, 프린터 호환·실물 끼워맞춤은 확인하지 않습니다.`);
+    } catch (error) {
+      if (request === state.discoveryRequest && epoch === state.discoveryEpoch && signature === discoverySignature()) showNotice("discovery-feedback", `${error.message} 기존 결과와 제작안은 그대로입니다. 다시 찾아보세요.`, "error");
+    } finally {
+      if (request === state.discoveryRequest) { state.discoveryPending = false; updateDiscoveryControls(); }
+    }
+  }
+
+  function modelDraftSignature() {
+    return JSON.stringify([state.template, $("request-text").value, $("plan-mode").value, state.projectSource?.id || state.projectSource?.project_id, state.projectSource?.recipe_sha256, ...document.querySelectorAll("[data-parameter]")].map((value) => value?.dataset?.parameter ? [value.dataset.parameter, value.value, Boolean(value.validity?.badInput)] : value));
+  }
+
+  $("discovery-form").addEventListener("submit", (event) => { event.preventDefault(); recommendProjects(); });
+  for (const axis of ["width", "depth", "height"]) $(`space-${axis}`).addEventListener("input", discoveryFiltersChanged);
+  $("discovery-apply").addEventListener("click", requestProjectApplication);
+  $("discovery-confirm-apply").addEventListener("click", confirmProjectApplication);
+  $("discovery-cancel-apply").addEventListener("click", cancelProjectApplication);
+  $("detach-source").addEventListener("click", detachProjectSource);
+
   function renderTemplates() {
     const list = $("template-cards");
     list.replaceChildren();
@@ -235,14 +481,18 @@
       button.append(top, node("strong", "", template.title), node("p", "", template.description));
       const defaults = template.defaults || {};
       button.append(node("span", "template-size", `${defaults.width} × ${defaults.depth} × ${defaults.height} mm · 기본 크기`));
-      button.addEventListener("click", () => { applyDraft(template.id); hideNotice("plan-feedback"); hideNotice("model-feedback"); });
+      button.addEventListener("click", () => { if (state.workflowBusy) return; applyDraft(template.id); hideNotice("plan-feedback"); hideNotice("model-feedback"); });
       list.append(button);
     });
   }
 
-  function applyDraft(templateId, parameters) {
+  function applyDraft(templateId, parameters, source = null) {
     const template = state.templates.find((item) => item.id === templateId);
     if (!template) throw new Error("지원하지 않는 제작 템플릿입니다.");
+    state.projectSource = source;
+    state.projectReplacement = null;
+    $("discovery-replace-confirm").hidden = true;
+    renderProjectSource("draft-source", source);
     state.template = templateId;
     state.parameters = { ...template.defaults, template: templateId };
     for (const key of template.editable_fields) {
@@ -282,14 +532,16 @@
     if (event.target.dataset.parameter) invalidateCurrentJob("치수가 바뀌었습니다. 새 모델을 생성하면 변경한 형상을 확인할 수 있습니다.");
   });
 
-  $("reset-parameters").addEventListener("click", () => { applyDraft(state.template); hideNotice("plan-feedback"); toast("선택한 템플릿의 기본값을 적용했습니다."); });
+  $("reset-parameters").addEventListener("click", () => { if (state.workflowBusy) return; applyDraft(state.template); hideNotice("plan-feedback"); toast("선택한 템플릿의 기본값을 적용했습니다."); });
 
-  $("plan-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
+  async function preparePlan() {
+    if (state.workflowBusy) return;
+    const signature = modelDraftSignature();
     hideNotice("plan-feedback");
     try {
       await withWorkflow($("plan-button"), "요청 해석 중", async () => {
         const result = await api("/api/plan", { text: $("request-text").value, mode: $("plan-mode").value });
+        if (signature !== modelDraftSignature()) return;
         if (result.status === "ready" && result.parameters) {
           applyDraft(result.parameters.template, result.parameters);
           showNotice("plan-feedback", result.message, "success", result.assumptions || []);
@@ -307,7 +559,9 @@
         }
       });
     } catch (error) { showNotice("plan-feedback", error.message, "error"); }
-  });
+  }
+
+  $("plan-form").addEventListener("submit", (event) => { event.preventDefault(); preparePlan(); });
 
   $("plan-mode").addEventListener("change", () => {
     $("provider-note").textContent = $("plan-mode").value === "llm"
@@ -315,21 +569,30 @@
       : "템플릿 모드는 지원하는 물건과 치수를 정해진 규칙으로 해석합니다.";
   });
 
-  $("model-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
+  async function generateModel() {
+    if (state.workflowBusy) return;
     if (!$("model-form").reportValidity()) return;
     hideNotice("model-feedback");
+    const signature = modelDraftSignature();
     const parameters = { template: state.template };
     for (const input of document.querySelectorAll("[data-parameter]")) parameters[input.dataset.parameter] = input.valueAsNumber;
+    if (state.projectSource) parameters.project_selection = { id: state.projectSource.project_id || state.projectSource.id, recipe_sha256: state.projectSource.recipe_sha256 };
     try {
       await withWorkflow($("generate-button"), "CAD 생성 · 검증 중", async () => {
         const job = await api("/api/models", parameters);
+        if (signature !== modelDraftSignature()) {
+          invalidateCurrentJob("생성 중에 제작안이 바뀌었습니다. 생성한 파일은 작업 기록에서 확인하고, 현재 치수로 다시 생성해 주세요.");
+          showNotice("model-feedback", "생성 중에 제작안이 바뀌었습니다. 생성한 파일은 작업 기록에서 확인할 수 있습니다. 현재 치수는 유지했습니다.");
+          return;
+        }
         renderJob(job);
         showNotice("model-feedback", "실제 CAD 모델과 파일을 생성했습니다. 오른쪽에서 형상과 검증 결과를 확인하세요.", "success");
         toast("모델 파일이 준비됐습니다.");
       });
-    } catch (error) { showNotice("model-feedback", error.message, "error"); }
-  });
+    } catch (error) { showNotice("model-feedback", error.status === 409 && state.projectSource ? `${error.message} 현재 치수는 유지했습니다. 출처 연결을 해제하거나 새 시작점을 선택한 뒤 다시 생성해 주세요.` : error.message, "error"); }
+  }
+
+  $("model-form").addEventListener("submit", (event) => { event.preventDefault(); generateModel(); });
 
   function metric(label, value) {
     const item = node("div", "metric");
@@ -368,6 +631,7 @@
     if (!result) throw new Error("작업에 모델 결과가 없습니다.");
     cancelSlicerReads();
     state.job = job;
+    renderProjectSource("generated-source", job.design_source);
     state.slicePrepared = false;
     $("model-result").hidden = false;
     $("outcome-card").hidden = false;
@@ -1648,7 +1912,7 @@
                 showNotice("history-feedback", full.status === "failed" ? "모델 생성에 실패한 기록입니다. 원인을 확인하고 치수를 조정해 다시 생성할 수 있습니다." : "이 작업에는 아직 생성된 모델이 없습니다.", full.status === "failed" ? "warning" : "info", reasons);
                 return;
               }
-              applyDraft(full.result.template, full.result.parameters);
+              applyDraft(full.result.template, full.result.parameters, full.design_source || null);
               renderJob(full);
               hideNotice("model-feedback");
               hideNotice("plan-feedback");
@@ -1836,9 +2100,13 @@
   $("reset-view").addEventListener("click", () => viewer.reset());
 
   async function bootstrap() {
+    const request = ++state.bootstrapRequest;
+    state.discoveryEpoch += 1;
+    state.discoveryRequest += 1;
     $("bootstrap-error").hidden = true;
     try {
       const data = await api("/api/bootstrap");
+      if (request !== state.bootstrapRequest) return;
       state.token = data.session_token;
       state.templates = data.templates || [];
       state.environment = data.environment || {};
@@ -1856,11 +2124,13 @@
         : "LLM은 아직 설정되지 않았습니다. 템플릿 모드로 지원하는 물건과 치수를 해석할 수 있습니다.";
       if (!state.template && state.templates.length) applyDraft(state.templates[0].id);
       else renderTemplates();
+      setDiscoveryCatalog(data.discovery, Boolean(state.discovery));
       ["plan-button", "review-profile", "compare-offers"].forEach((id) => { $(id).disabled = false; });
       updateWorkflowControls();
       updateWorkspaceStatus();
       await loadWorkspaces();
     } catch (error) {
+      if (request !== state.bootstrapRequest) return;
       $("bootstrap-error").hidden = false;
       $("bootstrap-error-detail").textContent = error.message;
       setBadge("environment-badge", "서버 연결 확인 필요", "warning");

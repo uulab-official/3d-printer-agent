@@ -3,7 +3,8 @@ const crypto = require('node:crypto');
 const { test, expect } = require('@playwright/test');
 const { filamentArchive, printerArchive } = require('./archive-fixture.cjs');
 
-// The server and CAD engine are real. No network routes or CAD results are mocked.
+// The server and CAD engine are real. The discovery recovery test explicitly
+// delays one real response and injects one labelled HTTP 503; CAD is never mocked.
 async function openView(page, view) {
   const menu = page.locator('#menu-toggle');
   if (await menu.isVisible()) await menu.click();
@@ -66,6 +67,218 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(async ({ page }) => {
   expect(page.__errors).toEqual([]);
+});
+
+async function findProjects(page) {
+  const response = page.waitForResponse(item =>
+    item.url().endsWith('/api/discovery') && item.request().method() === 'POST');
+  await page.locator('#discovery-submit').click();
+  return await response;
+}
+
+test('local project discovery reaches customized real CAD and preserves its recipe through downloads and history', async ({ page }, testInfo) => {
+  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(6);
+  await page.locator('#discovery-purpose [data-purpose="organization"]').click();
+  for (const [axis, value] of Object.entries({ width: '150', depth: '90', height: '30' })) {
+    await page.locator(`#space-${axis}`).fill(value);
+  }
+  const recommendationResponse = await findProjects(page);
+  expect(recommendationResponse.status()).toBe(200);
+  const recommendations = await recommendationResponse.json();
+  expect(recommendations.matches.map(item => item.project.id)).toEqual(['small-parts-tray', 'desk-sorter']);
+  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(2);
+  await fs.writeFile(testInfo.outputPath('discovery-recommendations.json'), await recommendationResponse.text());
+  await noHorizontalOverflow(page);
+  await page.locator('#discovery-cards').screenshot({ path: testInfo.outputPath('discovery-candidates.png'), scale: 'css' });
+
+  await page.locator('#discovery-cards [data-project-id="desk-sorter"]').click();
+  await expect(page.locator('#discovery-detail')).toBeVisible();
+  await expect(page.locator('#discovery-measurements')).toContainText('측정');
+  await expect(page.locator('#parameter-width')).toHaveValue('120');
+  await page.locator('#discovery-detail').screenshot({ path: testInfo.outputPath('discovery-detail.png'), scale: 'css' });
+  await page.locator('#discovery-apply').click();
+  await expect(page.locator('#parameter-width')).toHaveValue('150');
+  await expect(page.locator('#parameter-dividers')).toHaveValue('2');
+  await expect(page.locator('#draft-source')).toContainText('세 칸 책상 정리함');
+  await expect(page.locator('#model-result')).toBeHidden();
+  await page.locator('#parameter-width').fill('152');
+
+  const generatedResponse = page.waitForResponse(response =>
+    response.url().endsWith('/api/models') && response.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const response = await generatedResponse;
+  expect(response.status()).toBe(200);
+  const job = await response.json();
+  const recipe = recommendations.matches.find(item => item.project.id === 'desk-sorter').project;
+  expect(response.request().postDataJSON().project_selection).toEqual({
+    id: recipe.id, recipe_sha256: recipe.recipe_sha256,
+  });
+  expect(job.result.dimensions_mm).toEqual({ x: 152, y: 90, z: 30 });
+  expect(job.result.geometry_status).toBe('validated');
+  expect(job.result.print_status).toBe('not_tested');
+  expect(job.result.checks.every(item => item.passed)).toBe(true);
+  expect(job.design_source.project_id).toBe('desk-sorter');
+  expect(job.design_source.recipe_sha256).toBe(recipe.recipe_sha256);
+  expect(job.design_source.recipe.parameters.width).toBe(150);
+  expect(job.design_source.customized).toBe(true);
+  expect(job.design_source.changed_parameters).toEqual(['width']);
+  expect(job.latest_slice).toBeNull();
+  await fs.writeFile(testInfo.outputPath('discovery-job.json'), await response.text());
+  await expect(page.locator('#generated-source')).toBeVisible();
+  await expect(page.locator('#generated-source')).toContainText('세 칸 책상 정리함');
+  await expect(page.locator('#generated-source')).toContainText('가로');
+  await expect(page.locator('#model-canvas')).toBeVisible();
+  await noHorizontalOverflow(page);
+  await page.locator('#model-result').screenshot({ path: testInfo.outputPath('discovery-generated.png'), scale: 'css' });
+
+  const manifestDownloadPromise = page.waitForEvent('download');
+  await page.locator('#download-links a').filter({ hasText: '생성 기록' }).click();
+  const manifestDownload = await manifestDownloadPromise;
+  const manifestFile = testInfo.outputPath('discovery-manifest.json');
+  await manifestDownload.saveAs(manifestFile);
+  const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+  expect(manifest.design_source).toEqual(job.design_source);
+  expect(manifest.parameters.width).toBe(152);
+  expect(manifest.physical_print_status).toBe('not_tested');
+  expect(manifest.slicer_status).toBe('not_run');
+  const modelDownloadPromise = page.waitForEvent('download');
+  await page.locator('#download-links a').filter({ hasText: '3MF 형상' }).click();
+  const modelDownload = await modelDownloadPromise;
+  const modelFile = testInfo.outputPath('discovery-model.3mf');
+  await modelDownload.saveAs(modelFile);
+  const modelBytes = await fs.readFile(modelFile);
+  expect(modelBytes.length).toBe(manifest.artifacts.three_mf.bytes);
+  expect(crypto.createHash('sha256').update(modelBytes).digest('hex')).toBe(manifest.artifacts.three_mf.sha256);
+
+  // Browsing another idea must not relabel or invalidate the existing model.
+  const manifestHref = await page.locator('#download-links a').filter({ hasText: '생성 기록' }).getAttribute('href');
+  await page.locator('#discovery-cards [data-project-id="small-parts-tray"]').click();
+  await expect(page.locator('#parameter-width')).toHaveValue('152');
+  await expect(page.locator('#model-result')).toBeVisible();
+  await expect(page.locator('#generated-source')).toContainText('세 칸 책상 정리함');
+  await expect(page.locator('#download-links a').filter({ hasText: '생성 기록' })).toHaveAttribute('href', manifestHref);
+  await page.locator('#discovery-apply').click();
+  await expect(page.locator('#discovery-replace-confirm')).toBeVisible();
+  await page.locator('#discovery-cancel-apply').click();
+  await expect(page.locator('#parameter-width')).toHaveValue('152');
+  await expect(page.locator('#model-result')).toBeVisible();
+
+  await openView(page, 'history');
+  await page.locator('.history-item').filter({ hasText: job.title }).first().getByRole('button', { name: '열기' }).click();
+  await expect(page.locator('#parameter-width')).toHaveValue('152');
+  await expect(page.locator('#draft-source')).toContainText('세 칸 책상 정리함');
+  await expect(page.locator('#generated-source')).toContainText('세 칸 책상 정리함');
+  await expect(page.locator('#model-result')).toBeVisible();
+  await page.locator('.template-card[data-template="cable_comb"]').click();
+  await expect(page.locator('#draft-source')).toBeHidden();
+  await expect(page.locator('#model-result')).toBeHidden();
+  await expect(page.locator('#download-links a')).toHaveCount(0);
+  await noHorizontalOverflow(page);
+});
+
+test('discovery preserves unfinished drafts and recovers from empty, stale and failed recommendation responses', async ({ page }, testInfo) => {
+  const requestText = '아직 수정 중인 요청을 그대로 보관합니다.';
+  await page.locator('#request-text').fill(requestText);
+  const width = page.locator('#parameter-width');
+  await width.fill('');
+  await width.press('-');
+  await expect(width).toHaveValue('');
+  expect(await width.evaluate(element => element.validity.badInput)).toBe(true);
+  await page.locator('#discovery-purpose [data-purpose="cables"]').click();
+  expect((await findProjects(page)).status()).toBe(200);
+  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(2);
+  await page.locator('#discovery-cards [data-project-id="three-cable-rest"]').click();
+  await page.locator('#discovery-apply').click();
+  await expect(page.locator('#discovery-replace-confirm')).toBeVisible();
+  await page.locator('#discovery-cancel-apply').click();
+  expect(await width.evaluate(element => element.validity.badInput)).toBe(true);
+  await expect(page.locator('#request-text')).toHaveValue(requestText);
+  await expect(page.locator('#draft-source')).toBeHidden();
+  await width.fill('133');
+
+  await page.locator('#space-height').fill('11');
+  const emptyResponse = await findProjects(page);
+  expect((await emptyResponse.json()).matches).toEqual([]);
+  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(0);
+  await expect(page.locator('#discovery-summary')).toContainText('없습니다');
+  await expect(width).toHaveValue('133');
+  await page.locator('#discovery-cards').screenshot({ path: testInfo.outputPath('discovery-empty.png'), scale: 'css' });
+
+  let discoveryRequests = 0;
+  const countRequests = request => { if (request.url().endsWith('/api/discovery')) discoveryRequests += 1; };
+  page.on('request', countRequests);
+  await page.locator('#space-width').press('-');
+  expect(await page.locator('#space-width').evaluate(element => element.validity.badInput)).toBe(true);
+  await page.locator('#discovery-submit').click();
+  await expect(page.locator('#discovery-feedback')).toContainText('완성');
+  expect(discoveryRequests).toBe(0);
+  page.off('request', countRequests);
+  for (const [axis, value] of Object.entries({ width: '60', depth: '20', height: '12' })) {
+    await page.locator(`#space-${axis}`).fill(value);
+  }
+  expect((await findProjects(page)).status()).toBe(200);
+  await expect(page.locator('#discovery-cards [data-project-id="three-cable-rest"]')).toBeVisible();
+  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(1);
+
+  // Delay a real successful HTTP response; its six results must not replace newer inputs.
+  await page.locator('#discovery-purpose [data-purpose="all"]').click();
+  for (const axis of ['width', 'depth', 'height']) await page.locator(`#space-${axis}`).fill('');
+  let releaseResponse, signalFetched;
+  const held = new Promise(resolve => { releaseResponse = resolve; });
+  const fetched = new Promise(resolve => { signalFetched = resolve; });
+  const delayedRoute = async route => {
+    const actual = await route.fetch();
+    expect((await actual.json()).matches).toHaveLength(6);
+    signalFetched();
+    await held;
+    await route.fulfill({ response: actual });
+  };
+  await page.route('**/api/discovery', delayedRoute, { times: 1 });
+  const oldResponse = page.waitForResponse(response => response.url().endsWith('/api/discovery'));
+  await page.locator('#discovery-submit').click();
+  await fetched;
+  await expect(page.locator('#space-height')).toBeEnabled();
+  await page.locator('#space-height').fill('7');
+  releaseResponse();
+  await (await oldResponse).finished();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(1);
+  await expect(page.locator('#discovery-cards [data-project-id="three-cable-rest"]')).toBeVisible();
+  await expect(page.locator('#discovery-summary')).toContainText('이전');
+  await expect(page.locator('#discovery-apply')).toBeDisabled();
+  expect((await findProjects(page)).status()).toBe(200);
+  await expect(page.locator('#discovery-cards [data-project-id="round-insert-frame"]')).toBeVisible();
+
+  // Explicit synthetic transport failure exercises recovery; model/CAD data stay real.
+  page.__expectedHttpFailures.push({ path: '/api/discovery', status: 503 });
+  await page.route('**/api/discovery', route => route.fulfill({
+    status: 503, contentType: 'application/json',
+    body: JSON.stringify({ detail: '브라우저 테스트용 일시 오류' }),
+  }), { times: 1 });
+  await page.locator('#space-height').fill('8');
+  expect((await findProjects(page)).status()).toBe(503);
+  await expect(page.locator('#discovery-feedback')).toContainText('일시 오류');
+  await expect(width).toHaveValue('133');
+  await expect(page.locator('#request-text')).toHaveValue(requestText);
+  await expect(page.locator('#discovery-cards [data-project-id="round-insert-frame"]')).toBeVisible();
+  await expect(page.locator('#discovery-apply')).toBeDisabled();
+  expect((await findProjects(page)).status()).toBe(200);
+  await page.locator('#discovery-cards [data-project-id="round-insert-frame"]').click();
+  await page.locator('#discovery-apply').click();
+  await expect(page.locator('#discovery-replace-confirm')).toBeVisible();
+  await noHorizontalOverflow(page);
+  await page.locator('#discovery-detail').screenshot({ path: testInfo.outputPath('discovery-replacement.png'), scale: 'css' });
+  await page.locator('#discovery-confirm-apply').click();
+  await expect(page.locator('#parameter-width')).toHaveValue('65');
+  await expect(page.locator('#parameter-inset_diameter')).toHaveValue('52');
+  await expect(page.locator('#draft-source')).toContainText('원형 사진 인셋 프레임');
+
+  await page.locator('#request-text').fill('가로 90mm 세로 60mm 높이 18mm 수납함');
+  await page.locator('#plan-button').click();
+  await expect(page.locator('#parameter-width')).toHaveValue('90');
+  await expect(page.locator('#draft-source')).toBeHidden();
+  await expect(page.locator('#model-result')).toBeHidden();
+  await noHorizontalOverflow(page);
 });
 
 test('Korean request creates real CAD, downloads it, records an outcome, and invalidates an old preview', async ({ page }, testInfo) => {

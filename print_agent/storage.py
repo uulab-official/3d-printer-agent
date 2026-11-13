@@ -68,7 +68,7 @@ class JobStore:
                          'events':[],'latest_slice':None,'user_outcome':None})
             return job_id, folder
 
-    def finish(self, job_id, result):
+    def finish(self, job_id, result, *, design_source=None):
         expected = {'stl':'model.stl','step':'model.step','three_mf':'model.3mf','source':'model.py'}
         with self.lock:
             job = self._read(job_id)
@@ -89,6 +89,9 @@ class JobStore:
                 'slicer_status':'not_run','checks':result['checks'],'warnings':result['warnings'],
                 'artifacts':hashes,
             }
+            if design_source is not None:
+                job['design_source'] = copy.deepcopy(design_source)
+                manifest['design_source'] = copy.deepcopy(design_source)
             (folder / 'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2,allow_nan=False),encoding='utf-8')
             job['_files'] = {**result['files'],'manifest':'manifest.json'}
             job['artifacts'] = {kind:f'/api/jobs/{job_id}/files/{kind}' for kind in job['_files']}
