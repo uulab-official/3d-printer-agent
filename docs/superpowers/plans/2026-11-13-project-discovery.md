@@ -42,8 +42,8 @@ Ruling: filter optional placement dimensions rather than printer beds — this g
 - [x] Task 2: discovery UI, draft/source transitions and controller checks.
 - [x] Task 3: local API integration, browser workflow definitions and documentation.
 - [x] Run full local gates, inspect package contents and complete independent review.
-- [ ] Publish implementation, inspect actual application/native CI and downloaded evidence.
-- [ ] Commit observed verification records without changing the tested code.
+- [x] Publish implementation, inspect actual application/native CI and downloaded evidence.
+- [x] Record observed verification in a documentation-only follow-up without changing the tested code.
 
 ## Task 1: Catalog and source identity
 
@@ -82,7 +82,7 @@ Ruling: filter optional placement dimensions rather than printer beds — this g
 - [x] Update usage/API contracts/status/changelog and roadmap current-capability text without claiming external search, measurements or hardware qualification.
 - [x] Run Python full suite, JS syntax/controller, browser discovery, whitespace checks and wheel/source consistency. Fix concrete failures, not unrelated optional refactors.
 - [x] Request fresh read-only integrated review; resolve material findings and rerun relevant checks.
-- [ ] Publish with a remote lease, inspect actual CI and its final browser/native artifacts, then record observed counts, hashes and scope in a documentation-only follow-up.
+- [x] Publish with a remote lease, inspect actual CI and its final browser/native artifacts, then record observed counts, hashes and scope in a documentation-only follow-up.
 
 ## Verification ledger
 
@@ -92,4 +92,14 @@ The integrated Python suite passed **255 tests** in 28.070 seconds. UI checks in
 
 Final JavaScript syntax and whitespace checks passed. The wheel rebuilt after the UI fixes, and all **18 packaged application files** matched the inspected source bytes. Browser discovery lists **28 scenarios**, 14 per viewport project. This count is a definition, not an execution result. The planned real-browser run explicitly includes one delayed real recommendation response and one labelled synthetic HTTP 503 to exercise recovery; actual CAD generation is never mocked. Known local Chromium/runtime restrictions were not bypassed.
 
-Actual application/native CI results and artifact observations will be appended after publication and inspection. The existing native workflow is regression coverage for its synthetic slicing path, not qualification of discovery choices, user hardware or physical printing.
+### Observed publication and CI evidence
+
+Feature commit `b3e21154b06e587959a7118d83150c27fc1bcd83` was published to `main` with a compare-and-swap lease. [Application CI 43425172431](https://github.com/uulab-official/3d-printer-agent/actions/runs/43425172431) completed successfully at that exact commit: **255 Python tests, 81 controller tests and 28 actual Chromium workflows**, split 14 desktop/14 mobile viewport. All browser scenarios passed once, with zero failed, flaky or skipped tests. Wheel build/install, static assets and execution outside the source tree passed. These are observed results, superseding the pre-publication scenario count above.
+
+The fresh browser artifact's byte hash and ZIP integrity were checked before inspection. **57 independent assertions** confirmed the exact tested commit, first-attempt results, submitted purpose/space query, original recipe hashes, preserved source/customization and downloaded file contents. Independent XML parsing confirmed both 3MF models contain 96 vertices with bounds 152 × 90 × 30 mm; the saved original recipe retains width 150 mm and records only `width` as customized. Desktop/mobile recommendation responses are byte-identical, while the separately generated manifests and 3MF files are not.
+
+Independent visual reviews inspected five desktop and five mobile component captures. Main controls and source/status distinctions were readable without blocking overlap. Minor mobile unit wrapping and a sticky-header crop artifact were recorded. Purpose/space controls, expanded source details, full-page behavior, frame-card rendering and measured contrast were outside the screenshot-review scope; the functional browser checks provide separate interaction evidence.
+
+[Native regression CI 43425172549](https://github.com/uulab-official/3d-printer-agent/actions/runs/43425172549) also succeeded at the exact feature commit. Actual Studio `02.09.01.70` sliced the original STL cube and CadQuery cable-comb 3MF; each passed 32 adapter, 30 independent setting and nine qualification checks. The newly downloaded artifact passed **95 independent assertions** against its bytes, exact committed source, original geometry and native output/settings. This remains regression coverage for the unchanged synthetic slicing path, not qualification of discovery-to-native behavior, manufacturer/user presets, hardware or physical printing.
+
+Artifact sizes, hashes, retention dates and explicit inspection limits are recorded in [VERIFICATION.md](../../VERIFICATION.md). The follow-up changes only that verification log, [STATUS.md](../../STATUS.md) and this plan; application code, tests and workflows remain identical to the tested feature commit.
