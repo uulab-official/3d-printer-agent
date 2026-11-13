@@ -16,6 +16,14 @@ Native slicing preparation now assembles supplied machine/process/filament files
 
 The original local validation is documented in [VERIFICATION.md](VERIFICATION.md). Current unit, package and browser results are recorded per commit in [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions). A workflow definition alone is not evidence of a successful run.
 
+### Native Bambu checks — 2026-11-13
+
+[Final application CI 43376181601](https://github.com/uulab-official/3d-printer-agent/actions/runs/43376181601), on `2e29040597b3f948a7bdb01bf5da34ebaf991a69`, passed **181 Python tests, 38 controller tests and 14 real Chromium workflows**, with no failed, flaky or skipped browser tests. Wheel build/install, packaged assets and execution outside the source tree passed. The helper's desktop/mobile screens and assembled file values were checked; final downloaded reports and archive integrity were verified. Subsequent evidence-record edits are documentation only.
+
+[Native run 43376181533](https://github.com/uulab-official/3d-printer-agent/actions/runs/43376181533), on `2e29040597b3f948a7bdb01bf5da34ebaf991a69`, passed with the actual digest-pinned Studio `02.09.01.70` on Ubuntu 24.04. The app's public adapter functions sliced an original STL cube and the existing original CadQuery cable-comb 3MF. Each returned `sliced`, matched 30 independently declared core settings, and passed archive/G-code/digest checks. The downloaded evidence and exact adapter/script hashes were independently checked. Official CLI examples were also exercised unchanged in a separate bootstrap phase.
+
+This qualifies the tested native adapter path with synthetic single-filament settings. It does not qualify a manufacturer's preset, native default resolution, user-machine inheritance, other versions/platforms or physical printing. The current lineage-free path requires a root machine classified `from: system` and an exact process compatibility entry. Inputs are never relabeled to manufacture compatibility. Unsupported user-machine lineage and selected-plate zero temperatures are explained before execution; malformed/deep/overflowing read-back values require review instead of crashing.
+
 ### Saved filament workspace checks — 2026-11-13
 
 [CI run 43371025397](https://github.com/uulab-official/3d-printer-agent/actions/runs/43371025397), on feature commit `101c87fea6bb27852b24bd3f18b0545c12c06915`, passed **149 Python tests, 27 UI-controller tests and 14 real Chromium tests** (seven desktop and seven mobile viewport scenarios). Wheel build/install, packaged static assets and execution outside the source tree also passed. No browser test was skipped or flaky.

@@ -1,6 +1,7 @@
 # 3D Printer Agent
 
 [![CI](https://github.com/uulab-official/3d-printer-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/uulab-official/3d-printer-agent/actions/workflows/ci.yml)
+[![Native Bambu smoke](https://github.com/uulab-official/3d-printer-agent/actions/workflows/native-bambu.yml/badge.svg)](https://github.com/uulab-official/3d-printer-agent/actions/workflows/native-bambu.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **An open-source local workspace for parameterized CAD, filament profile review, and Bambu Studio preparation.**

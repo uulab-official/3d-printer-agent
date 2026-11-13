@@ -4,6 +4,39 @@
 
 ## 2026-11-13 실제 Bambu Studio 실행 검증
 
+### 최종 앱·브라우저·패키지 CI
+
+기능 커밋 `b746d0b2f54fc361fa72fc82374ffe2012683096`은 [일반 CI 43375883838](https://github.com/uulab-official/3d-printer-agent/actions/runs/43375883838)와 [native CI 43375883735](https://github.com/uulab-official/3d-printer-agent/actions/runs/43375883735)를 모두 통과했습니다. 이어서 비정상적으로 큰 JSON 정수의 비교 오류를 수정한 커밋 `2e29040597b3f948a7bdb01bf5da34ebaf991a69`도 [최종 일반 CI 43376181601](https://github.com/uulab-official/3d-printer-agent/actions/runs/43376181601)와 아래 최종 native CI를 모두 통과했습니다.
+
+| 최종 검사 | 관측 결과 |
+|---|---|
+| Python CAD·API·설정·저장·어댑터 | 181개 통과; 이 중 합성 CLI 경계 검사 48개 |
+| JavaScript 상태 회귀 | 38개 통과 |
+| JavaScript 문법 | 통과 |
+| Wheel 빌드·설치, 소스 디렉터리 밖 실행, 정적 자산 포함 | 통과 |
+| 실제 Chromium | 14개 통과: 데스크톱 7개, 모바일 화면 크기 7개. 실패·flaky·건너뜀 각 0개 |
+
+기존 실제 CAD 브라우저 흐름에 machine/process/filament 파일 조합, 명시적 플레이트 선택, 원문값·배열 표현 보존, 잘못된 교체 파일의 기존 선택 보존, 편집 취소, native 미설치 상태의 실행 비활성화를 추가했습니다. 첫 기능 CI의 데스크톱·모바일 helper 화면을 확인했으며, 해당 UI·브라우저 테스트 소스가 마지막 코드 커밋에서도 동일함을 확인했습니다. 이 캡처에는 페이지의 고정 헤더/키보드 포커스 표시가 포함되어 있습니다. 최종 CI에서 생성한 두 JSON 묶음도 다시 읽어 시각 검토한 흐름의 입력과 같은지 확인했습니다.
+
+[최종 browser 산출물](https://github.com/uulab-official/3d-printer-agent/actions/runs/43376181601/artifacts/14014068495)은 7,195,193바이트, SHA-256 `6b5f46381eaf9ed7ca7f4b59f690326d70de286b30e715a296bd1d9283acf5cd`이며 2026-11-20까지 보관됩니다. ZIP 해시·무결성과 최종 Playwright 보고서의 14/0/0/0 통계를 직접 확인했습니다. 브라우저 검사는 native 미설치 조건이고, 실제 Studio 실행은 아래 별도 native workflow의 증거입니다. 이후 검증 기록 갱신은 문서만 변경하며 위에서 테스트한 앱·검사·workflow 파일을 유지합니다.
+
+### 최종 native 앱 경로
+
+[최종 native CI 43376181533](https://github.com/uulab-official/3d-printer-agent/actions/runs/43376181533)은 커밋 `2e29040597b3f948a7bdb01bf5da34ebaf991a69`에서 성공했습니다. Ubuntu 24.04, Python 3.12.16, 실제 Bambu Studio `02.09.01.70`으로 공식 입력의 직접 CLI 실행과 아래 두 앱 어댑터 경로를 모두 검사했습니다. 앱의 실제 `prepare_slice` → `execute_slice`를 호출했으며 subprocess 실행 대역을 사용하지 않았습니다.
+
+| 실제 앱 입력 | 출력 3MF | G-code 크기 / 이동 명령 | 검사 결과 |
+|---|---:|---:|---|
+| 직접 작성한 10 × 10 × 2 mm 큐브 STL | 20,901바이트 | 41,247바이트 / 629줄 | `sliced`, exit 0, 어댑터 검사 32개와 독립 설정 비교 30개 통과 |
+| 앱이 만든 원본 `examples/cable_comb/model.3mf` | 100,143바이트 | 454,005바이트 / 14,984줄 | `sliced`, exit 0, 어댑터 검사 32개와 독립 설정 비교 30개 통과 |
+
+출력 SHA-256은 각각 `12ed6e31258ac8a28c4eaa7de3ef0b12fe311ef7f6e464e7df432742faff6b2a`, `182e35ea087b1b78965b6ee285a660bc0d1d3c3075554ca189850f596895fa6a`입니다. 3MF의 ZIP CRC, G-code, 핵심 설정 30개를 내려받은 산출물에서 다시 읽어 비교했습니다. 실행한 어댑터와 검증 스크립트의 해시가 이 커밋의 파일과 같은지도 확인했습니다. 원본 cable-comb 3MF는 저장소의 manifest 해시와 일치합니다.
+
+[최종 native 산출물](https://github.com/uulab-official/3d-printer-agent/actions/runs/43376181533/artifacts/14015120625)은 329,430바이트이고 SHA-256은 `dff8a14862531b9070171f9fd768f68e274d854721dccdbb4551f26c6a054696`입니다. 2026-11-20까지 보관됩니다. 이 값은 해당 실행의 증거이며, 여러 실행 사이의 바이트 동일성을 요구하는 회귀 기준은 아닙니다.
+
+앱 경로에는 명시적으로 작성한 **합성 단일 필라멘트 최소 설정**을 사용했습니다. 실제 제조사 프리셋이나 사용자 내보내기가 아니며, 생략한 항목은 native 기본값에 의존합니다. 실제 장비·재료 호환성, 모든 설정의 완전성, 여러 필라멘트/압출기, 다른 Studio 버전, Windows/macOS, 실물 출력은 이 검사로 검증되지 않습니다. 출력 시간과 무게는 `null`, 프린터 상태는 `not_checked`, 출력 상태는 `not_started`를 유지했습니다. 화면 없는 실행의 GLFW/Wayland 로그도 보존했습니다.
+
+아래는 최종 경로를 확보하는 과정에서 관측한 초기 성공과 실패입니다.
+
 첫 native 조사 실행은 [43374511491](https://github.com/uulab-official/3d-printer-agent/actions/runs/43374511491), 커밋 `d14dce3fbcac3d115f4d11448eac304d00fe38e0`에서 성공했습니다. Ubuntu 24.04에 필요한 WebKit/GL 라이브러리를 설치하고 공식 v02.09.01.70 AppImage를 다운로드했습니다. 실행 전 255,822,328바이트와 SHA-256 `668dabb1be53c758189ed6bc89935285dea5e0af46216546b1bafd6882e9aff0`을 확인했습니다. 실제 `--help`가 보고한 버전은 `02.09.01.70`입니다.
 
 공식 CLI 문서의 machine/process/filament 예제 세 파일은 별도 고정 해시로 확인하고 **상속·include·variant·nil 정보를 변경하지 않은 상태**로 사용했습니다. 직접 작성한 10 × 10 × 2 mm 큐브 STL을 네이티브 CLI로 실행한 결과는 다음과 같습니다.
@@ -32,6 +65,10 @@
 별도의 합성 CI fixture에는 명시적인 native 루트 분류와 그 이름을 참조하는 process 호환 목록을 사용합니다. 이 분류는 제조사 출처를 뜻하지 않으며, 실제 provenance는 합성 입력으로 기록합니다. native 기본값에 의존하는 최소 설정이라 실제 장비용 추천 프리셋으로 배포하지 않습니다.
 
 독립 코드 검토에서는 출력 설정의 1,200단계 배열이 재귀 비교에서 오류를 일으키고, 64단계의 비정상 래핑이 정상값으로 비교되는 문제를 재현했습니다. 디코딩한 설정의 컨테이너 깊이를 32로 제한하고 JSON 파서의 재귀 오류도 처리했습니다. 손상된 입력 프로젝트 설정은 준비 전에 차단하며, 손상된 출력 설정은 `needs_review`로 반환합니다. 선택 플레이트의 온도 0이 native에서 미지원 조합을 뜻하는 규칙도 확인해 준비 단계에서 거절하고, 미선택 플레이트의 0은 보존합니다.
+
+그 다음 [실행 43375508617](https://github.com/uulab-official/3d-printer-agent/actions/runs/43375508617)은 두 앱 경로에서 실제 슬라이싱과 어댑터 검사를 통과했으나, 독립 검증기가 네 속도 필드의 native 출력 형식을 문자열 scalar로 예상해 실패했습니다. 고정한 `PrintConfig.cpp`의 네 필드가 `coFloats`인 것과 실제 출력의 단일 요소 배열을 확인한 후, **해당 네 기대값의 표현만** 수정했습니다. 입력 scalar는 유지하고 독립 비교의 strict equality는 완화하지 않았습니다. 최종 native CI는 이 정정과 모든 최신 어댑터 변경을 포함합니다.
+
+마지막 독립 검토에서 401자리 JSON 정수가 숫자 비교 중 `OverflowError`를 일으키는 경우도 재현했습니다. 커밋 `2e29040`은 그 경우를 불일치로 처리해 `needs_review`를 반환하며, 실패를 먼저 확인한 회귀 검사를 추가했습니다.
 
 ## 2026-11-13 필라멘트 작업 저장·편집 CI 검증
 
