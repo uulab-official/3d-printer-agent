@@ -14,6 +14,16 @@ Named filament workspaces preserve original documents, exact unfinished drafts, 
 
 The original local validation is documented in [VERIFICATION.md](VERIFICATION.md). Current unit, package and browser results are recorded per commit in [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions). A workflow definition alone is not evidence of a successful run.
 
+### Saved filament workspace checks — 2026-11-13
+
+[CI run 43371025397](https://github.com/uulab-official/3d-printer-agent/actions/runs/43371025397), on feature commit `101c87fea6bb27852b24bd3f18b0545c12c06915`, passed **149 Python tests, 27 UI-controller tests and 14 real Chromium tests** (seven desktop and seven mobile viewport scenarios). Wheel build/install, packaged static assets and execution outside the source tree also passed. No browser test was skipped or flaky.
+
+The final import-help correction, commit `156fa5abb7c0bbc483656fd923d8e2b931a12a4a`, passed the same complete checks in [CI run 43371431939](https://github.com/uulab-official/3d-printer-agent/actions/runs/43371431939). It changes only the wording of the separate 2 MiB original/draft collection limits. Subsequent verification-record changes are documentation only.
+
+New browser flows cover guided inherited overrides, save/reload/open, preserved original evidence, stale validation claims, exact unfinished drafts, original restoration, individual removal, cross-tab conflicts, saving a separate copy and deleting only its saved record. The two downloaded workspace reports were independently checked for original/edited values, retained positive source claims, changed effective settings, all eight setup inputs and canonical hashes. Desktop/mobile screenshots were inspected.
+
+Independent backend and UI reviews preceded publication. Two reproduced UI issues were fixed with regressions: a pending workspace open could discard a later file selection, and smaller edited drafts could let oversized preserved originals into a collection. The final importer checks both collections before accepting files; pasted-original adoption has the same bound. JSON key ordering alone does not label a document edited.
+
 ### Filament import checks — 2026-11-13
 
 Local and GitHub Actions checks passed: **116 Python tests and 10 UI-controller tests**, plus JavaScript syntax checks. The new regressions cover inheritance evidence, exact names and blockers, request bounds, late UI responses and invalidated downloads. An independent review found a deeply nested JSON request could return HTTP 500; the reproduced failure now returns HTTP 422 with a depth-limit explanation.
