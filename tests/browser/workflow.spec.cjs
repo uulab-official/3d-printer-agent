@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
 const { test, expect } = require('@playwright/test');
+const { filamentArchive, printerArchive } = require('./archive-fixture.cjs');
 
 // The server and CAD engine are real. No network routes or CAD results are mocked.
 async function openView(page, view) {
@@ -387,10 +388,177 @@ test('unsupported includes and malformed imports stay visible without claiming a
   await expect(page.locator('#profile-feedback')).toContainText('broken.json');
   await expect(page.locator('#profile-json')).toHaveValue(previous);
   await expect(page.locator('#profile-target option')).toHaveCount(2);
-  await expect(page.locator('#profile-resolution')).toBeHidden();
-  await expect(page.locator('#profile-download')).not.toHaveAttribute('href');
+  await expect(page.locator('#profile-resolution')).toBeVisible();
+  await expect(page.locator('#profile-download')).toHaveAttribute('href', /^blob:/);
   await noHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('filament-import-error.png'), fullPage: true });
+});
+
+test('Studio filament archives recover missing parents and retain exact origin through saved workspaces', async ({ page }, testInfo) => {
+  const { base, child, setup } = inheritedPresetFixture();
+  const original = { ...child.settings, from: 'User', filament_settings_id: [child.settings.name] };
+  delete original.type; // Native exports can identify filament settings without type.
+  const text = ` ${JSON.stringify(original, null, 2)}\n`;
+  const path = 'Example/Child.json';
+  const upload = filamentArchive('synthetic-material.bbsflmt', [{ path, text }]);
+  await openView(page, 'profiles');
+  const importedResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/import-archive'));
+  await page.locator('#profile-archive').setInputFiles(upload);
+  const imported = await (await importedResponse).json();
+  expect(imported.documents).toHaveLength(1);
+  expect(imported.documents[0].profile).toEqual(original);
+  expect(imported.documents[0].draft_text).toBe(text);
+  const origin = imported.documents[0].origin;
+  expect(origin).toEqual({
+    type: 'bambu_preset_archive', archive_name: upload.name,
+    archive_sha256: crypto.createHash('sha256').update(upload.buffer).digest('hex'),
+    member_path: path, member_sha256: crypto.createHash('sha256').update(text).digest('hex'),
+  });
+  await expect(page.locator('#profile-target option')).toHaveCount(1);
+  await expect(page.locator('#profile-json')).toHaveValue(text);
+  await page.locator('#profile-origin summary').click();
+  await expect(page.locator('#profile-origin-fields')).toContainText(upload.name);
+  await expect(page.locator('#profile-origin-fields')).toContainText(origin.archive_sha256);
+  const missingResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  const missing = await (await missingResponse).json();
+  expect(missing.status).toBe('needs_input');
+  expect(missing.documents[0].origin).toEqual(origin);
+  await expect(page.locator('#profile-resolution-issues')).toContainText('Synthetic Base');
+  await expect(page.locator('#review-profile')).toBeEnabled();
+
+  await page.locator('#profile-file').setInputFiles(presetUpload('base.json', base));
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  await expect(page.locator('#profile-target')).toHaveValue('0');
+  await expect(page.locator('#profile-json')).toHaveValue(text);
+  for (const [name, value] of Object.entries(setup)) {
+    const field = page.locator(`.setup-grid [name="${name}"]`);
+    if (name === 'material_identity_status') await field.selectOption(value);
+    else await field.fill(String(value));
+  }
+  await page.locator('#guided-nozzle_temperature').fill('220');
+  await page.locator('#profile-guided-apply').click();
+  const editedText = await page.locator('#profile-json').inputValue();
+  expect(JSON.parse(editedText)).toEqual({ ...original, nozzle_temperature: ['220'] });
+  const title = `Archive ${testInfo.project.name} ${Date.now()}`;
+  await page.locator('#workspace-title').fill(title);
+  const savedResponse = page.waitForResponse(response => response.url().endsWith('/api/profile-workspaces') && response.request().method() === 'POST');
+  await page.locator('#workspace-save').click();
+  const saved = await (await savedResponse).json();
+  expect(saved.snapshot.documents[0].origin).toEqual(origin);
+  expect(saved.snapshot.documents[0].profile).toEqual(original);
+  expect(saved.snapshot.documents[0].draft_text).toBe(editedText);
+  expect(saved.snapshot.documents[1]).not.toHaveProperty('origin');
+  await expect(page.locator('#workspace-status')).toHaveText('저장됨');
+  await page.reload();
+  await expect(page.locator('#generate-button')).toBeEnabled();
+  await openView(page, 'profiles');
+  await expect(page.locator(`#workspace-list option[value="${saved.id}"]`)).toHaveCount(1);
+  await page.locator('#workspace-list').selectOption(saved.id);
+  await page.locator('#workspace-open').click();
+  await expect(page.locator('#workspace-title')).toHaveValue(title);
+  await expect(page.locator('#profile-json')).toHaveValue(editedText);
+  await expect(page.locator('#profile-resolution')).toBeHidden();
+  await expect(page.locator('#profile-download')).not.toHaveAttribute('href');
+  await page.locator('#profile-origin summary').click();
+  await expect(page.locator('#profile-origin-fields')).toContainText(origin.member_sha256);
+  const resolvedResponse = page.waitForResponse(response => response.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  const resolved = await (await resolvedResponse).json();
+  expect(resolved.status).toBe('resolved');
+  expect(resolved.full_config).toBe(false);
+  expect(resolved.native_verified).toBe(false);
+  expect(resolved.documents[0].origin).toEqual(origin);
+  expect(resolved.imported_documents[0].origin).toEqual(origin);
+  expect(resolved.imported_documents[0].profile).toEqual(original);
+  expect(resolved.resolved_profile.settings.nozzle_temperature).toEqual(['220']);
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#profile-download').click();
+  const download = await downloadPromise;
+  const reportPath = testInfo.outputPath('archive-workspace-review.json');
+  await download.saveAs(reportPath);
+  const report = JSON.parse(await fs.readFile(reportPath, 'utf8'));
+  expect(report.documents[0].origin).toEqual(origin);
+  expect(report.imported_documents[0].profile).toEqual(original);
+  await expect(page.locator('#slicer-json')).toHaveValue('');
+  await noHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('archive-workspace.png'), fullPage: true });
+});
+
+test('mixed Studio bundles adopt pasted inputs and repeated imports preserve edited drafts and reports', async ({ page }, testInfo) => {
+  const { child } = inheritedPresetFixture();
+  const profile = { ...child.settings, from: 'User', filament_settings_id: [child.settings.name] };
+  const text = JSON.stringify(profile, null, 2);
+  const upload = printerArchive('synthetic-printer.bbscfg', { path: 'filament/Child.json', text });
+  await openView(page, 'profiles');
+  const pasted = ' {"name":"Pasted local draft"}\n';
+  await page.locator('#profile-json').fill(pasted);
+  const response = page.waitForResponse(result => result.url().endsWith('/api/profiles/import-archive'));
+  await page.locator('#profile-archive').setInputFiles(upload);
+  const imported = await (await response).json();
+  expect(imported.documents).toHaveLength(1);
+  expect(imported.ignored_members.map(member => member.path).sort()).toEqual(['printer/Printer.json', 'process/Process.json']);
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  await expect(page.locator('#profile-target')).toHaveValue('0');
+  await expect(page.locator('#profile-json')).toHaveValue(pasted);
+  await expect(page.locator('#profile-feedback')).toContainText('2개 항목');
+  await expect(page.locator('#profile-feedback')).toContainText('printer/Printer.json');
+  await page.locator('#profile-target').selectOption('1');
+  const edited = JSON.stringify({ ...profile, nozzle_temperature: ['223'] });
+  await page.locator('#profile-json').fill(edited);
+  const reviewResponse = page.waitForResponse(result => result.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  expect((await (await reviewResponse).json()).status).toBe('needs_input');
+  await expect(page.locator('#review-profile')).toBeEnabled();
+  const reportUrl = await page.locator('#profile-download').getAttribute('href');
+  await page.locator('#profile-archive').setInputFiles(upload);
+  await expect(page.locator('#profile-feedback')).toContainText('건너뛰었습니다');
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  await expect(page.locator('#profile-target')).toHaveValue('1');
+  await expect(page.locator('#profile-json')).toHaveValue(edited);
+  await expect(page.locator('#profile-resolution')).toBeVisible();
+  await expect(page.locator('#profile-download')).toHaveAttribute('href', reportUrl);
+  await page.locator('#profile-origin summary').click();
+  await expect(page.locator('#profile-origin-fields')).toContainText(upload.name);
+  await expect(page.locator('#slicer-json')).toHaveValue('');
+  await noHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('mixed-archive.png'), fullPage: true });
+});
+
+test('invalid and conflicting archives roll back the whole import while preserving a current review', async ({ page }, testInfo) => {
+  const { base, child } = inheritedPresetFixture();
+  await openView(page, 'profiles');
+  await page.locator('#profile-file').setInputFiles([presetUpload('child.json', child), presetUpload('base.json', base)]);
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  const reviewResponse = page.waitForResponse(result => result.url().endsWith('/api/profiles/resolve'));
+  await page.locator('#review-profile').click();
+  expect((await (await reviewResponse).json()).status).toBe('resolved');
+  await expect(page.locator('#review-profile')).toBeEnabled();
+  const previous = await page.locator('#profile-json').inputValue();
+  const reportUrl = await page.locator('#profile-download').getAttribute('href');
+  const good = { path: 'Example/Other.json', text: JSON.stringify({ name: 'Another filament', type: 'filament', filament_settings_id: ['Another filament'] }) };
+  const malformed = filamentArchive('invalid-material.bbsflmt', [good, { path: 'Example/Bad.json', text: '[]' }]);
+  page.__expectedHttpFailures.push({ path: '/api/profiles/import-archive', status: 422 });
+  const rejected = page.waitForResponse(result => result.url().endsWith('/api/profiles/import-archive'));
+  await page.locator('#profile-archive').setInputFiles(malformed);
+  expect((await rejected).status()).toBe(422);
+  await expect(page.locator('#profile-feedback')).toContainText('유지했습니다');
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  await expect(page.locator('#profile-target')).toHaveValue('0');
+  await expect(page.locator('#profile-json')).toHaveValue(previous);
+  await expect(page.locator('#profile-resolution')).toBeVisible();
+  await expect(page.locator('#profile-download')).toHaveAttribute('href', reportUrl);
+
+  const conflict = { ...child.settings, filament_settings_id: [child.settings.name], nozzle_temperature: ['230'] };
+  const conflicting = filamentArchive('conflicting-material.bbsflmt', [good, { path: 'Example/Child.json', text: JSON.stringify(conflict) }]);
+  await page.locator('#profile-archive').setInputFiles(conflicting);
+  await expect(page.locator('#profile-feedback')).toContainText('내용이 다릅니다');
+  await expect(page.locator('#profile-target option')).toHaveCount(2);
+  await expect(page.locator('#profile-json')).toHaveValue(previous);
+  await expect(page.locator('#profile-resolution')).toBeVisible();
+  await expect(page.locator('#profile-download')).toHaveAttribute('href', reportUrl);
+  await noHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('archive-import-recovery.png'), fullPage: true });
 });
 
 test('guided filament edits survive save and reload with original evidence and stale validation', async ({ page }, testInfo) => {

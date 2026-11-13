@@ -648,6 +648,7 @@
     finally { updateSliceControls(); }
   }
   $("profile-file").addEventListener("change", (event) => importProfileFiles(event.target));
+  $("profile-archive").addEventListener("change", (event) => importProfileArchive(event.target));
   $("slicer-file").addEventListener("change", (event) => readSlicerBundle(event.target));
   $("slicer-machine-file").addEventListener("change", (event) => readSlicerFiles("machine", event.target));
   $("slicer-process-file").addEventListener("change", (event) => readSlicerFiles("process", event.target));
@@ -686,6 +687,10 @@
     return keys.length === Object.keys(second).length && keys.every((key) => Object.hasOwn(second, key) && sameJson(first[key], second[key]));
   }
 
+  function profileDocument(entry, profile = entry.profile) {
+    return { filename: entry.filename, profile, ...(entry.origin ? { origin: { ...entry.origin } } : {}) };
+  }
+
   function profileSetupFields() {
     return { printer_model: "setup-printer-model", printer_preset: "setup-printer-preset", nozzle_diameter: "setup-nozzle", plate_type: "setup-plate", extruder: "setup-extruder", feed_mode: "setup-feed", material_id: "setup-material", material_identity_status: "setup-identity" };
   }
@@ -694,7 +699,7 @@
     if (state.profileDocuments[state.profileTarget]) state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
     return {
       schema_version: 1,
-      documents: state.profileDocuments.map((entry) => ({ filename: entry.filename, profile: entry.profile, draft_text: entry.draftText })),
+      documents: state.profileDocuments.map((entry) => ({ ...profileDocument(entry), draft_text: entry.draftText })),
       target_index: state.profileTarget,
       profile_text: state.profileDocuments.length ? "" : $("profile-json").value,
       setup: Object.fromEntries(Object.entries(profileSetupFields()).map(([name, id]) => [name, $(id).value])),
@@ -728,7 +733,7 @@
     $("workspace-refresh").disabled = state.workspaceBusy;
     $("workspace-list").disabled = state.workspaceBusy;
     $("profile-guided-actions").hidden = !pending;
-    for (const id of ["profile-json", "profile-target", "profile-file", "profile-adopt", "profile-clear", "profile-remove", "profile-restore", ...Object.values(profileSetupFields())]) {
+    for (const id of ["profile-json", "profile-target", "profile-file", "profile-archive", "profile-adopt", "profile-clear", "profile-remove", "profile-restore", ...Object.values(profileSetupFields())]) {
       if (!$("review-profile").dataset.busy) $(id).disabled = pending;
     }
     document.querySelectorAll(".guided-remove").forEach((button) => { button.disabled = pending || Boolean($("review-profile").dataset.busy); });
@@ -797,7 +802,7 @@
     state.workspaceEdits += 1;
     state.profileImport += 1;
     state.guidedEdits = {};
-    state.profileDocuments = snapshot.documents.map((entry) => ({ filename: entry.filename, profile: entry.profile, draftText: entry.draft_text }));
+    state.profileDocuments = snapshot.documents.map((entry) => ({ ...profileDocument(entry), draftText: entry.draft_text }));
     state.profileTarget = snapshot.target_index;
     $("profile-json").value = state.profileDocuments.length ? state.profileDocuments[state.profileTarget].draftText : snapshot.profile_text;
     for (const [name, id] of Object.entries(profileSetupFields())) $(id).value = snapshot.setup[name];
@@ -1071,19 +1076,89 @@
     }));
     select.value = String(state.profileTarget);
     $("profile-library-summary").textContent = `${state.profileDocuments.length}개 파일 · 선택한 JSON을 아래에서 편집할 수 있습니다. 원본은 보고서에 함께 보존합니다.`;
+    renderProfileOrigin();
+  }
+
+  function renderProfileOrigin() {
+    const origin = state.profileDocuments[state.profileTarget]?.origin;
+    $("profile-origin").hidden = !origin;
+    const fields = $("profile-origin-fields");
+    fields.replaceChildren();
+    if (!origin) return;
+    for (const [label, value] of [["내보내기 파일", origin.archive_name], ["파일 안의 경로", origin.member_path], ["내보내기 파일 SHA-256", origin.archive_sha256], ["원본 JSON 파일 SHA-256", origin.member_sha256]]) {
+      fields.append(node("dt", "", label), node("dd", "", value));
+    }
+  }
+
+  function beginProfileImport() {
+    markWorkspaceChanged();
+    return { id: ++state.profileImport, revision: state.profileRevision, epoch: state.workspaceEpoch };
+  }
+
+  function currentProfileImport(request) {
+    return request.id === state.profileImport && request.revision === state.profileRevision && request.epoch === state.workspaceEpoch;
+  }
+
+  function appendProfileDocuments(imported) {
+    // Build a complete candidate without touching accepted inputs or reports.
+    // An unfinished existing draft is valid workspace input, even though it
+    // cannot yet be reviewed. Only incoming originals need to parse here.
+    const documents = state.profileDocuments.map((entry, index) => index === state.profileTarget && entry.draftText !== $("profile-json").value ? { ...entry, draftText: $("profile-json").value } : entry);
+    let adopted = false, duplicates = 0, added = 0;
+    if (!documents.length && $("profile-json").value.trim()) {
+      let profile;
+      try { profile = parseObject($("profile-json").value, "입력 중인 JSON 초안"); }
+      catch { throw new Error("입력 중인 JSON 초안이 아직 완성되지 않았습니다. 내용을 완성하거나 작업으로 저장한 뒤 새 작업에서 가져와 주세요. 현재 초안은 유지했습니다."); }
+      documents.push({ filename: "pasted-filament.json", profile, draftText: $("profile-json").value });
+      adopted = true;
+    }
+    for (const candidate of imported) {
+      if (typeof candidate.filename !== "string" || !candidate.filename.trim() || candidate.filename.length > 240) throw new Error("파일 이름과 내부 경로는 1~240자로 지정해 주세요.");
+      const draftText = candidate.draftText;
+      const profile = parseObject(draftText, candidate.filename);
+      if (!sameJson(profile, candidate.profile)) throw new Error(`${candidate.filename}: 가져온 원본과 JSON 내용이 일치하지 않습니다.`);
+      if (documents.some((entry) => sameJson(entry.profile, profile))) { duplicates += 1; continue; }
+      const name = profileName(profile);
+      const conflict = name && documents.find((entry) => {
+        if (profileName(entry.profile) === name) return true;
+        try { return profileName(parseObject(entry.draftText, entry.filename)) === name; }
+        catch { return false; }
+      });
+      if (conflict) throw new Error(`‘${name}’ 이름이 ${conflict.filename}의 원본 또는 편집본과 겹치지만 내용이 다릅니다. 추가하지 않았습니다. 사용할 파일을 확인하고 기존 파일을 제거하거나 서로 다른 이름으로 다시 가져오세요.`);
+      documents.push({ ...profileDocument(candidate, profile), draftText });
+      added += 1;
+    }
+    if (documents.length > 64) throw new Error("파일 모음은 최대 64개입니다. 필요한 파일만 남긴 뒤 다시 가져와 주세요.");
+    const bytes = (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    if (bytes(documents.map((entry) => profileDocument(entry))) > 2 * 1024 * 1024) throw new Error("보관할 원본 JSON 합계는 2 MiB 이하여야 합니다. 필요한 파일만 남긴 뒤 다시 가져와 주세요.");
+    // Count serialized draft strings and their filename/origin framing. This
+    // conservative limit keeps exact unfinished text without reparsing it.
+    const drafts = documents.map((entry) => ({ filename: entry.filename, draft_text: entry.draftText, ...(entry.origin ? { origin: entry.origin } : {}) }));
+    if (bytes(drafts) > 2 * 1024 * 1024) throw new Error("편집 문자열과 파일 정보의 합계는 2 MiB 이하여야 합니다. 현재 편집 내용은 유지했습니다.");
+    if (!added && !adopted) return { added, duplicates, adopted };
+    const hadDocuments = state.profileDocuments.length > 0;
+    state.profileDocuments = documents;
+    if (!hadDocuments) state.profileTarget = 0;
+    $("profile-json").value = documents[state.profileTarget].draftText;
+    invalidateProfile();
+    markWorkspaceChanged();
+    renderProfileLibrary();
+    renderGuidedEditor();
+    return { added, duplicates, adopted };
+  }
+
+  function profileImportSummary(result) {
+    return `${result.added ? `${result.added}개 파일을 추가했습니다.` : "새로 추가할 파일이 없습니다."}${result.adopted ? " 입력 중인 JSON은 첫 번째 파일로 함께 보관했습니다." : ""}${result.duplicates ? ` 원본 내용이 같은 ${result.duplicates}개 파일은 이미 있어 건너뛰었습니다. 기존 편집본과 가져오기 정보는 유지했습니다.` : ""}${result.added || result.adopted ? " 검토 대상을 확인하고 프로필 검토하기를 누르세요." : ""}`;
   }
 
   async function importProfileFiles(input) {
     const files = Array.from(input.files || []);
     if (!files.length) return;
     input.value = "";
-    markWorkspaceChanged();
-    invalidateProfile();
-    const revision = state.profileRevision;
-    const importId = ++state.profileImport;
-    if (state.profileDocuments[state.profileTarget]) state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
+    const request = beginProfileImport();
+    showNotice("profile-feedback", "JSON 파일을 읽고 있습니다. 현재 파일 모음은 유지합니다.");
     try {
-      if (state.profileDocuments.length + files.length > 64) throw new Error("한 번에 검토할 파일은 최대 64개입니다. 파일 모음을 비우고 필요한 파일만 다시 선택해 주세요.");
+      if (files.length > 64) throw new Error("한 번에 가져올 JSON 파일은 최대 64개입니다.");
       if (files.reduce((sum, file) => sum + file.size, 0) > 2 * 1024 * 1024) throw new Error("가져올 JSON 파일의 합계는 2 MiB 이하여야 합니다.");
       const imported = await Promise.all(files.map(async (file) => {
         if (!file.name.trim() || file.name.length > 240) throw new Error("파일명은 1~240자로 지정해 주세요. 파일 이름을 줄인 뒤 다시 추가할 수 있습니다.");
@@ -1091,24 +1166,34 @@
         const profile = parseObject(draftText, file.name);
         return { filename: file.name, profile, draftText };
       }));
-      if (revision !== state.profileRevision || importId !== state.profileImport) return;
-      const documents = [...state.profileDocuments, ...imported];
-      const originals = documents.map((entry) => ({ filename: entry.filename, profile: entry.profile }));
-      if (new TextEncoder().encode(JSON.stringify(originals)).byteLength > 2 * 1024 * 1024) throw new Error("보관할 원본 JSON 합계가 2 MiB를 넘습니다. 편집으로 원본 크기는 줄어들지 않으므로 필요한 파일만 선택해 주세요.");
-      const submitted = documents.map((entry) => ({ filename: entry.filename, profile: parseObject(entry.draftText, entry.filename) }));
-      if (new TextEncoder().encode(JSON.stringify(submitted)).byteLength > 2 * 1024 * 1024) throw new Error("기존 파일을 포함한 JSON 합계가 2 MiB를 넘습니다. 필요한 파일만 선택해 주세요.");
-      const firstImport = state.profileDocuments.length === 0;
-      state.profileDocuments = documents;
-      if (firstImport) {
-        state.profileTarget = 0;
-        $("profile-json").value = documents[0].draftText;
-      }
-      renderProfileLibrary();
-      renderGuidedEditor();
-      markWorkspaceChanged();
-      showNotice("profile-feedback", `${files.length}개 파일을 추가했습니다. 검토할 프로필을 선택한 뒤 프로필 검토하기를 누르세요.`, "info");
+      if (!currentProfileImport(request)) return;
+      showNotice("profile-feedback", profileImportSummary(appendProfileDocuments(imported)));
     } catch (error) {
-      if (revision === state.profileRevision && importId === state.profileImport) showNotice("profile-feedback", error.message, "error");
+      if (currentProfileImport(request)) showNotice("profile-feedback", `${error.message} 현재 파일 모음과 입력은 유지했습니다.`, "error");
+    }
+  }
+
+  async function importProfileArchive(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    input.value = "";
+    const request = beginProfileImport();
+    showNotice("profile-feedback", "Studio 내보내기 파일을 읽고 있습니다. 현재 파일 모음은 유지합니다.");
+    try {
+      if (file.size > 4 * 1024 * 1024) throw new Error("Studio 내보내기 파일은 4 MiB 이하여야 합니다.");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!currentProfileImport(request)) return;
+      const chunks = [];
+      for (let offset = 0; offset < bytes.length; offset += 32768) chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
+      const result = await api("/api/profiles/import-archive", { filename: file.name, content_base64: btoa(chunks.join("")) });
+      if (!currentProfileImport(request)) return;
+      const imported = result.documents.map((entry) => ({ ...profileDocument(entry), draftText: typeof entry.draft_text === "string" ? entry.draft_text : JSON.stringify(entry.profile, null, 2) }));
+      const summary = appendProfileDocuments(imported);
+      const ignored = result.ignored_members || [];
+      const details = [...(result.warnings || []), ...ignored.map((entry) => `${entry.path} · ${entry.reason}`)];
+      showNotice("profile-feedback", `${profileImportSummary(summary)}${ignored.length ? ` 재료 프로필 이외의 ${ignored.length}개 항목은 추가하지 않았습니다.` : ""}`, "info", details);
+    } catch (error) {
+      if (currentProfileImport(request)) showNotice("profile-feedback", `${error.message} 현재 파일 모음과 입력은 유지했습니다.`, "error");
     }
   }
 
@@ -1149,10 +1234,10 @@
         });
         if (state.profileDocuments.length) {
           state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
-          const documents = state.profileDocuments.map((entry) => ({ filename: entry.filename, profile: parseObject(entry.draftText, entry.filename) }));
+          const documents = state.profileDocuments.map((entry) => profileDocument(entry, parseObject(entry.draftText, entry.filename)));
           const targetName = profileName(profile);
           if (!targetName.trim()) throw new Error("선택한 프로필의 name에 정확한 이름이 필요합니다. 이름 필드는 소문자 name으로 입력해 주세요.");
-          const originals = state.profileDocuments.map((entry) => ({ filename: entry.filename, profile: entry.profile }));
+          const originals = state.profileDocuments.map((entry) => profileDocument(entry));
           const edited = documents.filter((entry, index) => !sameJson(entry.profile, originals[index].profile)).map((entry) => entry.filename);
           const result = await api("/api/profiles/resolve", { documents, target_name: targetName, setup, baseline: { documents: originals, target_name: profileName(state.profileDocuments[state.profileTarget].profile) } });
           if (revision !== state.profileRevision) return;
@@ -1234,7 +1319,7 @@
 
   $("profile-form").addEventListener("submit", (event) => { event.preventDefault(); reviewProfile(); });
   $("profile-form").addEventListener("input", (event) => {
-    if (event.target.id === "profile-file" || event.target.id === "profile-target" || event.target.dataset.guided) return;
+    if (event.target.id === "profile-file" || event.target.id === "profile-archive" || event.target.id === "profile-target" || event.target.dataset.guided) return;
     if (event.target.id === "profile-json" && state.profileDocuments[state.profileTarget]) state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
     invalidateProfile();
     markWorkspaceChanged();

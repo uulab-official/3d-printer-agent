@@ -20,7 +20,7 @@ function fixture() {
   const ids = new Map();
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
-    $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder,
+    $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa,
     state:{token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{}},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
@@ -38,7 +38,7 @@ function fixture() {
 function profileFixture() {
   const context=fixture();
   Object.assign(context.state,{profileDocuments:[],profileTarget:0,profileRevision:0,profileImport:0,profileReport:null,profileDownloadUrl:null,guidedEdits:{},guidedSources:{},workspaceId:null,workspaceRevision:null,workspaceSavedSignature:null,workspaceEpoch:0,workspaceEdits:0,workspaceListRequest:0,workspaceBusy:false,workspaces:[]});
-  for(const name of ['profileName','sameJson','invalidateProfile','renderProfileLibrary','importProfileFiles','selectProfileTarget','clearProfileLibrary','reviewProfile','profileSetupFields','captureProfileSnapshot','workspaceSignature','workspaceDirty','markWorkspaceChanged','updateWorkspaceStatus','loadWorkspaces','saveWorkspace','restoreWorkspace','openWorkspace','newWorkspace','deleteWorkspace','guidedFieldDefinitions','numericSetting','profileSettings','renderGuidedEditor','applyGuidedEdits','removeGuidedOverride','adoptProfileText','removeProfileDocument','restoreProfileOriginal']) {
+  for(const name of ['profileName','sameJson','profileDocument','invalidateProfile','renderProfileLibrary','renderProfileOrigin','beginProfileImport','currentProfileImport','appendProfileDocuments','profileImportSummary','importProfileFiles','importProfileArchive','selectProfileTarget','clearProfileLibrary','reviewProfile','profileSetupFields','captureProfileSnapshot','workspaceSignature','workspaceDirty','markWorkspaceChanged','updateWorkspaceStatus','loadWorkspaces','saveWorkspace','restoreWorkspace','openWorkspace','newWorkspace','deleteWorkspace','guidedFieldDefinitions','numericSetting','profileSettings','renderGuidedEditor','applyGuidedEdits','removeGuidedOverride','adoptProfileText','removeProfileDocument','restoreProfileOriginal']) {
     const match=new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if(!match)throw new Error('Missing profile controller function: '+name);
     const tail=source.slice(match.index),end=/\n  \}(?=\n|$)/.exec(tail);
@@ -50,6 +50,12 @@ function profileFixture() {
 }
 const plain = value => JSON.parse(JSON.stringify(value));
 const workspaceRecord = (snapshot, overrides={}) => ({id:'a'.repeat(32),title:'Saved filament',revision:1,created_at:'2026-11-13T00:00:00Z',updated_at:'2026-11-13T00:00:00Z',document_count:snapshot.documents.length,snapshot,...overrides});
+const archiveOrigin = () => ({type:'bambu_preset_archive',archive_name:'synthetic.bbsflmt',archive_sha256:'a'.repeat(64),member_path:'Example/Child.json',member_sha256:'b'.repeat(64)});
+const archiveResult = () => {
+  const draft_text=' {\n "name": "Child", "filament_settings_id": ["Child"], "inherits": "Missing parent", "nozzle_temperature": ["215"]\n}\n';
+  return {schema_version:1,archive:{filename:'synthetic.bbsflmt',sha256:'a'.repeat(64),format:'bbsflmt'},documents:[{filename:'Example/Child.json',profile:JSON.parse(draft_text),draft_text,origin:archiveOrigin()}],ignored_members:[{path:'printer/Printer.json',reason:'프린터 설정'}],warnings:['사용자가 제공한 파일입니다.']};
+};
+const archiveInput = () => ({files:[{name:'synthetic.bbsflmt',size:3,arrayBuffer:async()=>new Uint8Array([80,75,3]).buffer}],value:'synthetic.bbsflmt'});
 const job = () => ({
   id:'job-a',title:'Tray',artifacts:{stl:'/api/jobs/job-a/files/stl',sliced_three_mf:'/api/jobs/job-a/files/sliced_three_mf'},
   result:{template:'tray',parameters:{width:120},dimensions_mm:{x:120,y:80,z:35},volume_mm3:45072,geometry_status:'validated',checks:[],warnings:[],mesh:{vertices:[],faces:[]}},
@@ -219,13 +225,128 @@ const job = () => ({
     resolve('{"name":"Old preset"}');await pending;
     assert.equal(c.$('profile-json').value,'{"name":"New draft"}');assert.equal(c.state.profileDocuments.length,0);
   });
-  await check('A failed file import preserves the previous editable document and invalidates success',async()=>{
+  await check('A failed file import preserves the accepted document and its current review',async()=>{
     const c=profileFixture();const original={filename:'kept.json',profile:{name:'Kept'},draftText:'{"name":"Edited"}'};
     c.state.profileDocuments=[original];c.$('profile-json').value=original.draftText;
+    const report={status:'resolved'};c.state.profileReport=report;c.state.profileDownloadUrl='blob:accepted';
+    c.$('profile-download').setAttribute('href','blob:accepted');
     await c.importProfileFiles({files:[{name:'bad.json',size:4,text:async()=>'{bad'}],value:'bad.json'});
     assert.equal(c.state.profileDocuments.length,1);assert.equal(c.state.profileDocuments[0],original);
-    assert.equal(c.$('profile-json').value,original.draftText);assert.equal(c.$('profile-resolution').hidden,true);
+    assert.equal(c.$('profile-json').value,original.draftText);assert.equal(c.state.profileReport,report);
+    assert.equal(c.$('profile-resolution').hidden,false);assert.equal(c.$('profile-download').attributes.href,'blob:accepted');
     assert.equal(c.$('profile-feedback').hidden,false);assert.match(c.$('profile-feedback').textContent,/bad.json/);
+  });
+  await check('Appending a missing parent preserves an existing unfinished draft and target',async()=>{
+    const c=profileFixture();const kept={filename:'child.json',profile:{name:'Child',inherits:'Parent'},draftText:'  {"name":\nunfinished'};
+    c.state.profileDocuments=[kept];c.$('profile-json').value=kept.draftText;c.$('setup-nozzle').value='0.40';
+    const text='{"name":"Parent","nozzle_temperature":["205"]}';
+    await c.importProfileFiles({files:[{name:'parent.json',size:text.length,text:async()=>text}],value:'parent.json'});
+    assert.equal(c.state.profileDocuments.length,2);assert.equal(c.state.profileDocuments[0],kept);
+    assert.equal(c.state.profileTarget,0);assert.equal(c.$('profile-json').value,kept.draftText);
+    assert.equal(c.$('setup-nozzle').value,'0.40');assert.equal(c.state.profileReport,null);
+  });
+  await check('The first import adopts a valid pasted draft and refuses to replace an unfinished paste',async()=>{
+    for(const valid of [true,false]) {
+      const c=profileFixture();const pasted=valid?'  {"name":"Pasted"}\n':'  {"name":\n';
+      c.$('profile-json').value=pasted;const text='{"name":"Imported"}';
+      await c.importProfileFiles({files:[{name:'new.json',size:text.length,text:async()=>text}],value:'new.json'});
+      assert.equal(c.$('profile-json').value,pasted);
+      assert.equal(c.state.profileDocuments.length,valid?2:0);
+      if(valid) {assert.equal(c.state.profileDocuments[0].filename,'pasted-filament.json');assert.equal(c.state.profileDocuments[0].draftText,pasted);}
+      else assert.match(c.$('profile-feedback').textContent,/입력|초안/);
+    }
+  });
+  await check('Reimporting an exact original keeps its edited draft, origin and existing review',async()=>{
+    const c=profileFixture();const origin={type:'bambu_preset_archive',archive_name:'first.bbsflmt',archive_sha256:'a'.repeat(64),member_path:'filament/kept.json',member_sha256:'b'.repeat(64)};
+    const original={name:'Kept',nozzle_temperature:['205']};const kept={filename:'filament/kept.json',profile:original,draftText:'{"name":"Kept","nozzle_temperature":["215"]}',origin};
+    c.state.profileDocuments=[kept];c.$('profile-json').value=kept.draftText;const report={status:'resolved'};c.state.profileReport=report;
+    const text=JSON.stringify(original);
+    await c.importProfileFiles({files:[{name:'again.json',size:text.length,text:async()=>text}],value:'again.json'});
+    assert.equal(c.state.profileDocuments.length,1);assert.equal(c.state.profileDocuments[0],kept);
+    assert.equal(c.$('profile-json').value,kept.draftText);assert.deepEqual(c.state.profileDocuments[0].origin,origin);
+    assert.equal(c.state.profileReport,report);assert.match(c.$('profile-feedback').textContent,/중복|이미/);
+  });
+  await check('Conflicting original or edited preset names reject the entire addition',async()=>{
+    for(const name of ['Original','Renamed']) {
+      const c=profileFixture();const kept={filename:'kept.json',profile:{name:'Original',value:'1'},draftText:'{"name":"Renamed","value":"2"}'};
+      c.state.profileDocuments=[kept];c.$('profile-json').value=kept.draftText;
+      const documents=[{name:'New independent'},{name,value:'conflict'}];
+      await c.importProfileFiles({files:documents.map((profile,index)=>({name:`${index}.json`,size:100,text:async()=>JSON.stringify(profile)})),value:'files'});
+      assert.equal(c.state.profileDocuments.length,1);assert.equal(c.state.profileDocuments[0],kept);
+      assert.equal(c.$('profile-json').value,kept.draftText);assert.match(c.$('profile-feedback').textContent,/이름|중복/);
+    }
+  });
+  await check('Archive import preserves original member text and origin without inventing profile metadata',async()=>{
+    const c=profileFixture();const result=archiveResult();let submitted;
+    c.$('setup-nozzle').value='0.40';c.api=async(path,body)=>{submitted={path,body:plain(body)};return result;};
+    await c.importProfileArchive(archiveInput());
+    assert.equal(submitted.path,'/api/profiles/import-archive');assert.equal(submitted.body.filename,'synthetic.bbsflmt');
+    assert.equal(submitted.body.content_base64,Buffer.from([80,75,3]).toString('base64'));
+    assert.equal(c.state.profileDocuments.length,1);assert.equal(c.$('profile-json').value,result.documents[0].draft_text);
+    assert.deepEqual(plain(c.state.profileDocuments[0].profile),result.documents[0].profile);
+    assert.deepEqual(plain(c.state.profileDocuments[0].origin),result.documents[0].origin);
+    assert.equal(c.state.profileDocuments[0].profile.type,undefined);assert.equal(c.state.profileDocuments[0].profile.source,undefined);
+    assert.equal(c.$('setup-nozzle').value,'0.40');assert.equal(c.$('profile-origin').hidden,false);
+    assert.match(c.$('profile-origin-fields').textContent,/synthetic.bbsflmt/);
+    assert.match(c.$('profile-feedback').textContent,/printer\/Printer.json/);
+  });
+  await check('Archive parse errors and conflicting members roll back without dropping the accepted review',async()=>{
+    for(const rejected of [true,false]) {
+      const c=profileFixture();const kept={filename:'kept.json',profile:{name:'Kept'},draftText:'{"name":"Kept"}'};
+      c.state.profileDocuments=[kept];c.$('profile-json').value=kept.draftText;const report={status:'resolved'};c.state.profileReport=report;
+      c.$('profile-download').setAttribute('href','blob:accepted');
+      const result=archiveResult();result.documents.push({filename:'other.json',profile:{name:'Kept',conflict:true},draft_text:'{"name":"Kept","conflict":true}',origin:archiveOrigin()});
+      c.api=async()=>{if(rejected)throw new Error('Invalid archive member');return result;};
+      await c.importProfileArchive(archiveInput());
+      assert.equal(c.state.profileDocuments.length,1);assert.equal(c.state.profileDocuments[0],kept);
+      assert.equal(c.state.profileReport,report);assert.equal(c.$('profile-json').value,kept.draftText);
+      assert.equal(c.$('profile-download').attributes.href,'blob:accepted');
+      assert.match(c.$('profile-feedback').textContent,/유지했습니다/);
+    }
+  });
+  await check('Late archive responses cannot replace edits, a new workspace, clear, or a newer JSON import',async()=>{
+    for(const action of ['edit','workspace','clear','newer_import']) {
+      const c=profileFixture();let finish;
+      c.api=()=>new Promise(done=>{finish=done;});
+      const importing=c.importProfileArchive(archiveInput());await new Promise(done=>setImmediate(done));
+      if(action==='edit') {c.$('profile-json').value='{"name":"Newer draft"}';c.invalidateProfile();c.markWorkspaceChanged();}
+      if(action==='workspace') {const snapshot=plain(c.captureProfileSnapshot());snapshot.profile_text='{"name":"Other workspace"}';c.restoreWorkspace(workspaceRecord(snapshot));}
+      if(action==='clear') c.clearProfileLibrary();
+      if(action==='newer_import') await c.importProfileFiles({files:[{name:'newer.json',size:18,text:async()=>'{"name":"Newer"}'}],value:'newer.json'});
+      const text=c.$('profile-json').value,documents=plain(c.state.profileDocuments),workspace=c.state.workspaceId;
+      finish(archiveResult());await importing;
+      assert.equal(c.$('profile-json').value,text);assert.deepEqual(plain(c.state.profileDocuments),documents);assert.equal(c.state.workspaceId,workspace);
+    }
+  });
+  await check('An obsolete archive byte read never reaches the parser and an oversized archive is not read',async()=>{
+    const c=profileFixture();let finish,calls=0;c.api=async()=>{calls++;return archiveResult();};
+    const input=archiveInput();input.files[0].arrayBuffer=()=>new Promise(done=>{finish=done;});
+    const importing=c.importProfileArchive(input);c.newWorkspace();finish(new Uint8Array([80,75]).buffer);await importing;
+    assert.equal(calls,0);assert.equal(c.state.profileDocuments.length,0);
+    const oversized=archiveInput();oversized.files[0].size=4*1024*1024+1;oversized.files[0].arrayBuffer=async()=>{throw new Error('must not read');};
+    await c.importProfileArchive(oversized);assert.equal(calls,0);assert.match(c.$('profile-feedback').textContent,/4 MiB/);
+  });
+  await check('Import budgets account for exact unfinished text and deduplicate before the document limit',async()=>{
+    const c=profileFixture();const kept={filename:'unfinished.json',profile:{name:'Unfinished'},draftText:' '.repeat(2*1024*1024)+'{'};
+    c.state.profileDocuments=[kept];c.$('profile-json').value=kept.draftText;
+    await c.importProfileFiles({files:[{name:'new.json',size:14,text:async()=>'{"name":"New"}'}],value:'new.json'});
+    assert.equal(c.state.profileDocuments.length,1);assert.equal(c.$('profile-json').value,kept.draftText);assert.match(c.$('profile-feedback').textContent,/편집 문자열/);
+    const full=profileFixture();full.state.profileDocuments=Array.from({length:64},(_,index)=>({filename:`${index}.json`,profile:{name:`Preset ${index}`},draftText:JSON.stringify({name:`Preset ${index}`})}));
+    full.$('profile-json').value=full.state.profileDocuments[0].draftText;
+    await full.importProfileFiles({files:[{name:'again.json',size:20,text:async()=>'{"name":"Preset 0"}'}],value:'again.json'});
+    assert.equal(full.state.profileDocuments.length,64);assert.match(full.$('profile-feedback').textContent,/건너뛰/);
+    await full.importProfileFiles({files:[{name:'new.json',size:14,text:async()=>'{"name":"New"}'}],value:'new.json'});
+    assert.equal(full.state.profileDocuments.length,64);assert.match(full.$('profile-feedback').textContent,/최대 64개/);
+  });
+  await check('Archive provenance survives snapshot reopening and current/original review requests',async()=>{
+    const c=profileFixture();c.api=async()=>archiveResult();await c.importProfileArchive(archiveInput());
+    const snapshot=plain(c.captureProfileSnapshot());c.restoreWorkspace(workspaceRecord(snapshot));
+    assert.deepEqual(plain(c.state.profileDocuments[0].origin),archiveOrigin());
+    assert.equal(c.$('profile-origin').hidden,false);assert.equal(c.state.profileReport,null);
+    const original=plain(c.state.profileDocuments[0].profile);const edited={...original,nozzle_temperature:['220']};c.$('profile-json').value=JSON.stringify(edited);
+    let submitted;c.api=async(path,body)=>{submitted=plain(body);return {status:'needs_input',review:null};};c.renderProfileResolution=()=>{};
+    await c.reviewProfile();assert.deepEqual(submitted.documents[0].origin,archiveOrigin());assert.deepEqual(submitted.baseline.documents[0].origin,archiveOrigin());
+    assert.deepEqual(submitted.documents[0].profile,edited);assert.deepEqual(submitted.baseline.documents[0].profile,original);
   });
   await check('Profile import refuses numbers that JSON parsing cannot preserve',async()=>{
     for(const number of ['1e999','9007199254740993']) {

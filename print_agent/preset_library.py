@@ -9,6 +9,7 @@ import hashlib
 import json
 
 from .profiles import evaluate_profile
+from .profile_origin import copy_archive_origin
 
 
 _MAX_DOCUMENTS = 64
@@ -156,15 +157,20 @@ def _resolve_profile_documents(documents, target_name, setup, *, allow_empty_tar
     }
     records = {}
     for document in documents:
-        if not isinstance(document, dict) or set(document) != {"filename", "profile"}:
-            raise ValueError("각 문서에는 filename과 profile만 필요합니다.")
+        if not isinstance(document, dict) or set(document) not in (
+            {"filename", "profile"}, {"filename", "profile", "origin"},
+        ):
+            raise ValueError("각 문서에는 filename, profile과 선택적인 origin만 필요합니다.")
         filename, profile = document["filename"], document["profile"]
         if not isinstance(filename, str) or not filename.strip() or not isinstance(profile, dict):
             raise ValueError("filename은 빈 문자열이 아니어야 하며 profile은 JSON 객체여야 합니다.")
         settings = _settings(profile)
         copied = deepcopy(profile)
         digest = hashlib.sha256(_json_bytes(profile)).hexdigest()
-        report["documents"].append({"filename": filename, "profile": copied, "sha256": digest})
+        supplied = {"filename": filename, "profile": copied, "sha256": digest}
+        if "origin" in document:
+            supplied["origin"] = copy_archive_origin(document["origin"])
+        report["documents"].append(supplied)
         name = settings.get("name")
         record = {"name": name, "filename": filename, "settings": settings,
                   "profile": profile, "sha256": digest}

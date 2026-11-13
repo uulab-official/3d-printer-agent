@@ -187,12 +187,13 @@
         <form id="profile-form">
           <div class="two-column-layout">
             <section class="card" aria-labelledby="profile-input-heading">
-              <div class="card-heading"><div><span class="step-label">01 · 설정 파일</span><h2 id="profile-input-heading">필라멘트 프로필</h2></div><label class="file-button">JSON 파일 추가<input id="profile-file" type="file" accept=".json,application/json" multiple></label></div>
-              <p class="field-help profile-import-help">사용할 프로필과 부모 프로필 JSON을 함께 선택하세요. 빠진 부모 파일은 나중에 추가할 수 있습니다. 최대 64개이며, 원본 모음과 편집본 모음은 각각 2 MiB까지 지원합니다.</p>
+              <div class="card-heading profile-input-heading"><div><span class="step-label">01 · 설정 파일</span><h2 id="profile-input-heading">필라멘트 프로필</h2></div><div class="profile-import-buttons"><label class="file-button">Studio 내보내기 가져오기<input id="profile-archive" type="file" accept=".bbsflmt,.bbscfg,.zip"></label><label class="file-button">JSON 파일 추가<input id="profile-file" type="file" accept=".json,application/json" multiple></label></div></div>
+              <p class="field-help profile-import-help">Studio 내보내기(.bbsflmt·.bbscfg·.zip, 최대 4 MiB)에서 필라멘트 JSON을 읽거나 개별 JSON을 추가하세요. 빠진 부모 파일은 나중에 추가할 수 있습니다. 최대 64개이며, 원본 모음과 편집 문자열 모음은 파일 정보를 포함해 각각 2 MiB까지 지원합니다.</p>
               <div id="profile-library" class="profile-library" hidden>
                 <div class="label-row"><label for="profile-target">검토할 프로필</label><button id="profile-clear" class="text-button" type="button">파일 모음 비우기</button></div>
                 <select id="profile-target" aria-describedby="profile-library-summary"></select>
                 <p id="profile-library-summary" class="field-help" role="status"></p>
+                <details id="profile-origin" class="help-details profile-origin" hidden><summary>선택한 파일의 가져오기 정보</summary><dl id="profile-origin-fields"></dl><p class="field-help">해시는 가져올 때 읽은 파일을 구분합니다. 발행처 인증이나 실물 출력 검증을 뜻하지 않습니다.</p></details>
                 <div class="button-row"><button id="profile-remove" class="text-button" type="button">선택 파일 제거</button><button id="profile-restore" class="text-button" type="button">원본으로 되돌리기</button></div>
               </div>
               <section id="profile-guided" class="profile-guided" aria-labelledby="profile-guided-heading">

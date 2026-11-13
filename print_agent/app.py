@@ -1,4 +1,6 @@
 """Loopback web app: plan, generate CAD, review evidence, and prepare slicing."""
+import base64
+import binascii
 import json
 import logging
 import os
@@ -18,6 +20,7 @@ from . import __version__
 from .geometry import generate_model, template_catalog
 from .offers import compare_offers
 from .planner import plan_from_text, plan_with_llm, provider_config
+from .preset_archive import import_preset_archive
 from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
 from .schemas import GeometryRequest
@@ -58,7 +61,7 @@ class LocalSessionMiddleware:
             # Full native configs and retained original/draft collections need
             # the same bounded import budget. Individual validators still apply.
             path = scope['path']
-            large_import = (path in ('/api/slice', '/api/profiles/resolve', '/api/profile-workspaces')
+            large_import = (path in ('/api/slice', '/api/profiles/resolve', '/api/profiles/import-archive', '/api/profile-workspaces')
                             or path.startswith('/api/profile-workspaces/'))
             max_body = MAX_WORKSPACE_BODY if large_import else MAX_BODY
             size_message = f'요청 전체는 {max_body // (1024 * 1024)} MiB 이하여야 합니다.'
@@ -124,6 +127,14 @@ class ProfilePayload(StrictPayload):
 class ProfileDocumentPayload(StrictPayload):
     filename: str = Field(min_length=1, max_length=240)
     profile: dict
+    origin: dict | None = None
+
+
+class ProfileArchivePayload(StrictPayload):
+    filename: str = Field(min_length=1, max_length=240)
+    # 4 MiB of archive bytes, including base64 padding. The middleware separately
+    # enforces the whole JSON request budget before Pydantic or ZIP parsing.
+    content_base64: str = Field(min_length=1, max_length=4 * ((4 * 1024 * 1024 + 2) // 3))
 
 
 class ProfileBaselinePayload(StrictPayload):
@@ -258,13 +269,21 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     def profile_review(payload: ProfilePayload):
         return evaluate_profile(payload.profile,payload.setup)
 
+    @app.post('/api/profiles/import-archive')
+    def profile_archive(payload: ProfileArchivePayload):
+        try:
+            content = base64.b64decode(payload.content_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError('묶음 파일을 다시 선택해 주세요. 올바른 base64 데이터가 필요합니다.') from exc
+        return import_preset_archive(payload.filename, content)
+
     @app.post('/api/profiles/resolve')
     def profile_resolve(payload: ProfileResolvePayload):
         return resolve_profile_documents(
-            [document.model_dump() for document in payload.documents],
+            [document.model_dump(exclude_unset=True) for document in payload.documents],
             payload.target_name,
             payload.setup,
-            baseline=payload.baseline.model_dump() if payload.baseline is not None else None,
+            baseline=payload.baseline.model_dump(exclude_unset=True) if payload.baseline is not None else None,
         )
 
     @app.get('/api/profile-workspaces')

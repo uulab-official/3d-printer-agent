@@ -12,6 +12,8 @@ import re
 import sqlite3
 import uuid
 
+from .profile_origin import copy_archive_origin
+
 
 MAX_WORKSPACE_BYTES = 8 * 1024 * 1024
 MAX_ORIGINAL_BYTES = 2 * 1024 * 1024
@@ -81,14 +83,19 @@ def _snapshot_text(snapshot):
         raise ValueError('제품 식별 상태는 unknown, ambiguous, exact 중 하나여야 합니다.')
     originals = []
     for document in documents:
-        if not isinstance(document, dict) or set(document) != _DOCUMENT_FIELDS:
-            raise ValueError('각 작업 문서에는 filename, profile, draft_text만 필요합니다.')
+        if not isinstance(document, dict) or set(document) not in (
+            _DOCUMENT_FIELDS, _DOCUMENT_FIELDS | {'origin'},
+        ):
+            raise ValueError('각 작업 문서에는 filename, profile, draft_text와 선택적인 origin만 필요합니다.')
         filename = document['filename']
         if not isinstance(filename, str) or not filename.strip() or len(filename) > 240:
             raise ValueError('파일 이름은 비어 있지 않은 240자 이내의 문자열이어야 합니다.')
         if not isinstance(document['profile'], dict) or not isinstance(document['draft_text'], str):
             raise ValueError('가져온 원본은 JSON 객체, 편집 내용은 문자열이어야 합니다.')
-        originals.append({'filename': filename, 'profile': document['profile']})
+        original = {'filename': filename, 'profile': document['profile']}
+        if 'origin' in document:
+            original['origin'] = copy_archive_origin(document['origin'])
+        originals.append(original)
     encoded = _json_text(snapshot)
     if len(encoded.encode('utf-8')) > MAX_WORKSPACE_BYTES:
         raise ValueError('원본과 편집 내용을 합친 작업은 8 MiB 이하여야 합니다.')
