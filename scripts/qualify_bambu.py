@@ -224,13 +224,15 @@ def synthetic_fixture():
 
     source=user_export exercises the application's accepted bundle contract;
     this fixture's actual provenance is synthetic and recorded separately.
+    Machine from=system declares a synthetic native root so process compatibility
+    can name it directly; it does not claim a manufacturer-supplied preset.
     These minimum settings depend on native defaults and must not be offered
     to users as printer/material recommendations.
     """
     bundle = {
         "source": "user_export", "plate_type": "High Temp Plate",
         "machine": {
-            "from": "user", "type": "machine", "name": "PPA Synthetic Machine CI Only",
+            "from": "system", "type": "machine", "name": "PPA Synthetic Machine CI Only",
             "printer_settings_id": "PPA Synthetic Machine CI Only",
             "printer_model": "PPA Synthetic FFF CI Only", "printer_technology": "FFF",
             "nozzle_diameter": ["0.4"],
@@ -241,6 +243,7 @@ def synthetic_fixture():
         "process": {
             "from": "user", "type": "process", "name": "PPA Synthetic Process CI Only",
             "print_settings_id": "PPA Synthetic Process CI Only",
+            "compatible_printers": ["PPA Synthetic Machine CI Only"],
             "layer_height": "0.2", "initial_layer_print_height": "0.2",
             "wall_loops": "2", "top_shell_layers": "3", "bottom_shell_layers": "3",
             "sparse_infill_density": "15%", "outer_wall_speed": "40", "inner_wall_speed": "60",
@@ -283,6 +286,7 @@ def adapter_smoke(executable, cube, evidence, env, report):
 
     report.update(status="running", synthetic_fixture=True, source="handwritten_ci_fixture",
                   contract_source_field="user_export", uses_native_defaults=True,
+                  native_machine_classification="system (synthetic root; not manufacturer provenance)",
                   manufacturer_preset=False, hardware_qualified=False, cases=[])
     adapter_dir = evidence / "native-adapter"
     adapter_dir.mkdir()
