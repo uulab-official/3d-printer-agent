@@ -595,6 +595,14 @@ class SlicerTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_review")
         self.assertIn("setting:curr_bed_type", [check["name"] for check in result["checks"] if not check["passed"]])
 
+    def test_oversized_integer_in_native_readback_requires_review(self):
+        settings = exported_settings()
+        settings["nozzle_diameter"] = [10 ** 400]
+        result = self.run_fixture(self.prepare(), lambda path: write_output(path, settings=settings))
+        self.assertEqual(result["status"], "needs_review")
+        self.assertTrue(Path(result["output_path"]).is_file())
+        self.assertIn("setting:nozzle_diameter", [check["name"] for check in result["checks"] if not check["passed"]])
+
     def test_verified_fixture_is_sliced_without_invented_statistics_or_print_status(self):
         result = self.run_fixture(self.prepare(), write_output)
         self.assertEqual(result["status"], "sliced", result["checks"])

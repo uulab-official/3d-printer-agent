@@ -561,6 +561,8 @@ def _equivalent(expected, actual) -> bool:
     try:
         first, second = float(expected), float(actual)
         return math.isfinite(first) and math.isfinite(second) and math.isclose(first, second, rel_tol=1e-9, abs_tol=1e-9)
+    except OverflowError:
+        return False
     except (TypeError, ValueError):
         return expected == actual
 
