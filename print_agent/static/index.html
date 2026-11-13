@@ -204,8 +204,8 @@
                   <summary id="profile-evidence-summary">프로필의 적용 범위와 출처</summary>
                   <p id="profile-evidence-help" class="field-help">선택한 파일의 원문에서 확인한 범위와 출처를 적어 주세요. ‘내 프린터와 재료’에 적은 사용 조건과 비교하며, 부모 파일의 근거를 자동으로 가져오지 않습니다.</p>
                   <p class="field-help">빈칸으로 지운 항목은 적용할 때 해당 근거만 제거합니다. 다른 정보와 가져온 원본은 유지합니다.</p>
-                  <fieldset id="profile-evidence-scope"></fieldset>
-                  <fieldset id="profile-evidence-source"></fieldset>
+                  <div id="profile-evidence-scope" class="evidence-group" role="group" aria-labelledby="evidence-scope-heading"></div>
+                  <div id="profile-evidence-source" class="evidence-group" role="group" aria-labelledby="evidence-source-heading"></div>
                   <datalist id="profile-source-authorities"><option value="manufacturer"></option><option value="user"></option><option value="community"></option><option value="unknown"></option></datalist>
                 </details>
                 <div id="profile-guided-actions" class="button-row" hidden><button id="profile-guided-apply" class="button button-secondary" type="button">편집 적용</button><button id="profile-guided-cancel" class="text-button" type="button">편집 취소</button></div>

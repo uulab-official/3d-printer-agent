@@ -940,7 +940,9 @@
       const area = $(`profile-evidence-${group}`);
       area.replaceChildren();
       if (!profile) continue;
-      area.append(node("legend", "", title));
+      const heading = node("h4", "", title);
+      heading.id = `evidence-${group}-heading`;
+      area.append(heading);
       if (group === "source") area.append(node("p", "field-help", "입력한 출처 기록입니다. 발행처 인증이나 실제 출력 검증을 뜻하지 않습니다."));
       const value = Object.hasOwn(profile, "settings") && Object.hasOwn(profile, group) ? profile[group] : {};
       if (!value || typeof value !== "object" || Array.isArray(value)) {

@@ -17,6 +17,25 @@ async function noHorizontalOverflow(page) {
   )).toBe(true);
 }
 
+async function openProfileEvidence(page, testInfo) {
+  await page.locator('#profile-evidence summary').click();
+  await expect(page.locator('#profile-evidence')).toHaveJSProperty('open', true);
+  try {
+    await expect(page.locator('#evidence-scope-printer_model')).toBeVisible();
+    await expect(page.locator('#evidence-source-authority')).toBeVisible();
+  } catch (error) {
+    const layout = await page.locator('#profile-evidence').evaluate(details =>
+      [details, ...details.querySelectorAll('[role="group"], fieldset, legend, h4, .guided-fields, input')].map(element => {
+        const style = getComputedStyle(element), rect = element.getBoundingClientRect();
+        return { tag: element.tagName, id: element.id, hidden: element.hidden,
+          display: style.display, visibility: style.visibility, contentVisibility: style.contentVisibility,
+          width: rect.width, height: rect.height };
+      }));
+    await testInfo.attach('evidence-layout.json', { body: JSON.stringify(layout, null, 2), contentType: 'application/json' });
+    throw error;
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   const errors = [];
   page.__expectedHttpFailures = [];
@@ -710,7 +729,7 @@ test('guided source and applicability evidence wraps only the draft and survives
     if (name === 'material_identity_status') await field.selectOption(value);
     else await field.fill(String(value));
   }
-  await page.locator('#profile-evidence summary').click();
+  await openProfileEvidence(page, testInfo);
   await expect(page.locator('#profile-json')).toHaveValue(originalText);
   for (const [name, value] of Object.entries(child.scope)) {
     const field = page.locator(`#evidence-scope-${name}`);
@@ -752,7 +771,7 @@ test('guided source and applicability evidence wraps only the draft and survives
   await expect(page.locator('#profile-download')).not.toHaveAttribute('href');
   expect(JSON.parse(await page.locator('#profile-json').inputValue())).toEqual(edited);
   await expect(page.locator('#setup-material')).toHaveValue(ownedSetup.material_id);
-  await page.locator('#profile-evidence summary').click();
+  await openProfileEvidence(page, testInfo);
   await expect(page.locator('#evidence-scope-material_id')).toHaveValue(setup.material_id);
   await expect(page.locator('#evidence-source-publisher')).toHaveValue(source.publisher);
   await expect(page.locator('#evidence-source-retrieved_at')).toHaveValue(source.retrieved_at);
@@ -790,7 +809,7 @@ test('guided source and applicability evidence wraps only the draft and survives
   expect(reviewed.full_config).toBe(false);
   expect(reviewed.native_verified).toBe(false);
   await expect(page.locator('#profile-evidence-changes tr[data-evidence-path]')).toHaveCount(11);
-  await expect(page.locator('#profile-evidence-review')).toContainText(source.publisher);
+  await expect(page.locator('#profile-evidence-review')).toContainText(JSON.stringify(source.publisher));
   await expect(page.locator('#profile-evidence-review img')).toHaveCount(0);
   expect(await page.evaluate(() => window.evidenceExecuted)).toBeUndefined();
   const downloadPromise = page.waitForEvent('download');
@@ -820,7 +839,7 @@ test('evidence edits cancel atomically and keep source corrections distinct from
     if (name === 'material_identity_status') await field.selectOption(value);
     else await field.fill(String(value));
   }
-  await page.locator('#profile-evidence summary').click();
+  await openProfileEvidence(page, testInfo);
   await expect(page.locator('#evidence-source-authority')).toHaveValue('custom authority');
   await expect(page.locator('#evidence-source-publisher')).toBeDisabled();
   await expect(page.locator('#profile-evidence-source')).toContainText('do not coerce');
@@ -843,6 +862,8 @@ test('evidence edits cancel atomically and keep source corrections distinct from
   await expect(page.locator('#evidence-scope-nozzle_diameter')).toHaveValue('-0.4');
   await page.locator('#profile-guided-cancel').click();
   await expect(page.locator('#profile-json')).toBeEnabled();
+  await expect(page.locator('#profile-evidence')).toHaveJSProperty('open', true);
+  await expect(page.locator('#evidence-scope-nozzle_diameter')).toBeVisible();
   await expect(page.locator('#guided-nozzle_temperature')).toHaveValue('215');
   await expect(page.locator('#evidence-scope-nozzle_diameter')).toHaveValue('0.40');
   expect(JSON.parse(await page.locator('#profile-json').inputValue())).toEqual(child);

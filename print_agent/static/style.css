@@ -231,8 +231,8 @@ summary:hover { color: var(--blue); }
 .guided-field input:disabled { color: #8c98a9; background: #f3f5f8; }
 .profile-evidence { margin-top: 20px; padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: #f8faff; min-width: 0; }
 .profile-evidence summary { line-height: 1.8; overflow-wrap: anywhere; }
-.profile-evidence fieldset { min-width: 0; margin: 20px 0 0; padding: 0; border: 0; }
-.profile-evidence legend { padding: 0; color: #526987; font-size: 12px; font-weight: 650; }
+.profile-evidence .evidence-group { min-width: 0; margin: 20px 0 0; }
+.profile-evidence .evidence-group h4 { margin: 0; color: #526987; font-size: 12px; font-weight: 650; }
 .profile-evidence .guided-fields { margin-top: 12px; }
 .profile-evidence .evidence-original { margin: 7px 0 0; padding: 8px 10px; font-size: 10px; max-height: 160px; }
 #profile-evidence-review h3 { margin: 0 0 6px; font-size: 13px; }
