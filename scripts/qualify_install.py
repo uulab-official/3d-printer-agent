@@ -251,7 +251,7 @@ def qualify(args, report):
         def data_hashes():
             # Windows denies reads of another handle's locked byte. The stable
             # lock marker is deliberately excluded; all actual user data remains.
-            return {str(path.relative_to(data)): sha256(path.read_bytes()) for path in data.rglob('*')
+            return {path.relative_to(data).as_posix(): sha256(path.read_bytes()) for path in data.rglob('*')
                     if path.is_file() and path.name != '.printer-agent.lock'}
 
         before_competitor = data_hashes()
@@ -314,7 +314,71 @@ def qualify(args, report):
         check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 4
               and set(paged_ids) == {model['id'] for model in models} | {interrupted_id})
 
-        tampered = data / 'jobs' / models[0]['id'] / 'model.3mf'
+        def backup_command(name, arguments, expected_exit=0):
+            operation = subprocess.run([entrypoint, *map(str, arguments)], cwd=work, env=environment,
+                                       capture_output=True, text=True, encoding='utf-8', timeout=60)
+            (args.report_dir / (name + '-stdout.json')).write_text(operation.stdout, encoding='utf-8')
+            (args.report_dir / (name + '-stderr.log')).write_text(operation.stderr, encoding='utf-8')
+            check('cli_' + name + '_exit', operation.returncode == expected_exit,
+                  f'exit {operation.returncode}; expected {expected_exit}')
+            return json.loads(operation.stdout)
+
+        archive = args.report_dir / 'workspace.ppa-backup.zip'
+        locked = backup_command('backup-live-owner', ['backup', '--data-dir', data, '--output', archive], 1)
+        check('backup_live_owner_rejected', locked['status'] == 'error' and not archive.exists())
+        restarted.stop()
+        original_bytes = data_hashes()
+        created_backup = backup_command('backup-created', ['backup', '--data-dir', data, '--output', archive])
+        check('backup_created_verified', created_backup['status'] == 'created'
+              and created_backup['archive_sha256'] == sha256(archive.read_bytes())
+              and created_backup['file_count'] == len(original_bytes))
+        inspected_backup = backup_command('backup-inspected', ['backup-info', '--archive', archive])
+        check('backup_inspection_matches_created_archive', inspected_backup['status'] == 'verified'
+              and inspected_backup['archive_sha256'] == created_backup['archive_sha256']
+              and inspected_backup['file_count'] == created_backup['file_count'])
+        restored_data = work / '복원 data space'
+        restored_backup = backup_command('backup-restored', ['restore', '--archive', archive, '--destination', restored_data])
+        restored_bytes = {p.relative_to(restored_data).as_posix(): sha256(p.read_bytes())
+                          for p in restored_data.rglob('*') if p.is_file() and p.name != '.printer-agent.lock'}
+        check('backup_restore_to_new_directory', restored_backup['status'] == 'restored'
+              and restored_backup['data_dir'] == str(restored_data.resolve()) and restored_bytes == original_bytes)
+        existing = backup_command('backup-existing-target', ['restore', '--archive', archive, '--destination', restored_data], 1)
+        check('backup_existing_destination_rejected', existing['status'] == 'error'
+              and restored_bytes == {p.relative_to(restored_data).as_posix(): sha256(p.read_bytes())
+                                     for p in restored_data.rglob('*') if p.is_file() and p.name != '.printer-agent.lock'})
+        corrupt_archive = args.report_dir / 'synthetic-truncated-backup.zip'
+        content = archive.read_bytes()
+        corrupt_archive.write_bytes(content[:len(content) // 2])
+        rejected_destination = work / 'must-not-appear'
+        rejected = backup_command('backup-corrupt', ['restore', '--archive', corrupt_archive, '--destination', rejected_destination], 1)
+        check('backup_corrupt_archive_rejected', rejected['status'] == 'error' and not rejected_destination.exists())
+        restored_server = Server(restored_data, work, args.report_dir, 'server-restored', environment)
+        servers.append(restored_server)
+        restored_bootstrap = restored_server.wait_ready()
+        restored_workspace = get_json(restored_server, '/api/profile-workspaces/' + workspace['id'])
+        restored_job = get_json(restored_server, '/api/jobs/' + models[0]['id'])
+        restored_interrupted = get_json(restored_server, '/api/jobs/' + interrupted_id)
+        check('restored_job_and_workspace_identity', restored_workspace == workspace and restored_job == retained_job
+              and restored_interrupted == abandoned
+              and restored_bootstrap['storage']['path'] == str(restored_data.resolve())
+              and sha256((restored_data / partial.relative_to(data)).read_bytes()) == partial_sha)
+        verified_downloads = []
+        for model in models:
+            restored_model = get_json(restored_server, '/api/jobs/' + model['id'])
+            code, content, _ = request(restored_server.base, restored_model['artifacts']['three_mf'])
+            verified_downloads.append(code == 200 and sha256(content) == model['artifacts']['three_mf']['sha256'])
+        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == 3)
+        check('backup_source_bytes_unchanged', original_bytes == data_hashes())
+        report['backup'] = {'created': created_backup, 'inspected': inspected_backup, 'restored': restored_backup,
+                            'source_files': original_bytes, 'restored_before_start_files': restored_bytes,
+                            'source_data_dir': str(data), 'restored_data_dir': str(restored_data),
+                            'restored_recovery': restored_bootstrap['storage']['recovery'],
+                            'all_three_model_downloads_verified': all(verified_downloads)}
+
+        # Further integrity faults now target only the restored copy. The original
+        # source and verified backup remain unchanged for independent inspection.
+        restarted = restored_server
+        tampered = restored_data / 'jobs' / models[0]['id'] / 'model.3mf'
         tampered.write_bytes(b'synthetic altered artifact; do not rewrite')
         damaged_bytes = tampered.read_bytes()
         bad_download = get_json(restarted, retained_job['artifacts']['three_mf'], expected=409)
@@ -334,6 +398,8 @@ def qualify(args, report):
             server.stop()
     with DataDirectoryLease(data):
         check('stopped_server_releases_data_directory', True)
+    with DataDirectoryLease(restored_data):
+        check('restored_server_releases_data_directory', True)
 
 
 def main():

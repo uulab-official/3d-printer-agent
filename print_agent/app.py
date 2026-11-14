@@ -29,7 +29,7 @@ from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
 from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
-from .runtime import DataDirectoryLease, resolve_data_directory
+from .runtime import DataDirectoryLease, require_compatible_data, resolve_data_directory
 from .schemas import GeometryRequest
 from .slicer import detect_environment, execute_slice, prepare_slice, probe_environment
 from .storage import ArtifactIntegrityError, JobRecordError, JobStore
@@ -221,6 +221,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             yield
             return
         with DataDirectoryLease(data_root):
+            require_compatible_data(data_root)
             store = JobStore(data_root)
             workspaces = ProfileWorkspaceStore(data_root)
             recovery = store.recover()

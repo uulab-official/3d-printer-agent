@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -539,7 +539,7 @@
   }
 
   function hasPendingWork() {
-    return state.retainedOutcomeDrafts.length > 0 || state.workflowBusy || state.workspaceBusy || modelHasUnsavedChanges() || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges() || workspaceDirty();
+    return state.retainedOutcomeDrafts.length > 0 || state.workflowBusy || state.workspaceBusy || state.offersPending || offersHaveUnsavedChanges() || modelHasUnsavedChanges() || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges() || workspaceDirty();
   }
 
   function replacementSignature() {
@@ -1975,23 +1975,50 @@
     }
   }
 
-  $("offers-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
+  function offersSignature() {
+    return JSON.stringify([$("offer-currency").value, ...Array.from(document.querySelectorAll("[data-offer]")).map((row) => [row.dataset.offer, ...Array.from(row.querySelectorAll("[data-offer-field]")).map((input) => [input.dataset.offerField, input.value, Boolean(input.validity?.badInput), input.validity?.valid !== false])])]);
+  }
+
+  function offersHaveUnsavedChanges() {
+    return $("offer-currency").value !== "KRW" || Array.from(document.querySelectorAll("[data-offer]")).some((row) => Array.from(row.querySelectorAll("[data-offer-field]")).some((input) => input.value !== "" || input.validity?.badInput || input.validity?.valid === false));
+  }
+
+  function offersInputChanged() {
+    state.offersRevision += 1;
+    $("offers-result").hidden = true;
+    if (state.offersPending) showNotice("offers-feedback", "비교 중에 조건이 바뀌었습니다. 현재 입력은 유지했습니다. 새 조건으로 다시 비교해 주세요.", "info");
+    else hideNotice("offers-feedback");
+  }
+
+  async function compareOffers() {
+    if (state.offersPending) return;
+    const revision = ++state.offersRevision, signature = offersSignature();
+    const current = () => revision === state.offersRevision && signature === offersSignature();
     hideNotice("offers-feedback");
+    $("offers-result").hidden = true;
     try {
       const offers = [];
       for (const row of document.querySelectorAll("[data-offer]")) {
-        const values = Object.fromEntries(Array.from(row.querySelectorAll("[data-offer-field]")).map((input) => [input.dataset.offerField, input.value.trim()]));
+        const inputs = Array.from(row.querySelectorAll("[data-offer-field]"));
+        if (inputs.some((input) => input.validity?.badInput || input.validity?.valid === false)) throw new Error(`상품 ${row.dataset.offer}의 입력값을 완성하고 표시된 범위를 확인해 주세요.`);
+        const values = Object.fromEntries(inputs.map((input) => [input.dataset.offerField, input.value.trim()]));
         if (Object.values(values).every((value) => value === "")) continue;
         if (!values.name || values.price === "" || values.grams === "") throw new Error(`상품 ${row.dataset.offer}의 이름, 가격, 중량을 모두 입력해 주세요.`);
         offers.push({ name: values.name, currency: $("offer-currency").value, price: Number(values.price), grams: Number(values.grams), shipping: values.shipping === "" ? null : Number(values.shipping) });
       }
       if (!offers.length) throw new Error("비교할 상품을 하나 이상 입력해 주세요.");
-      await withBusy($("compare-offers"), "단가 계산 중", async () => renderOffers(await api("/api/offers/compare", { offers })));
-    } catch (error) { showNotice("offers-feedback", error.message, "error"); }
-  });
-  $("offers-form").addEventListener("input", () => { $("offers-result").hidden = true; });
-  $("offer-currency").addEventListener("change", () => { $("offers-result").hidden = true; });
+      state.offersPending = true;
+      await withBusy($("compare-offers"), "단가 계산 중", async () => {
+        const result = await api("/api/offers/compare", { offers }, undefined, { current });
+        if (current()) renderOffers(result);
+      });
+    } catch (error) { if (current()) showNotice("offers-feedback", error.message, "error"); }
+    finally { state.offersPending = false; }
+  }
+
+  $("offers-form").addEventListener("submit", (event) => { event.preventDefault(); return compareOffers(); });
+  $("offers-form").addEventListener("input", offersInputChanged);
+  $("offer-currency").addEventListener("change", offersInputChanged);
 
   function money(value, currency) {
     if (!Number.isFinite(value)) return "미확인";

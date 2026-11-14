@@ -2,9 +2,11 @@
 
 Date: 2026-11-14 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.2 is a local single-user application with the desktop installation and runtime qualification recorded below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.3 is a local single-user application; the exact desktop, browser and native qualification is recorded below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.3 adds a complete saved-workspace archive with streamed integrity checks and restoration to a new directory, plus read-only SQLite compatibility checks before startup writes either store. Purchase drafts receive page-exit protection and defensive late-response guards while the existing pending-form lock stays unchanged. Installed-package qualification includes backup, restore and restored-server operation. A release workflow promotes the exact wheel only after the application, three-OS installation and native gates pass for the current main commit; workflow existence alone does not establish publication. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md), [RELEASES.md](RELEASES.md) and the observed verification entries.
 
 Version 0.2 adds exclusive data-directory ownership, explicit restart recovery, verified download bytes, useful installation diagnostics and stable per-user storage with legacy compatibility. The UI exposes its actual storage path, reconnects without reloading or replaying uncertain mutations, protects unfinished model work and pages through older history. A dedicated workflow qualifies one shared wheel on three desktop operating systems; observed results are recorded separately below and in [VERIFICATION.md](VERIFICATION.md). See [LOCAL_OPERATION.md](LOCAL_OPERATION.md) for installation, update and recovery behavior.
 

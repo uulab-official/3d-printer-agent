@@ -23,12 +23,12 @@ function fixture() {
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
     $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa,
-    state:{retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
+    state:{offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
     viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},workspaceDirty(){return false;},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
   };
-  $('parameter-width').value='120';$('outcome-result').value='not_tested';
+  $('parameter-width').value='120';$('outcome-result').value='not_tested';$('offer-currency').value='KRW';
   vm.createContext(context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
@@ -36,6 +36,8 @@ function fixture() {
     const tail=source.slice(match.index), end=/\n  \}(?=\n|$)/.exec(tail);
     vm.runInContext(tail.slice(0,end.index+4),context);
   }
+  // Load actual offer event wiring as well as its controller functions.
+  vm.runInContext(source.slice(source.indexOf('  function renderOfferRows()'),source.indexOf('  function dateTime(')),context);
   return context;
 }
 function profileFixture() {
@@ -51,6 +53,27 @@ function profileFixture() {
   context.state.workspaceSavedSignature=context.workspaceSignature();
   return context;
 }
+function offersFixture() {
+  const c=profileFixture(),rows=[];
+  for(let index=1;index<=3;index++) {
+    const row=new Element();row.dataset.offer=String(index);
+    const fields=['name','price','grams','shipping'].map(key=>{const input=c.$(`offer-${index}-${key}`);input.dataset.offerField=key;return input;});
+    row.querySelectorAll=()=>fields;row.append(...fields);rows.push(row);
+  }
+  c.document.querySelectorAll=selector=>selector==='[data-offer]'?rows:[];
+  c.$('compare-offers').form={elements:[...rows.flatMap(row=>row.children),c.$('offer-currency'),c.$('compare-offers')]};
+  c.$('offers-result').hidden=true;c.$('offers-feedback').hidden=true;
+  c.submitOffers=()=>c.$('offers-form').listeners.submit({preventDefault(){}});
+  c.editOffer=(id,value,validity)=>{c.$(id).value=value;if(validity)c.$(id).validity=validity;c.$('offers-form').listeners.input();};
+  c.fillOffer=()=>{c.$('offer-1-name').value='Current product';c.$('offer-1-price').value='1000';c.$('offer-1-grams').value='1000';};
+  c.exitIsProtected=()=>{
+    let handler,prevented=false;c.window.addEventListener=(name,callback)=>{if(name==='beforeunload')handler=callback;};
+    const start=source.indexOf('  window.addEventListener("beforeunload"'),end=source.indexOf('  window.addEventListener("pagehide"',start);
+    vm.runInContext(source.slice(start,end),c);handler({preventDefault(){prevented=true;}});return prevented;
+  };
+  return c;
+}
+const offerReply = (name='Compared product',currency='KRW') => ({groups:{[currency]:[{name,price:1000,grams:1000,shipping:null,delivered_total:null,price_per_kg:null,product_price_per_kg:1000}]},notice:'User-entered comparison; not saved.'});
 const plain = value => JSON.parse(JSON.stringify(value));
 const workspaceRecord = (snapshot, overrides={}) => ({id:'a'.repeat(32),title:'Saved filament',revision:1,created_at:'2026-11-13T00:00:00Z',updated_at:'2026-11-13T00:00:00Z',document_count:snapshot.documents.length,snapshot,...overrides});
 const archiveOrigin = () => ({type:'bambu_preset_archive',archive_name:'synthetic.bbsflmt',archive_sha256:'a'.repeat(64),member_path:'Example/Child.json',member_sha256:'b'.repeat(64)});
@@ -94,6 +117,52 @@ const job = () => ({
     try { await test(); passed++; console.log('PASS',name); }
     catch(error) { failed++; console.log('FAIL',name,error.message); }
   }
+  await check('Empty default purchase rows do not protect exit, but nonempty and invalid drafts do',()=>{
+    const c=offersFixture();assert.equal(c.exitIsProtected(),false);
+    c.editOffer('offer-1-name','  ');assert.equal(c.exitIsProtected(),true);
+    c.editOffer('offer-1-name','');assert.equal(c.exitIsProtected(),false);
+    c.editOffer('offer-2-shipping','',{badInput:true,valid:false});assert.equal(c.exitIsProtected(),true);
+    c.$('offer-2-shipping').validity={badInput:false,valid:true};assert.equal(c.exitIsProtected(),false);
+    c.$('offer-currency').value='USD';c.$('offer-currency').listeners.change();assert.equal(c.exitIsProtected(),true);
+    c.$('offer-currency').value='KRW';c.$('offer-currency').listeners.change();assert.equal(c.exitIsProtected(),false);
+  });
+  await check('A late successful comparison rejects a defensive programmatic currency edit',async()=>{
+    const c=offersFixture();c.fillOffer();let reply,calls=0;
+    c.api=async()=>{calls++;return new Promise(resolve=>{reply=resolve;});};
+    const pending=c.submitOffers();assert.equal(c.$('offer-1-price').disabled,true);assert.equal(c.$('offer-currency').disabled,true);assert.equal(c.$('compare-offers').disabled,true);
+    c.$('offer-currency').value='USD';c.$('offer-currency').listeners.change();reply(offerReply('Obsolete result'));await pending;
+    assert.equal(c.$('offers-result').hidden,true);assert.doesNotMatch(c.$('offer-comparison').textContent,/Obsolete/);assert.equal(c.$('offer-currency').value,'USD');assert.equal(calls,1);assert.equal(c.$('compare-offers').disabled,false);
+  });
+  await check('Exact purchase text, added rows, shipping and invalid-number changes invalidate pending results',async()=>{
+    const edits=[c=>c.editOffer('offer-1-price','01000'),c=>c.editOffer('offer-1-grams','1000.0'),c=>c.editOffer('offer-1-name','Current product '),c=>c.editOffer('offer-1-shipping','0'),c=>c.editOffer('offer-2-name','Another product'),c=>c.editOffer('offer-1-price','',{badInput:true,valid:false}),c=>{c.editOffer('offer-1-price','2000');c.editOffer('offer-1-price','1000');}];
+    for(const edit of edits){const c=offersFixture();c.fillOffer();let reply;c.api=()=>new Promise(resolve=>{reply=resolve;});const pending=c.submitOffers();edit(c);reply(offerReply('Obsolete result'));await pending;assert.equal(c.$('offers-result').hidden,true);assert.doesNotMatch(c.$('offer-comparison').textContent,/Obsolete/);}
+  });
+  await check('Purchase signatures also reject changed values when no input event was dispatched',async()=>{
+    const c=offersFixture();c.fillOffer();let reply;c.api=()=>new Promise(resolve=>{reply=resolve;});const pending=c.submitOffers();c.$('offer-1-price').value='2000';reply(offerReply('Obsolete result'));await pending;
+    assert.equal(c.$('offers-result').hidden,true);assert.equal(c.$('offer-1-price').value,'2000');
+  });
+  await check('A late purchase error after edits cannot replace the current feedback',async()=>{
+    const c=offersFixture();c.fillOffer();let reject;c.api=()=>new Promise((resolve,fail)=>{reject=fail;});const pending=c.submitOffers();c.editOffer('offer-1-shipping','0');c.showNotice('offers-feedback','Keep current input feedback','info');reject(new Error('Obsolete comparison failure'));await pending;
+    assert.match(c.$('offers-feedback').textContent,/Keep current input/);assert.doesNotMatch(c.$('offers-feedback').textContent,/Obsolete/);assert.equal(c.$('offer-1-shipping').value,'0');assert.equal(c.$('offers-result').hidden,true);
+  });
+  await check('Superseded purchase network errors do not disconnect the current edited workspace',async()=>{
+    const c=offersFixture();c.fillOffer();let reject;c.fetch=()=>new Promise((resolve,fail)=>{reject=fail;});const pending=c.submitOffers();c.$('offer-currency').value='USD';c.$('offer-currency').listeners.change();reject(new Error('Synthetic transport failure'));await pending;
+    assert.equal(c.state.token,'test-token');assert.equal(c.state.connectionState,'connected');assert.equal(c.$('offers-result').hidden,true);
+  });
+  await check('An active purchase comparison protects exit even when every input is cleared',async()=>{
+    const c=offersFixture();c.fillOffer();let reply;c.api=()=>new Promise(resolve=>{reply=resolve;});const pending=c.submitOffers();for(const key of ['name','price','grams','shipping'])c.editOffer(`offer-1-${key}`,'');
+    assert.equal(c.exitIsProtected(),true);reply(offerReply());await pending;assert.equal(c.exitIsProtected(),false);assert.equal(c.$('offers-result').hidden,true);
+  });
+  await check('Explicit purchase retry uses current currency and shipping without replay or saved-state claims',async()=>{
+    const c=offersFixture();c.fillOffer();let reply;const requests=[];c.api=(path,payload)=>{requests.push(plain(payload));return new Promise(resolve=>{reply=resolve;});};const old=c.submitOffers();c.$('offer-currency').value='USD';c.$('offer-currency').listeners.change();c.editOffer('offer-1-shipping','0');reply(offerReply('Old'));await old;assert.equal(requests.length,1);
+    c.api=async(path,payload)=>{requests.push(plain(payload));return offerReply('Current result','USD');};await c.submitOffers();assert.equal(requests.length,2);assert.equal(requests[0].offers[0].shipping,null);assert.equal(requests[1].offers[0].shipping,0);assert.equal(requests[1].offers[0].currency,'USD');assert.equal(c.$('offers-result').hidden,false);assert.match(c.$('offer-comparison').textContent,/Current result/);assert.equal(c.exitIsProtected(),true);
+  });
+  await check('Invalid partial purchase numbers are preserved and never sent as unknown shipping',async()=>{
+    const c=offersFixture();c.fillOffer();c.$('offer-1-shipping').validity={badInput:true,valid:false};let calls=0;c.api=async()=>{calls++;return offerReply();};await c.submitOffers();assert.equal(calls,0);assert.equal(c.$('offer-1-shipping').validity.badInput,true);assert.equal(c.$('offers-feedback').hidden,false);assert.equal(c.$('offers-result').hidden,true);
+  });
+  await check('A current purchase error stays actionable and releases its busy state',async()=>{
+    const c=offersFixture();c.fillOffer();c.api=async()=>{throw new Error('Current comparison failure');};await c.submitOffers();assert.match(c.$('offers-feedback').textContent,/Current comparison failure/);assert.equal(c.$('compare-offers').disabled,false);assert.equal(c.state.offersPending,false);assert.equal(c.$('offer-1-price').disabled,false);
+  });
   await check('Expired sessions expose reconnect, clear credentials and never replay the failed mutation',async()=>{
     const c=fixture();let calls=0;c.$('bootstrap-error').hidden=true;
     c.fetch=async()=>{calls++;return {ok:false,status:403,json:async()=>({detail:'다시 연결해 주세요.',code:'session_expired'})};};

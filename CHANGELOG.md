@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-11-14
+
+- Add offline `backup`, `backup-info` and `restore` commands for complete saved CAD and filament workspaces, including original records, private receipts, exact unfinished drafts and partial files.
+- Stream a bounded versioned archive, verify every payload hash and actual ZIP layout, hold the data-directory lease during capture, and publish complete backups/restores without replacing existing files or folders.
+- Refuse unknown SQLite schemas and corrupt canonical workspace stores before production startup mutates either store; retain the established preservation/rebuild path for a corrupt derived history index.
+- Extend the installed-wheel qualification through live-owner refusal, exact backup/restore byte comparison, rejection of corrupt archives and existing destinations, and restored HTTP operation with verified downloads on all three desktop OS jobs.
+- Protect unsaved purchase inputs and active comparisons on page exit. Keep existing pending-form locking and ignore superseded success/error responses using the exact captured input state.
+- Add a minimal-permission release workflow that verifies all three successful current-main workflows and promotes their exact qualified wheel and evidence without rebuilding or replacing published versions. Actual publication and platform results are recorded in `docs/VERIFICATION.md`.
+- Document Ubuntu system-library preparation, complete-workspace backup limits, new-folder restore and update/rollback procedures; link the guide from the UI storage details.
+
 ## 0.2.0 — 2026-11-14
 
 - Hold an exclusive operating-system lease for each running app's data directory; reject a second writer before opening stores or attempting recovery.

@@ -1,6 +1,6 @@
 {
   "name": "3d-printer-agent-ui-tests",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Browser and controller regression tests for the local 3D Printer Agent",
   "scripts": {

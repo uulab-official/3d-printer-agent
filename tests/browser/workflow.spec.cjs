@@ -631,6 +631,133 @@ test('missing material evidence and unknown shipping remain visible', async ({ p
   await expect(page.locator('#offers-result')).toBeHidden();
 });
 
+test('purchase comparisons retain form locking and protect drafts through edits and explicit retry', async ({ page }, testInfo) => {
+  await openView(page, 'offers');
+  const exitProtected = () => page.evaluate(() => {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(await exitProtected()).toBe(false);
+  for (const [field, value] of Object.entries({ name: '조건 변경 검증용 상품', price: '1000', grams: '1000', shipping: '' })) {
+    await page.locator(`#offer-1-${field}`).fill(value);
+  }
+  expect(await exitProtected()).toBe(true);
+  const requests = [];
+  const recordRequest = request => {
+    if (request.method() === 'POST' && request.url().endsWith('/api/offers/compare')) requests.push(request.postDataJSON());
+  };
+  page.on('request', recordRequest);
+  const compareResponse = () => page.waitForResponse(response => response.url().endsWith('/api/offers/compare'));
+  async function holdComparison(syntheticFailure = false) {
+    let release, fetched;
+    const held = new Promise(resolve => { release = resolve; });
+    const arrived = new Promise(resolve => { fetched = resolve; });
+    await page.route('**/api/offers/compare', async route => {
+      const actual = await route.fetch();
+      expect(actual.status()).toBe(200);
+      fetched();
+      await held;
+      if (syntheticFailure) await route.fulfill({ status: 503, contentType: 'application/json',
+        body: JSON.stringify({ detail: '브라우저 검사 전용 현재 비교 실패' }) });
+      else await route.fulfill({ response: actual });
+    }, { times: 1 });
+    return { arrived, release };
+  }
+
+  // Hold a real response and verify normal users cannot edit pending inputs.
+  // Defensive programmatic mutation cases belong to the controller tests.
+  const first = await holdComparison();
+  const oldResponse = compareResponse();
+  await page.locator('#compare-offers').click();
+  await first.arrived;
+  await expect(page.locator('#offer-1-price')).toBeDisabled();
+  await expect(page.locator('#offer-currency')).toBeDisabled();
+  await expect(page.locator('#compare-offers')).toBeDisabled();
+  expect(await exitProtected()).toBe(true);
+  first.release();
+  const oldBytes = await (await oldResponse).body();
+  const old = JSON.parse(oldBytes);
+  expect(old.groups.KRW[0].shipping).toBeNull();
+  await expect(page.locator('#compare-offers')).toBeEnabled();
+  await expect(page.locator('#offers-result')).toBeVisible();
+  await expect(page.locator('#offers-feedback')).toBeHidden();
+  await expect(page.locator('#offer-comparison')).toContainText('배송비 미확인');
+  await expect(page.locator('#offer-currency')).toHaveValue('KRW');
+  await expect(page.locator('#offer-1-price')).toHaveValue('1000');
+  expect(requests).toHaveLength(1);
+  await page.locator('#offer-1-price').fill('1000.0');
+  await expect(page.locator('#offers-result')).toBeHidden();
+  await expect(page.locator('#offer-1-price')).toHaveValue('1000.0');
+  await noHorizontalOverflow(page);
+  await page.locator('#view-offers').screenshot({ path: testInfo.outputPath('purchase-comparison-edit.png'), scale: 'css' });
+
+  await page.locator('#offer-currency').selectOption('USD');
+  await page.locator('#offer-1-shipping').fill('0');
+  const freshResponse = compareResponse();
+  await page.locator('#compare-offers').click();
+  const freshBytes = await (await freshResponse).body();
+  const fresh = JSON.parse(freshBytes);
+  expect(fresh.groups.USD[0].shipping).toBe(0);
+  expect(fresh.groups.USD[0].price_per_kg).toBe(1000);
+  await expect(page.locator('#offers-result')).toBeVisible();
+  await expect(page.locator('#offer-1-price')).toHaveValue('1000.0');
+  await expect(page.locator('#offer-comparison')).toContainText('1,000.00');
+  expect(await exitProtected()).toBe(true); // Calculating does not save the draft.
+
+  // A delayed real request receives an explicitly synthetic current error.
+  page.__expectedHttpFailures.push({ path: '/api/offers/compare', status: 503 });
+  const failing = await holdComparison(true);
+  const failedResponse = compareResponse();
+  await page.locator('#compare-offers').click();
+  await failing.arrived;
+  await expect(page.locator('#offer-currency')).toBeDisabled();
+  failing.release();
+  expect((await failedResponse).status()).toBe(503);
+  await expect(page.locator('#compare-offers')).toBeEnabled();
+  await expect(page.locator('#offers-result')).toBeHidden();
+  await expect(page.locator('#offers-feedback')).toContainText('현재 비교 실패');
+  await expect(page.locator('#connection-status')).toContainText('연결됨');
+  await expect(page.locator('#offer-currency')).toHaveValue('USD');
+  await expect(page.locator('#offer-1-price')).toHaveValue('1000.0');
+  expect(requests).toHaveLength(3);
+
+  await page.locator('#offer-currency').selectOption('JPY');
+  await page.locator('#offer-1-price').fill('2000');
+  await page.locator('#offer-1-shipping').fill('');
+  const retryResponse = compareResponse();
+  await page.locator('#compare-offers').click();
+  const retryBytes = await (await retryResponse).body();
+  const retry = JSON.parse(retryBytes);
+  expect(retry.groups.JPY[0].price).toBe(2000);
+  expect(retry.groups.JPY[0].shipping).toBeNull();
+  expect(retry.groups.JPY[0].price_per_kg).toBeNull();
+  expect(retry.live_prices).toBe(false);
+  await expect(page.locator('#offers-result')).toBeVisible();
+  await expect(page.locator('#offer-comparison')).toContainText('배송비 미확인');
+  await expect(page.locator('#offers-feedback')).toBeHidden();
+  expect(requests).toHaveLength(4);
+  expect(requests.map(payload => payload.offers[0].currency)).toEqual(['KRW', 'USD', 'USD', 'JPY']);
+  await noHorizontalOverflow(page);
+  await page.locator('#view-offers').screenshot({ path: testInfo.outputPath('purchase-comparison-retry.png'), scale: 'css' });
+  await fs.writeFile(testInfo.outputPath('purchase-comparison-original.json'), oldBytes);
+  await fs.writeFile(testInfo.outputPath('purchase-comparison-current.json'), freshBytes);
+  await fs.writeFile(testInfo.outputPath('purchase-comparison-retry.json'), retryBytes);
+  await fs.writeFile(testInfo.outputPath('purchase-comparison-recovery.json'), JSON.stringify({
+    requests, synthetic_http_503: true, automatic_replays: 0,
+    purchase_inputs_locked_while_comparison_pending: true,
+    exact_numeric_spelling_preserved: true,
+    unfinished_inputs_protected_on_exit: true, comparisons_saved: false,
+  }, null, 2));
+  page.off('request', recordRequest);
+  await expect(page.locator('#compare-offers')).toBeEnabled();
+  for (let index = 1; index <= 3; index++) {
+    for (const field of ['name', 'price', 'grams', 'shipping']) await page.locator(`#offer-${index}-${field}`).fill('');
+  }
+  await page.locator('#offer-currency').selectOption('KRW');
+  expect(await exitProtected()).toBe(false);
+});
+
 test('a rejected CAD request remains inspectable in history without a fake model', async ({ page }, testInfo) => {
   await page.locator('#parameter-width').fill('10');
   await page.locator('#parameter-depth').fill('10');

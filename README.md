@@ -6,7 +6,7 @@
 
 **An open-source local workspace for parameterized CAD, filament profile review, and Bambu Studio preparation.**
 
-한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **로컬 작업 공간 v0.2**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
+한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **로컬 작업 공간 v0.3**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
 
 이 버전은 `수납함`, `열린 케이블 받침`, `원형 인셋 프레임` 세 가지 파라메트릭 모델을 실제 CAD로 생성합니다. 일반적인 자유형 모델링, MakerWorld 검색·리믹스, 실시간 쇼핑 수집, 프린터 직접 제어는 후속 개발 범위입니다. [현재 개발 상태](docs/STATUS.md), [로컬 검증 기록](docs/VERIFICATION.md), [기여 안내](CONTRIBUTING.md)를 함께 확인하세요.
 
@@ -17,6 +17,8 @@
 ## 시작하기
 
 권장 실행 경로는 **Python 3.12 가상환경**입니다. Linux·macOS·Windows의 설치 패키지 검증과 native Bambu 실행 검증은 분리합니다. 플랫폼별로 실제 통과한 커밋과 범위는 [검증 기록](docs/VERIFICATION.md)을 확인하세요. 이 앱은 자신의 PC에서 사용하는 단일 사용자 앱이며 공개 서버로 배포하는 구성은 제공하지 않습니다.
+
+패키지 설치는 [GitHub Releases](https://github.com/uulab-official/3d-printer-agent/releases)의 해당 버전과 [설치·릴리스 안내](docs/RELEASES.md)를 확인하세요. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
 
 저장소를 받은 다음 프로젝트 폴더로 이동합니다.
 
@@ -66,7 +68,20 @@ UI 상태 회귀 검사는 개발용 Node.js가 있을 때 `node tests/test_ui_s
 
 CI는 Python 검사와 패키지 설치, UI 상태 검사, 실제 Chromium에서의 브라우저 검사를 실행하도록 구성했습니다. 실행 결과는 [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions)에서 커밋별로 확인합니다. 브라우저 검사에는 개발용 Node.js가 필요하며 실행 방법은 [기여 안내](CONTRIBUTING.md)를 따릅니다.
 
-위는 개발 소스에서 실행하는 방법이며 `pip install .` 후 `printer-agent` 진입점도 제공합니다. 별도의 [패키지 검증 workflow](.github/workflows/package-qualification.yml)는 같은 wheel 바이트를 세 운영체제에 설치하고 소스 폴더 밖에서 실제 CAD·API·저장·재시작을 검사합니다. 실행 결과와 다운로드 가능한 wheel 산출물은 [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions/workflows/package-qualification.yml)에서 커밋별로 확인할 수 있습니다.
+위는 개발 소스에서 실행하는 방법이며 `pip install .` 후 `printer-agent` 진입점도 제공합니다. 별도의 [패키지 검증 workflow](.github/workflows/package-qualification.yml)는 같은 wheel 바이트를 세 운영체제에 설치하고 소스 폴더 밖에서 실제 CAD·API·저장·재시작·백업·복원을 검사합니다. [릴리스 workflow](.github/workflows/release.yml)는 같은 현재 main 커밋의 앱·설치·native 검증이 모두 통과한 뒤 그 wheel을 재빌드 없이 게시합니다. 실제 게시 결과는 [Releases](https://github.com/uulab-official/3d-printer-agent/releases), 개별 검사는 [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions)에서 확인하세요.
+
+### 업데이트 전 전체 작업 백업
+
+브라우저의 편집 내용을 저장하고 서버를 종료한 뒤 실행합니다. 실제 데이터 경로와 새 출력 파일·복원 폴더 경로로 바꾸세요. 출력 파일과 복원 폴더의 상위 폴더는 미리 준비합니다.
+
+```bash
+printer-agent backup --data-dir "/내/데이터" --output "/내/백업/workspace.ppa-backup.zip"
+printer-agent backup-info --archive "/내/백업/workspace.ppa-backup.zip"
+printer-agent restore --archive "/내/백업/workspace.ppa-backup.zip" --destination "/내/복원된-데이터"
+printer-agent --data-dir "/내/복원된-데이터"
+```
+
+CAD 기록과 원본·부분 파일, 저장한 필라멘트 원본·미완성 초안을 함께 보관합니다. 실행 중인 데이터의 백업과 기존 폴더를 덮어쓰는 복원은 거절합니다. 모델별 ZIP 내보내기는 전체 작업 백업이 아니며, 브라우저에서 아직 저장하지 않은 입력은 포함되지 않습니다. 한도와 확인 방법은 [백업·복원 안내](docs/BACKUP_RESTORE.md)를 참고하세요.
 
 ## 사용할 수 있는 작업
 
@@ -81,6 +96,7 @@ CI는 Python 검사와 패키지 설치, UI 상태 검사, 실제 Chromium에서
 | Bambu Studio | 명시적 CLI 확인, 설정 파일 묶음 도우미, 플레이트 지정, CLI 실행과 결과 검토 | 버전별 native 검증은 [연동 안내](docs/BAMBU_STUDIO.md)와 검증 기록 참조. 실물 출력은 미검증 |
 | 구매 비교 | 직접 입력한 가격·중량·배송비로 kg당 단가 계산 | 실시간 가격·재고·쿠폰은 수집하지 않음 |
 | 작업 기록 | 생성 요청·파일·이벤트·사용자 출력 결과, 이전 기록 더 보기, 중단 작업 다시 준비 | 다운로드 바이트 검증과 시작 시 이력 복구. 사용자 결과는 `user_reported`로 구분 |
+| 전체 백업·복원 | 저장한 CAD·필라멘트 작업 전체를 검증한 ZIP으로 보관하고 새 폴더에 복원 | 서버 종료 후 CLI 실행. 바이트 무결성과 자료의 정상 여부를 구분 |
 | LLM 연결 | OpenAI-compatible Chat Completions 어댑터 | 합성 서버 응답으로 계약 검증. 실제 모델 연결은 미검증 |
 
 ### 무엇을 만들지 고르기

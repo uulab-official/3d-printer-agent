@@ -3,7 +3,7 @@
 Importing this module does not import CAD or web dependencies. A broken native
 installation must still be able to produce a useful doctor report.
 """
-from contextlib import closing
+from contextlib import closing, contextmanager
 import errno
 import importlib
 import importlib.metadata
@@ -11,12 +11,26 @@ import os
 from pathlib import Path
 import platform
 import re
+import shutil
 import stat
 import sys
 import tempfile
 import time
 
 from . import __version__
+
+
+_DATABASES = (
+    ('history_database', 'history.sqlite3', 'jobs',
+     (('id', 'TEXT', 0, None, 1), ('created_at', 'TEXT', 1, None, 0),
+      ('title', 'TEXT', 1, None, 0), ('template', 'TEXT', 0, None, 0),
+      ('status', 'TEXT', 1, None, 0), ('user_outcome', 'TEXT', 0, None, 0)), True),
+    ('workspace_database', 'profile-workspaces.sqlite3', 'profile_workspaces',
+     (('id', 'TEXT', 0, None, 1), ('title', 'TEXT', 1, None, 0),
+      ('revision', 'INTEGER', 1, None, 0), ('created_at', 'TEXT', 1, None, 0),
+      ('updated_at', 'TEXT', 1, None, 0), ('document_count', 'INTEGER', 1, None, 0),
+      ('snapshot_json', 'TEXT', 1, None, 0)), False),
+)
 
 
 def _recognizable_legacy(root: Path) -> bool:
@@ -66,6 +80,10 @@ def resolve_data_directory(explicit: Path | None = None) -> dict:
 
 class DataDirectoryInUse(RuntimeError):
     """Another live process owns the selected application's data directory."""
+
+
+class StorageCompatibilityError(RuntimeError):
+    """Existing data could not be recognized without changing its original bytes."""
 
 
 class DataDirectoryLease:
@@ -172,8 +190,55 @@ def _check_storage(path: Path) -> str:
             else '상위 폴더에서 임시 파일 쓰기·읽기를 확인했습니다. 데이터 폴더는 앱 시작 시 생성합니다.')
 
 
-def _check_database(path: Path, table: str, columns: set[str], *, derived: bool) -> dict:
+@contextmanager
+def _database_probe_path(path: Path):
+    """Keep SQLite's WAL recovery/index writes away from the observed files.
+
+    A mode=ro connection can still create or update WAL/SHM sidecars. Validate a
+    private file copy for WAL databases, including committed WAL pages. Using
+    immutable=1 on the source would silently ignore those pages. Ordinary rollback
+    databases retain SQLite's live lock checks through the read-only connection.
+    """
+    with path.open('rb') as source:
+        wal_mode = source.read(20)[18:20] == b'\x02\x02'
+    if not wal_mode:
+        yield path
+        return
+
+    sources = [path, *(Path(str(path) + suffix) for suffix in ('-wal', '-shm', '-journal'))]
+
+    def observations():
+        result = {}
+        for source in sources:
+            try:
+                metadata = source.lstat()
+            except FileNotFoundError:
+                result[source] = None
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                raise OSError('SQLite 검사 대상은 일반 파일이어야 합니다.')
+            result[source] = (metadata.st_dev, metadata.st_ino, metadata.st_size,
+                              metadata.st_mtime_ns, metadata.st_ctime_ns)
+        return result
+
+    with tempfile.TemporaryDirectory(prefix='printer-agent-database-check-') as temporary:
+        before = observations()
+        probe = Path(temporary) / path.name
+        for source in sources:
+            # SHM is a rebuildable coordination index, not committed data. SQLite
+            # builds a private replacement using the copied database and WAL.
+            if before[source] is not None and source != Path(str(path) + '-shm'):
+                shutil.copyfile(source, Path(temporary) / source.name)
+        if observations() != before:
+            raise OSError('검사 중 저장 파일이 변경됐습니다. 작업이 끝난 뒤 다시 확인하세요.')
+        yield probe
+
+
+def _check_database(path: Path, table: str, columns: tuple, *, derived: bool) -> dict:
     """Read-only integrity/schema observation, never an implicit repair."""
+    if path.is_symlink():
+        return {'passed': False, 'state': 'invalid_path', 'repairable': False,
+                'detail': '저장 데이터베이스의 심볼릭 링크는 지원하지 않습니다. 원본 파일은 변경하지 않았습니다.'}
     if not path.exists():
         return {'passed': True, 'state': 'not_initialized', 'repairable': False,
                 'detail': '아직 저장 파일이 없습니다. 앱 시작 시 초기화합니다.'}
@@ -188,23 +253,24 @@ def _check_database(path: Path, table: str, columns: set[str], *, derived: bool)
     repair_note = (' 앱을 다시 시작하면 원본 작업 기록을 기준으로 인덱스를 복구하며 손상 파일은 보존합니다.'
                    if derived else ' 필라멘트 작업의 원본 저장소입니다. 파일을 보존하고 확인된 백업으로 복구하세요.')
     try:
-        with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True, timeout=0.5)) as connection:
+        with _database_probe_path(path) as probe, closing(sqlite3.connect(
+                probe.resolve().as_uri() + '?mode=ro', uri=True, timeout=0.5)) as connection:
             connection.execute('PRAGMA query_only = ON')
             deadline = time.monotonic() + 2
             connection.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
             if connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
                 return {'passed': False, 'state': 'corrupt', 'repairable': derived,
                         'detail': 'SQLite 무결성 검사에서 문제를 발견했습니다.' + repair_note}
-            tables = {row[0] for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*'")}
-            if not tables:
+            objects = list(connection.execute(
+                "SELECT name, type FROM sqlite_master WHERE name NOT GLOB 'sqlite_*'"))
+            tables = {row[0] for row in objects if row[1] == 'table'}
+            if not objects:
                 return {'passed': True, 'state': 'uninitialized', 'repairable': False,
-                        'detail': 'SQLite 파일에 사용자 테이블이 없습니다. 앱 시작 시 저장 구조를 초기화합니다.'}
-            if table not in tables or not columns.issubset(
-                {row[1] for row in connection.execute(f'PRAGMA table_info({table})')}
-            ):
+                        'detail': 'SQLite 파일에 사용자 저장 구조가 없습니다. 앱 시작 시 저장 구조를 초기화합니다.'}
+            actual_columns = tuple(tuple(row[1:]) for row in connection.execute(f'PRAGMA table_info({table})'))
+            if table not in tables or actual_columns != columns:
                 return {'passed': False, 'state': 'schema_unrecognized', 'repairable': False,
-                        'detail': '예상하는 저장 테이블 또는 열을 확인할 수 없습니다. '
+                        'detail': '예상하는 저장 테이블·열 순서·자료형·제약 조건을 확인할 수 없습니다. '
                                   '자동 복구가 가능한 구조로 확인되지 않았습니다. 기존 파일을 보존하고 '
                                   '호환되는 앱 버전 또는 확인된 백업을 검토하세요.'}
             return {'passed': True, 'state': 'checked', 'repairable': False,
@@ -223,6 +289,25 @@ def _check_database(path: Path, table: str, columns: set[str], *, derived: bool)
     except (OSError, ValueError) as exc:
         return {'passed': False, 'state': 'not_checked', 'repairable': False,
                 'detail': '저장 파일의 위치와 읽기 권한을 확인하세요. ' + _message(exc)}
+
+
+def require_compatible_data(root: Path) -> dict:
+    """Read-only preflight before production initialization or restored publication.
+
+    The caller owns the directory lease or a private staging directory. Physical
+    corruption of the derived history index remains eligible for existing recovery;
+    unknown schemas and unavailable reads never authorize initialization or repair.
+    """
+    root = Path(root)
+    checks = {check_id: _check_database(root / filename, table, columns, derived=derived)
+              for check_id, filename, table, columns, derived in _DATABASES}
+    for check_id, result in checks.items():
+        if result['passed'] or (check_id == 'history_database'
+                                and result['state'] == 'corrupt' and result['repairable']):
+            continue
+        raise StorageCompatibilityError('저장 데이터의 호환성을 확인할 수 없어 시작하거나 복원하지 않았습니다. '
+                                        + result['detail'])
+    return checks
 
 
 def diagnose(data_dir: Path | None = None, *, probe_slicer: bool = False) -> dict:
@@ -277,12 +362,7 @@ def diagnose(data_dir: Path | None = None, *, probe_slicer: bool = False) -> dic
 
     if report['storage'] is not None:
         root = Path(report['storage']['path'])
-        for check_id, filename, table, columns, derived in (
-            ('history_database', 'history.sqlite3', 'jobs',
-             {'id', 'created_at', 'title', 'template', 'status', 'user_outcome'}, True),
-            ('workspace_database', 'profile-workspaces.sqlite3', 'profile_workspaces',
-             {'id', 'title', 'revision', 'created_at', 'updated_at', 'document_count', 'snapshot_json'}, False),
-        ):
+        for check_id, filename, table, columns, derived in _DATABASES:
             result = _check_database(root / filename, table, columns, derived=derived)
             report['checks'].append({'id': check_id, 'required': True, **result})
 
