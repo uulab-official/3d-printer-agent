@@ -7,6 +7,9 @@ explicitly synthetic minimum config, an original cube and an original example
 or a physical print qualification. No job is sent to a printer. Downloads require
 network access; native execution is local, not network-isolated. Only the standard
 library is required. Evidence excludes the large downloaded runtime image.
+A separate compatibility spike applies the native cube's complete snapshot to
+different generated CAD, comparing honest and inherited producer markers. Its
+results do not qualify a public project importer or manufacturer settings.
 """
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import platform
@@ -25,6 +29,7 @@ import sys
 import threading
 import time
 import urllib.request
+import xml.etree.ElementTree as ET
 import zipfile
 
 
@@ -49,6 +54,8 @@ MAX_LOG_BYTES = 2 * 1024 * 1024
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_UNPACKED_BYTES = 256 * 1024 * 1024
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CORE_3MF = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
+SPIKE_MODIFIER = "3DPrinterAgent-compatibility-spike"
 
 
 def sha256(path):
@@ -365,6 +372,268 @@ def adapter_smoke(executable, cube, evidence, env, report):
         raise RuntimeError("Application adapter native smoke did not pass both original input cases; inspect plan/result/native evidence.")
 
 
+def single_mesh(archive_path):
+    """Inspect this spike's one-mesh fixture; not a general 3MF import API."""
+    meshes = []
+    with zipfile.ZipFile(archive_path) as archive:
+        for name in archive.namelist():
+            if name.endswith(".model"):
+                root = ET.fromstring(archive.read(name))
+                if root.get("unit", "millimeter") != "millimeter":
+                    raise ValueError("Spike geometry must use millimeters.")
+                for mesh in root.findall(f".//{{{CORE_3MF}}}mesh"):
+                    points = [tuple(float(vertex.attrib[key]) for key in ("x", "y", "z"))
+                              for vertex in mesh.findall(f"{{{CORE_3MF}}}vertices/{{{CORE_3MF}}}vertex")]
+                    faces = [tuple(int(face.attrib[key]) for key in ("v1", "v2", "v3"))
+                             for face in mesh.findall(f"{{{CORE_3MF}}}triangles/{{{CORE_3MF}}}triangle")]
+                    if (not points or not faces or any(not math.isfinite(v) for point in points for v in point)
+                            or any(index < 0 or index >= len(points) for face in faces for index in face)):
+                        raise ValueError("Spike geometry has invalid vertices or triangles.")
+                    meshes.append((points, faces))
+    if len(meshes) != 1:
+        raise ValueError("Spike geometry must contain exactly one mesh.")
+    return meshes[0]
+
+
+def mesh_comparison(expected_path, actual_path):
+    """Compare actual vertex coordinates and topology, allowing only translation.
+
+    The pinned native exporter recenters mesh coordinates. Vertex ordering is
+    required to remain stable; reordered or otherwise changed meshes fail this
+    narrow experiment rather than being assumed equivalent from their bounds.
+    """
+    expected_points, expected_faces = single_mesh(expected_path)
+    actual_points, actual_faces = single_mesh(actual_path)
+
+    def bounds(points):
+        return [[min(point[axis] for point in points), max(point[axis] for point in points)] for axis in range(3)]
+
+    expected_bounds, actual_bounds = bounds(expected_points), bounds(actual_points)
+    same_counts = len(expected_points) == len(actual_points) and len(expected_faces) == len(actual_faces)
+    delta = None
+    if same_counts:
+        delta = max(abs((expected[axis] - expected_bounds[axis][0]) - (actual[axis] - actual_bounds[axis][0]))
+                    for expected, actual in zip(expected_points, actual_points) for axis in range(3))
+    topology_matches = sorted(tuple(sorted(face)) for face in expected_faces) == sorted(tuple(sorted(face)) for face in actual_faces)
+    return {"passed": same_counts and topology_matches and delta is not None and delta <= 0.0001,
+            "comparison": "same indexed vertices within 0.0001 mm after translation; same triangle connectivity ignoring winding/order",
+            "expected_vertices": len(expected_points), "actual_vertices": len(actual_points),
+            "expected_triangles": len(expected_faces), "actual_triangles": len(actual_faces),
+            "expected_bounds_mm": expected_bounds, "actual_bounds_mm": actual_bounds,
+            "expected_dimensions_mm": [hi - lo for lo, hi in expected_bounds],
+            "actual_dimensions_mm": [hi - lo for lo, hi in actual_bounds],
+            "maximum_translated_vertex_error_mm": delta, "triangle_connectivity_matches": topology_matches}
+
+
+def derive_spike_project(source_project, model_path, destination, preserve_source_application):
+    """Copy exact native snapshot bytes onto known generated CAD for a CI probe.
+
+    This is deliberately not a public importer. The source must be this run's
+    synthetic adapter cube export from the pinned native runtime. A preserved
+    Application describes that template's original producer, while separate
+    modifier metadata and the receipt identify this derivative's author/inputs.
+    """
+    ET.register_namespace("", CORE_3MF)
+    with zipfile.ZipFile(source_project) as source:
+        settings_bytes = source.read("Metadata/project_settings.config")
+        source_root = ET.fromstring(source.read("3D/3dmodel.model"))
+        source_metadata = {item.attrib["name"]: item.text or "" for item in source_root.findall(f"{{{CORE_3MF}}}metadata")}
+        source_entries = source.namelist()
+    if source_metadata.get("Application") != f"BambuStudio-{VERSION}" or source_metadata.get("BambuStudio:3mfVersion") != "1":
+        raise ValueError("Expected this run's pinned native-produced Bambu template markers.")
+    with zipfile.ZipFile(model_path) as model:
+        payload = {name: model.read(name) for name in model.namelist()}
+    if set(payload) != {"[Content_Types].xml", "_rels/.rels", "3D/3dmodel.model"}:
+        raise ValueError("The committed CAD fixture no longer has the expected minimal 3MF container.")
+    model_root = ET.fromstring(payload["3D/3dmodel.model"])
+    objects = model_root.findall(f"{{{CORE_3MF}}}resources/{{{CORE_3MF}}}object")
+    items = model_root.findall(f"{{{CORE_3MF}}}build/{{{CORE_3MF}}}item")
+    components = objects[1].findall(f"{{{CORE_3MF}}}components/{{{CORE_3MF}}}component") if len(objects) == 2 else []
+    if (len(objects) != 2 or len(items) != 1 or len(components) != 1
+            or objects[0].get("id") != "0" or objects[1].get("id") != "1"
+            or items[0].get("objectid") != "1" or components[0].get("objectid") != "0"
+            or objects[0].find(f"{{{CORE_3MF}}}mesh") is None or items[0].get("transform") or components[0].get("transform")):
+        raise ValueError("The committed CAD fixture must have one mesh, one component wrapper and one untransformed build item.")
+    # Remap mesh 0->1 and its component wrapper 1->2 explicitly. The mesh and
+    # original inline component structure remain unchanged.
+    objects[0].set("id", "1")
+    objects[1].set("id", "2")
+    components[0].set("objectid", "1")
+    items[0].set("objectid", "2")
+    original_model_metadata = {item.attrib["name"]: item.text or "" for item in model_root.findall(f"{{{CORE_3MF}}}metadata")}
+    application = source_metadata["Application"] if preserve_source_application else SPIKE_MODIFIER
+    metadata = {"Application": application, "BambuStudio:3mfVersion": source_metadata["BambuStudio:3mfVersion"],
+                "3DPrinterAgent:ModifiedBy": SPIKE_MODIFIER,
+                "3DPrinterAgent:SourceProjectSHA256": sha256(source_project),
+                "3DPrinterAgent:ModelSHA256": sha256(model_path)}
+    for item in list(model_root.findall(f"{{{CORE_3MF}}}metadata")):
+        if item.get("name") in metadata:
+            model_root.remove(item)
+    for name, value in reversed(list(metadata.items())):
+        item = ET.Element(f"{{{CORE_3MF}}}metadata", {"name": name})
+        item.text = value
+        model_root.insert(0, item)
+    payload["3D/3dmodel.model"] = ET.tostring(model_root, encoding="utf-8", xml_declaration=True)
+    payload["Metadata/project_settings.config"] = settings_bytes
+    # One geometry part, one object, one plate; no source object/plate overrides,
+    # prior G-code, painting, embedded presets, thumbnails or custom layer code.
+    payload["Metadata/model_settings.config"] = b'''<?xml version="1.0" encoding="UTF-8"?>
+<config><object id="2"><metadata key="name" value="generated-cable-comb"/>
+<metadata key="extruder" value="1"/><part id="1" subtype="normal_part">
+<metadata key="name" value="generated-cable-comb"/></part></object>
+<plate><metadata key="plater_id" value="1"/><metadata key="plater_name" value="Compatibility spike"/>
+<metadata key="locked" value="false"/><model_instance><metadata key="object_id" value="2"/>
+<metadata key="instance_id" value="0"/><metadata key="identify_id" value="1"/></model_instance></plate><assemble/></config>
+'''
+    content_types = ET.fromstring(payload["[Content_Types].xml"])
+    content_namespace = "http://schemas.openxmlformats.org/package/2006/content-types"
+    for name in ("Metadata/project_settings.config", "Metadata/model_settings.config"):
+        ET.SubElement(content_types, f"{{{content_namespace}}}Override", {"PartName": "/" + name, "ContentType": "text/plain"})
+    payload["[Content_Types].xml"] = ET.tostring(content_types, encoding="utf-8", xml_declaration=True)
+    with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED) as output:
+        for name, data in payload.items():
+            output.writestr(name, data)
+    with zipfile.ZipFile(destination) as check:
+        unchanged_settings = check.read("Metadata/project_settings.config") == settings_bytes
+    geometry = mesh_comparison(model_path, destination)
+    if not unchanged_settings or not geometry["passed"]:
+        raise ValueError("Derivative construction changed settings bytes or generated CAD geometry.")
+    return {"source_project": {"path": str(source_project), "sha256": sha256(source_project),
+                               "provenance": "native adapter smoke output; handwritten synthetic CI settings and original cube, not a user/manufacturer project",
+                               "original_application": source_metadata["Application"],
+                               "original_3mf_version": source_metadata["BambuStudio:3mfVersion"]},
+            "model": {"path": str(model_path), "sha256": sha256(model_path), "original_metadata": original_model_metadata},
+            "derivative": {"path": str(destination), "sha256": sha256(destination), "metadata": metadata,
+                           "application_policy": "preserve genuine source-template producer and record modifier" if preserve_source_application else "identify derivative producer directly"},
+            "settings": {"sha256": hashlib.sha256(settings_bytes).hexdigest(), "bytes": len(settings_bytes),
+                         "copied_byte_for_byte": unchanged_settings, "from_type_or_setting_values_changed": False},
+            "container_changes": {"copied_from_template": ["Metadata/project_settings.config"],
+                                  "excluded_template_entries": sorted(set(source_entries) - {"Metadata/project_settings.config"}),
+                                  "cad_id_remapping": {"mesh": {"before": "0", "after": "1"},
+                                                       "component_wrapper_and_build": {"before": "1", "after": "2"}},
+                                  "cad_mesh_vertices_and_triangles": "unchanged",
+                                  "added_entries": ["Metadata/project_settings.config", "Metadata/model_settings.config"],
+                                  "rewritten_entries": ["3D/3dmodel.model", "[Content_Types].xml"],
+                                  "replaced_model_application": {"before": original_model_metadata.get("Application"), "after": application},
+                                  "added_model_metadata": {key: value for key, value in metadata.items() if key != "Application"},
+                                  "unchanged_cad_entries": ["_rels/.rels"],
+                                  "minimal_model_settings": {"object_id": 2, "part_id": 1, "plate_id": 1, "instance_id": 0, "extruder": 1}},
+            "derived_geometry_check": geometry}
+
+
+def snapshot_differences(before_bytes, after_bytes):
+    """Compare every key; bounded previews accompany retained complete JSONs."""
+    before, after = json.loads(before_bytes), json.loads(after_bytes)
+    added, removed = sorted(after.keys() - before.keys()), sorted(before.keys() - after.keys())
+    changed = sorted(key for key in before.keys() & after.keys() if before[key] != after[key])
+
+    def preview(value):
+        text = json.dumps(value, ensure_ascii=False)
+        return {"type": type(value).__name__, "json": text[:2048], "truncated": len(text) > 2048}
+
+    differences = [{"key": key, "kind": kind,
+                    "before": preview(before[key]) if key in before else None,
+                    "after": preview(after[key]) if key in after else None}
+                   for kind, keys in (("added", added), ("removed", removed), ("changed", changed)) for key in keys]
+    return {"before_key_count": len(before), "after_key_count": len(after),
+            "unchanged_key_count": len(before.keys() & after.keys()) - len(changed),
+            "added_key_count": len(added), "removed_key_count": len(removed), "changed_key_count": len(changed),
+            "all_values_equal": before == after, "exact_bytes_equal": before_bytes == after_bytes,
+            "before_sha256": hashlib.sha256(before_bytes).hexdigest(), "after_sha256": hashlib.sha256(after_bytes).hexdigest(),
+            "difference_count": len(differences), "differences": differences[:100],
+            "differences_truncated": len(differences) > 100}
+
+
+def studio_project_spike(executable, evidence, env, adapter_report, report):
+    """Compare two marker policies; neither result qualifies a product importer."""
+    report.update(status="running", scope="synthetic_single_filament_template_compatibility_spike",
+                  production_qualified=False, physical_print_verified=False, cases=[])
+    spike_dir = evidence / "studio-project-spike"
+    spike_dir.mkdir()
+    try:
+        cube_case = next(case for case in adapter_report["cases"] if case["name"] == "original-cube-stl" and case["status"] == "passed")
+        source = Path(cube_case["independent_output_inspection"]["archive"]["path"])
+        source_digest = sha256(source)
+        model = REPO_ROOT / "examples" / "cable_comb" / "model.3mf"
+        model_digest = sha256(model)
+        if model_digest != adapter_report["example_source"]["sha256"]:
+            raise ValueError("The checked-in CAD fixture changed after adapter qualification.")
+        with zipfile.ZipFile(source) as source_zip:
+            before_bytes = source_zip.read("Metadata/project_settings.config")
+        before_path = spike_dir / "source-project-settings.json"
+        before_path.write_bytes(before_bytes)
+        _, expected = synthetic_fixture()
+        report.update(source_project_sha256=source_digest, generated_model_sha256=model_digest,
+                      source_settings_path=str(before_path), source_settings_sha256=hashlib.sha256(before_bytes).hexdigest(),
+                      source_settings_key_count=len(json.loads(before_bytes)), expected_core_setting_count=len(expected),
+                      source_cube_vs_generated_model=mesh_comparison(source, model))
+        if report["source_cube_vs_generated_model"]["passed"]:
+            raise ValueError("The spike must change geometry; source and target cannot be the same mesh.")
+        for name, preserve in (("honest-application", False), ("preserved-template-application", True)):
+            case_dir = spike_dir / name
+            case_dir.mkdir()
+            case = {"name": name, "status": "running", "preserve_source_application": preserve}
+            report["cases"].append(case)
+            try:
+                derived = case_dir / "derived-project.3mf"
+                receipt = derive_spike_project(source, model, derived, preserve)
+                case["construction_receipt"] = receipt
+                (case_dir / "construction-receipt.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                output = case_dir / "spike.gcode.3mf"
+                # No load-settings/load-filaments, settings overrides, profile
+                # refresh, debug behavior, or generated role config files.
+                argv = [str(executable), "--arrange", "1", "--slice", "0",
+                        "--export-3mf", output.name, str(derived)]
+                case["command"] = run_command(argv, case_dir, env, case_dir, "native", 180)
+                try:
+                    inspection = inspect_output(output, expected_settings=expected)
+                    case["output_inspection"] = inspection
+                except Exception as exc:
+                    case["output_inspection_error"] = f"{type(exc).__name__}: {exc}"
+                # Preserve partial native output and compare its snapshot/mesh
+                # even when no readable G-code was produced.
+                if output.is_file() and output.stat().st_size <= MAX_OUTPUT_BYTES:
+                    try:
+                        with zipfile.ZipFile(output) as archive:
+                            after_bytes = archive.read("Metadata/project_settings.config")
+                            roundtrip_root = ET.fromstring(archive.read("3D/3dmodel.model"))
+                        roundtrip_metadata = {item.attrib["name"]: item.text or "" for item in roundtrip_root.findall(f"{{{CORE_3MF}}}metadata")}
+                        case["roundtrip_model_metadata"] = roundtrip_metadata
+                        case["derivative_modifier_retained_by_native_export"] = roundtrip_metadata.get("3DPrinterAgent:ModifiedBy") == SPIKE_MODIFIER
+                        after_path = case_dir / "roundtrip-project-settings.json"
+                        after_path.write_bytes(after_bytes)
+                        case["snapshot_readback"] = {**snapshot_differences(before_bytes, after_bytes), "after_path": str(after_path)}
+                        case["geometry_readback"] = mesh_comparison(model, output)
+                    except Exception as exc:
+                        case["readback_error"] = f"{type(exc).__name__}: {exc}"
+                checks = {
+                    "native_exit_zero": case["command"]["returncode"] == 0,
+                    "native_completed_with_full_logs": not case["command"]["timed_out"] and case["command"]["logs_complete"],
+                    "all_30_core_settings_match": len(case.get("output_inspection", {}).get("independent_core_checks", [])) == 30 and all(
+                        check["passed"] for check in case.get("output_inspection", {}).get("independent_core_checks", [])),
+                    "new_cad_geometry_matches": case.get("geometry_readback", {}).get("passed") is True,
+                    "readable_gcode_motion": bool(case.get("output_inspection", {}).get("gcode")),
+                    "all_snapshot_keys_compared": "snapshot_readback" in case,
+                    "source_project_unchanged": sha256(source) == source_digest,
+                    "source_cad_unchanged": sha256(model) == model_digest,
+                    "derived_input_unchanged": sha256(derived) == receipt["derivative"]["sha256"],
+                }
+                case.update(checks=checks, status="passed" if all(checks.values()) else "failed")
+            except Exception as exc:
+                case.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+            finally:
+                # Native CLI may write its own result.json in this directory.
+                # Preserve that artifact rather than replacing it with ours.
+                (case_dir / "case-report.json").write_text(json.dumps(case, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                print(f"Studio project compatibility spike {name}: {case['status']} (exit {case.get('command', {}).get('returncode')}).", flush=True)
+        report["status"] = "passed" if len(report["cases"]) == 2 and all(case["status"] == "passed" for case in report["cases"]) else "failed"
+    except Exception as exc:
+        report.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+        print(f"Studio project compatibility spike failed: {report['error']}", flush=True)
+    finally:
+        (spike_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work-dir", type=Path, default=Path("qa-output/native-bambu"))
@@ -378,8 +647,9 @@ def main():
         folder.mkdir(parents=True, exist_ok=True)
     manifest = {
         "schema_version": 2, "started_at": datetime.now(timezone.utc).isoformat(),
-        "scope": "native_bootstrap_and_synthetic_adapter_smoke", "status": "running",
+        "scope": "native_bootstrap_synthetic_adapter_smoke_and_project_compatibility_spike", "status": "running",
         "native_bootstrap": {"status": "not_run"}, "native_adapter_smoke": {"status": "not_run"},
+        "studio_project_spike": {"status": "not_run", "production_qualified": False},
         "adapter_qualified": False,
         "raw_preset_resolution_qualified": False, "printer_connected": False, "physical_print_verified": False,
         "declared_release_version": VERSION, "release_commit": RELEASE_COMMIT, "reported_version": None,
@@ -442,8 +712,12 @@ def main():
         adapter_smoke(executable, model, evidence, env, manifest["native_adapter_smoke"])
         manifest["adapter_qualified"] = True
         manifest["adapter_qualification_scope"] = "Pinned native version; synthetic single-filament core settings; original STL and 3MF only. Unspecified native defaults and physical printing remain unqualified."
-        manifest["status"] = "passed"
         print("Native bootstrap and both application adapter smoke cases passed. No manufacturer preset or physical printing was qualified.", flush=True)
+        studio_project_spike(executable, evidence, env, manifest["native_adapter_smoke"], manifest["studio_project_spike"])
+        # A failed comparison case remains visible as a failed workflow, while
+        # existing adapter qualification retains its independent result.
+        manifest["status"] = "passed" if manifest["studio_project_spike"]["status"] == "passed" else "failed"
+        print(f"Studio project compatibility spike: {manifest['studio_project_spike']['status']}; production importer remains unqualified.", flush=True)
     except Exception as exc:
         manifest["status"] = "failed"
         manifest["adapter_qualified"] = False

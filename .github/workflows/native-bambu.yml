@@ -2,7 +2,7 @@ name: Native Bambu CLI qualification
 
 on:
   push:
-    branches: [main, qualification/bambu-2.9]
+    branches: [main, qualification/bambu-2.9, qualification/studio-project-20261114]
     paths:
       - "print_agent/**"
       - "examples/**"
