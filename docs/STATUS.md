@@ -2,7 +2,7 @@
 
 Date: 2026-11-14 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. This is an experimental local application, not a claim of production or physical-print qualification.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.2 is a local single-user application with the desktop installation and runtime qualification recorded below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
 
@@ -23,6 +23,18 @@ An expandable evidence editor records the selected profile's seven applicability
 Native slicing preparation now assembles supplied machine/process/filament files with an explicit plate selection, validates native metadata and value representations, and rechecks staged configuration hashes and derived expectations before execution. An explicit UI/doctor probe reports the installed CLI's observed version/capabilities. Verified archive results include their SHA-256 and native version. See [BAMBU_STUDIO.md](BAMBU_STUDIO.md) for the supported subset and usage.
 
 The original local validation is documented in [VERIFICATION.md](VERIFICATION.md). Current unit, package and browser results are recorded per commit in [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions). A workflow definition alone is not evidence of a successful run.
+
+### Local runtime and desktop installation checks — 2026-11-14
+
+Feature commit [`d6f3797f1299deb211d7d3078ef748dd17abce41`](https://github.com/uulab-official/3d-printer-agent/commit/d6f3797f1299deb211d7d3078ef748dd17abce41) passed all three workflows on their first attempt. [Application CI 43587365112](https://github.com/uulab-official/3d-printer-agent/actions/runs/43587365112) passed **331 Python tests, 112 controller tests and 32 real Chromium workflows** (16 desktop and 16 mobile viewport), with no failed, flaky or skipped browser cases. Wheel build/install, static assets and execution outside the source tree passed.
+
+[Installed-package CI 43587365076](https://github.com/uulab-official/3d-printer-agent/actions/runs/43587365076) installed one shared wheel on Ubuntu 24.04 x86_64, macOS 15 arm64 and Windows 2025 AMD64. **Each platform passed 110 actual CAD/HTTP/storage/recovery checks.** The app is 0.2.0 and CadQuery is 2.7.0; observed Python versions are 3.12.16 on Linux and 3.12.10 on macOS/Windows. All 19 packaged app files match the exact committed bytes. The 141,165-byte shared wheel has SHA-256 `af771465b681a93a561b91bf522e2adc62bc8f553b49d64efacdabfba491c690`; its artifact and per-platform evidence are retained for 14 days.
+
+Downloaded package evidence passed **220 independent assertions**, including nine STEP solid re-imports, 3MF dimensions and download receipts, canonical jobs, both SQLite stores, exact unfinished filament drafts, duplicate-process rejection and preserved interrupted inputs. New browser evidence passed **54 independent checks**, with another 57 on the existing discovery/source path. Ten desktop/mobile component screenshots were inspected; main controls and wrapped paths were visible. Actual browser flows include server restart, held real generation responses across reconnects, draft replacement cancellation and paging to the original CAD among 105 records. Synthetic failures and JSON snapshot reserialization are identified in [VERIFICATION.md](VERIFICATION.md).
+
+Independent review findings were reproduced and corrected: old connection-epoch successes, stale slice downloads after source integrity failure, compressed provider bodies preceding the byte cap and incompatible-schema repair guidance. Changed storage paths now detach old identities while preserving editor input and retaining unsaved outcome notes visibly with original job/path identity. Focused re-review closed the findings before publication.
+
+[Native CI 43587365089](https://github.com/uulab-official/3d-printer-agent/actions/runs/43587365089) passed with actual Studio `02.09.01.70`. Both the original STL cube and committed CadQuery cable-comb 3MF passed 32 adapter checks, 30 setting comparisons and nine qualification checks. Fresh native evidence passed **95 independent assertions**. This remains the synthetic Linux native path; the three-platform package gate does not qualify native Studio on macOS/Windows, user hardware or physical printing. The subsequent evidence-record commit is documentation only.
 
 ### Useful project discovery checks — 2026-11-13
 

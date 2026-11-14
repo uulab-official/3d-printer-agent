@@ -13,9 +13,9 @@ User authorization covers implementation and main commits/pushes. Preserve unrel
 - [x] Diagnostics/CLI and installed-package qualification implementation.
 - [x] UI reconnection, draft protection and reliable history implementation.
 - [x] API/lifespan/provider integration and actual browser workflow definitions.
-- [ ] Full local required gates, installed wheel verification and independent final review.
-- [ ] Publish with expected-head protection; inspect application, cross-platform package and native CI.
-- [ ] Record observed evidence and remaining platform/hardware limits; publish documentation follow-up.
+- [x] Full local required gates, installed wheel verification and independent final review.
+- [x] Publish with expected-head protection; inspect application, cross-platform package and native CI.
+- [x] Record observed evidence and remaining platform/hardware limits; publish documentation follow-up.
 
 ## File ownership
 
@@ -46,3 +46,7 @@ Controller probes showed no page-exit protection for model-only edits/active CAD
 The initial full integration run passed 325 of 328 Python checks. Three existing API checks exposed an unintended addition to the no-query history response. The original `{jobs}` shape was restored; pagination metadata is returned only when paging parameters are requested. The subsequent complete suite passed 331 checks, including new review regressions.
 
 Independent review reproduced stale successful responses crossing a reconnect, a previous slice remaining current when the new source failed integrity checks, compressed provider allocation before the response cap, and diagnostics incorrectly promising repair of an incompatible schema. Focused regressions failed before correction. Fixes reject old connection-epoch results without replay, begin a slice attempt before source verification, request/restrict identity encoding before reading, and preserve unrecognized database schemas without a repair promise. Narrow re-review and actual package/browser qualification are recorded with the observed results in the verification log.
+
+## Completed evidence
+
+Code commit `d6f3797f1299deb211d7d3078ef748dd17abce41` passed application run `43587365112`, shared-wheel/matrix run `43587365076` and native run `43587365089`, all on attempt 1. Actual results: 331 Python, 112 controller, 32 browser checks; 110 installed-product checks on each of Linux x86_64, macOS arm64 and Windows AMD64. The same CI wheel's 19 app files match committed source. Independent downloaded-evidence checks passed: 220 package assertions, 54 runtime-browser assertions, 57 discovery regression assertions and 95 native assertions. Ten runtime/history component screenshots were inspected. Full receipts, scope, local-wheel differences and the browser JSON snapshot inspection correction are recorded in [VERIFICATION.md](../../VERIFICATION.md).
