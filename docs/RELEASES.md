@@ -1,9 +1,16 @@
 # 검증된 패키지의 릴리스 배포
 
-v0.3부터 릴리스 workflow는 이미 검증한 wheel을 GitHub Release에 게시합니다.
-공개 릴리스가 실제로 생성되었는지는 [Releases](https://github.com/uulab-official/3d-printer-agent/releases)와
-[검증 기록](VERIFICATION.md)을 확인하세요. workflow가 있는 것만으로 게시 성공을
-주장하지 않습니다. 릴리스 파일은 Actions의 단기 보관 산출물과 구분합니다.
+**[v0.3.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.3.0)**가
+2026-11-14 12:38:19 UTC에 게시됐습니다. 소스와 tag는
+[`18e0af01a92e6204116836fc9cb8e09089340211`](https://github.com/uulab-official/3d-printer-agent/commit/18e0af01a92e6204116836fc9cb8e09089340211)이며,
+아래 세 검증을 통과한 원본 wheel과 검증 보고서 등 7개 자산을 포함합니다.
+[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/43595774058)과
+[검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
+릴리스 파일은 Actions의 단기 보관 산출물과 구분합니다.
+
+배포 wheel은 `3d_printer_agent_local-0.3.0-py3-none-any.whl`, **153,564바이트**이며
+SHA-256은 `c19f456dea74dfa47dedeeb4726c67c2556ce6655c1a1aed72ff8a2e3bbcb35d`입니다.
+이 값은 릴리스 내부 wheel의 해시이며 Actions가 묶은 외부 ZIP의 해시와 다릅니다.
 
 ## 게시 조건
 
