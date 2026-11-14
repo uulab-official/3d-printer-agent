@@ -13,6 +13,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import warnings
@@ -68,6 +69,40 @@ def edit_member_headers(path, name, *, expanded=None, crc=None, flags=None):
             struct.pack_into(code, content, local + local_offset, value)
             struct.pack_into(code, content, central + central_offset, value)
     path.write_bytes(content)
+
+
+@contextmanager
+def windows_path_and_descriptor_metadata(*, descriptor_changes=False, legacy_creation_time=False):
+    """Emulate CPython 3.12's documented/source-defined Windows stat paths."""
+    path_stat, descriptor_stat = Path.lstat, os.fstat
+    descriptor_reads = 0
+
+    def fields(metadata):
+        result = {name: getattr(metadata, name) for name in dir(metadata) if name.startswith('st_')}
+        result['st_birthtime_ns'] = 1_700_000_000_000_000_000
+        return result
+
+    def windows_lstat(path, *args, **kwargs):
+        result = fields(path_stat(path, *args, **kwargs))
+        result['st_ctime_ns'] = result['st_birthtime_ns']
+        if legacy_creation_time:
+            del result['st_birthtime_ns']
+        if path.name.lower().endswith(('.exe', '.bat', '.cmd', '.com')):
+            result['st_mode'] |= 0o111
+        return SimpleNamespace(**result)
+
+    def windows_fstat(descriptor):
+        nonlocal descriptor_reads
+        result = fields(descriptor_stat(descriptor))
+        descriptor_reads += 1
+        # fstat returns ChangeTime, while path stat aliases ctime to birthtime.
+        result['st_ctime_ns'] = result['st_birthtime_ns'] + (0 if legacy_creation_time else 100) + (descriptor_reads if descriptor_changes else 0)
+        if legacy_creation_time:
+            del result['st_birthtime_ns']
+        return SimpleNamespace(**result)
+
+    with patch.object(sys, 'platform', 'win32'), patch.object(Path, 'lstat', windows_lstat), patch.object(os, 'fstat', windows_fstat):
+        yield
 
 
 class BackupTests(unittest.TestCase):
@@ -139,6 +174,58 @@ class BackupTests(unittest.TestCase):
         self.assertFalse((self.destination / '.printer-agent.lock').exists())
         self.assertEqual(self.bytes_in(self.source), before)
         self.assert_no_staging()
+
+    def test_cached_windows_directory_ids_do_not_reject_unchanged_source(self):
+        self.canonical_workspace()
+        before = self.bytes_in(self.source)
+        real_scandir = os.scandir
+
+        class WindowsDirectoryEntry:
+            def __init__(self, entry):
+                self.entry = entry
+                self.path = entry.path
+
+            def stat(self, *, follow_symlinks=True):
+                metadata = self.entry.stat(follow_symlinks=follow_symlinks)
+                fields = {name: getattr(metadata, name) for name in dir(metadata) if name.startswith('st_')}
+                # Python documents these three DirEntry.stat values as zero
+                # on Windows; Path.lstat still returns real file identity.
+                fields.update(st_ino=0, st_dev=0, st_nlink=0)
+                return SimpleNamespace(**fields)
+
+        @contextmanager
+        def windows_scandir(directory):
+            with real_scandir(directory) as entries:
+                yield (WindowsDirectoryEntry(entry) for entry in entries)
+
+        with patch.object(self.backup.os, 'scandir', windows_scandir):
+            created = self.backup.create_backup(self.source, self.archive)
+        self.assertEqual(created['status'], 'created')
+        self.backup.restore_backup(self.archive, self.destination)
+        self.assertEqual(self.bytes_in(self.source), before)
+        self.assertEqual(self.bytes_in(self.destination), before)
+        self.assert_no_staging()
+
+    def test_windows_opened_identity_accepts_common_birthtime_and_inferred_execute_bits(self):
+        for legacy in (False, True):
+            for name in ('history.sqlite3', 'saved-helper.CMD', '.CMD', '.exe'):
+                with self.subTest(name=name, legacy=legacy):
+                    path = self.source / name
+                    path.write_bytes(b'original saved bytes')
+                    with windows_path_and_descriptor_metadata(legacy_creation_time=legacy):
+                        with self.backup._regular_file(path) as (source, _):
+                            self.assertEqual(source.read(), b'original saved bytes')
+
+    def test_windows_descriptor_change_time_still_detects_mutation_after_open(self):
+        path = self.source / 'history.sqlite3'
+        path.write_bytes(b'original saved bytes')
+        observed = None
+        with windows_path_and_descriptor_metadata(descriptor_changes=True):
+            with self.assertRaises(self.backup.BackupError):
+                with self.backup._regular_file(path) as (source, _):
+                    observed = source.read()
+        self.assertEqual(observed, b'original saved bytes')
+        self.assertEqual(path.read_bytes(), b'original saved bytes')
 
     def test_live_owner_rejects_backup_before_creating_output(self):
         self.canonical_workspace()

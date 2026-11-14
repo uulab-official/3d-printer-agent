@@ -88,6 +88,21 @@ def _fingerprint(metadata):
             metadata.st_mtime_ns, metadata.st_ctime_ns)
 
 
+def _opened_fingerprint(metadata, path):
+    if sys.platform != 'win32':
+        return _fingerprint(metadata)
+    # CPython 3.12 Windows path stat aliases ctime to birthtime and infers
+    # executable suffix bits; fstat retains ChangeTime and base mode instead.
+    # Compare their common identity here, retaining full same-origin change
+    # fingerprints before/after reading below (including descriptor ctime).
+    mode = metadata.st_mode
+    if path.name.lower().endswith(('.exe', '.bat', '.cmd', '.com')):
+        mode |= 0o111
+    birthtime = getattr(metadata, 'st_birthtime_ns', metadata.st_ctime_ns)
+    return (metadata.st_dev, metadata.st_ino, mode, metadata.st_size,
+            metadata.st_mtime_ns, birthtime)
+
+
 @contextmanager
 def _regular_file(path, expected=None):
     before = path.lstat()
@@ -98,7 +113,8 @@ def _regular_file(path, expected=None):
     flags = os.O_RDONLY | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0)
     with os.fdopen(os.open(path, flags), 'rb') as stream:
         opened = os.fstat(stream.fileno())
-        if not stat.S_ISREG(opened.st_mode) or _fingerprint(opened) != _fingerprint(before):
+        if (not stat.S_ISREG(opened.st_mode)
+                or _opened_fingerprint(opened, path) != _opened_fingerprint(before, path)):
             raise BackupError('파일을 여는 동안 원본이 변경됐습니다. 작업을 멈추고 다시 시도하세요.')
         yield stream, opened
         if (_fingerprint(os.fstat(stream.fileno())) != _fingerprint(opened)
@@ -156,7 +172,10 @@ def _inventory(root):
                 relative = path.relative_to(root).as_posix()
                 if relative == _LOCK_NAME:
                     continue
-                metadata = entry.stat(follow_symlinks=False)
+                # Windows DirEntry.stat reports zero inode/device identifiers.
+                # Fresh path metadata keeps inventory identity comparable to
+                # the lstat/fstat checks performed when each file is opened.
+                metadata = path.lstat()
                 if _linked(metadata):
                     raise BackupError('연결된 파일·폴더는 백업하지 않습니다. 원본 일반 파일을 확인하세요.')
                 if stat.S_ISDIR(metadata.st_mode):
