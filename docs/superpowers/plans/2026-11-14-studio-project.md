@@ -66,7 +66,7 @@ Isolated worktree: `/workspace/scratch/d9925436ef0d/3d-printer-agent-project-spi
 - [x] Write failing tests for executable-absent composition, exact supported execution plan, wrong runtime refusal, source/settings/model/derived/argv tampering, existing output refusal and missing/mismatched readback.
 - [x] Implement separate project-plan staging/validation with original source and generated input staged in a new directory. Re-derive/verify the expected project before native execution; accept no unverified browser plan.
 - [x] Extend production native qualification to use a newly native-generated source project and a different current CAD. Save source, derived project, receipts, native output, setting comparisons and mesh/G-code evidence.
-- [ ] Preserve existing native smoke cases and verify the new path independently. Run focused tests, then request independent review. Actual native execution occurs in CI.
+- [x] Preserve existing native smoke cases and verify the new path independently. Run focused tests, then request independent review. Actual native execution occurs in CI.
 
 ## Task 3: Immutable sources, API and prepared downloads
 
@@ -94,7 +94,7 @@ Isolated worktree: `/workspace/scratch/d9925436ef0d/3d-printer-agent-project-spi
 - [x] Add the primary single-file project flow and compact recorded setup summary; keep existing role JSON controls under advanced disclosure. Allow inspection before model generation or native installation.
 - [x] Bind native preparation and downloads to current source/model/context; distinguish prepared-project download from native-sliced output. Provide actionable missing/unsupported/error states and explicit replacement choices.
 - [x] Add two real browser scenarios per viewport: import/prepare/download/history with actual CAD/API and explicit unsupported/failure/replacement/race/reconnect preservation. Synthetic network failures are labeled; no fixture native process is called Studio.
-- [ ] Run controller/syntax checks; actual browser CI and focused viewport screenshots verify the final path. Review code independently before publishing.
+- [x] Run controller/syntax checks; actual browser CI and focused viewport screenshots verify the final path. Review code independently before publishing.
 
 ## Task 5: Mode-consistent navigation, installed qualification and release
 
@@ -103,15 +103,15 @@ Isolated worktree: `/workspace/scratch/d9925436ef0d/3d-printer-agent-project-spi
 - [x] Reproduce the same explicit material/purchase request routing differently in template versus LLM mode. Extract the existing deterministic intent routing and run it before any provider call in both modes; verify ordinary CAD requests still use the selected engine.
 - [x] Extend actual installed-wheel qualification: import a labeled synthetic project, prepare/download the current CAD without Studio, verify raw settings and geometry, reopen history, then include new source/prepared bytes in the three-OS backup/restore checks. Keep original canonical/unfinished draft checks.
 - [x] Set version 0.4.0 and document supported project settings, ignored source features, prepared-versus-sliced semantics, source/backup behavior and remaining qualifications.
-- [ ] Full Python/controller/syntax/diff and final wheel/source/installed checks; fresh independent whole-change review. Correct reproduced important defects before delivery.
-- [ ] Publish with expected-head protection, inspect actual application/package/native CI and artifacts, then verify automatic v0.4.0 release and public byte identity. Record exact evidence in a docs-only follow-up.
+- [x] Full Python/controller/syntax/diff and final wheel/source/installed checks; fresh independent whole-change review. Correct reproduced important defects before delivery.
+- [x] Publish with expected-head protection, inspect actual application/package/native CI and artifacts, then verify automatic v0.4.0 release and public byte identity. Record exact evidence in a docs-only follow-up.
 
 ## Implementation ledger
 
 - Audits found the novice full-JSON bottleneck and confirmed that existing filament reports cannot supply native configurations. A separate project-source path is selected; arbitrary edited-preset overlay is deferred until its own baseline/diff contract.
 - A fresh builder review found no important unanswered design questions outside the explicitly pending native experiment.
 - 406 baseline Python tests passed in the isolated native experiment worktree. No local Chromium/native retry or provider call was made.
-- Native experiment and production implementation are pending; workflow definitions and source inspection alone do not establish success.
+- At this initial audit checkpoint the native experiment and production implementation were still pending. The observed experiment and completed production release are recorded below; workflow definitions alone do not establish success.
 
 ### Native experiment observed
 
@@ -119,7 +119,7 @@ Isolated worktree: `/workspace/scratch/d9925436ef0d/3d-printer-agent-project-spi
 - Preserving the supplied `BambuStudio-02.09.01.70` source compatibility marker passed all nine case checks: native exit/logs, 30 core settings, new mesh, G-code, all snapshot keys compared and unchanged original/source/derived inputs. Production composition therefore preserves only a source's actually supplied qualified marker and separately records modifier, source hash and current CAD hash. Foreign sources never receive a fabricated Bambu marker.
 - The new geometry retains 1,384 vertices, 1,332 triangles and 80 × 18 × 12 mm bounds; maximum translated vertex error is 0.000003738 mm. Source cube and current geometry are different.
 - Prepared input copies all 612 global values and their raw bytes exactly. Native export records 613 keys: 610 unchanged, `wipe_tower_x/y` moved by arrangement, and empty `upward_compatible_machine` added. These normalizations must be reported; the native roundtrip is not byte-identical.
-- This isolated compatibility experiment is not the final application path qualification. Production adapter, parser, HTTP, storage and browser CI remain pending.
+- This isolated compatibility experiment is not the final application path qualification. The separate final production adapter, parser, HTTP, storage and browser results are recorded in the completed-release entry below.
 
 ### Implementation and prepublication checks
 
@@ -127,6 +127,15 @@ Isolated worktree: `/workspace/scratch/d9925436ef0d/3d-printer-agent-project-spi
 - New source import uses 24 MiB request budget; other paths retain 2/8 MiB. Prepared downloads have independent receipts including legacy jobs; new attempts and interruption detach both current slice artifacts.
 - Deterministic routing now precedes provider selection for explicit material/purchase requests in either mode. Thirty planner/provider tests passed; no live provider was called.
 - Preliminary full Python run passed 457 tests before final review additions. A preliminary uncommitted installed wheel passed 154 actual local CAD/HTTP/restart/backup/restore checks outside the checkout, including source/prepareddownload restoration. Its receipt is explicitly labeled as an uncommitted development snapshot with a placeholder commit, and is not release evidence. Final source/wheel/CI gates remain required.
-- Native runtime validation is being extended to compare actual mesh vertices/connectivity and legal placement transforms, not only qualification-time geometry. UI controller checks currently 137 passed; final browser scenarios/review pending.
+- Native runtime validation was extended to compare actual mesh vertices/connectivity and legal placement transforms, not only qualification-time geometry. This implementation checkpoint passed 137 UI controller checks; actual browser and final native evidence followed separately.
 
-- Final local source checks passed 467 Python tests and 137 controller checks; JavaScript/Python syntax and whitespace checks passed. Two new browser scenarios are defined and discovered at both viewports (38 total); no local browser/native launch was attempted. A separate production native case is wired after the unchanged legacy cases. Fresh independent UI/native review passed with 137 controller checks, 69 slicer checks and retained actual-native geometry readback. The final local wheel includes all 22 source-matching application files. Actual same-SHA CI/publication remains pending.
+- Final local source checks passed 467 Python tests and 137 controller checks; JavaScript/Python syntax and whitespace checks passed. Two new browser scenarios were defined and discovered at both viewports (38 total); no local browser/native launch was attempted. A separate production native case runs after the unchanged legacy cases. Fresh independent UI/native review passed with 137 controller checks, 69 slicer checks and retained actual-native geometry readback. The final local wheel includes all 22 source-matching application files. These local checks are separate from actual same-SHA CI/publication below.
+
+### Completed production release
+
+- Feature/source/tag commit: [`501a512c0352b5acc52ac8c8c17265418f9039ee`](https://github.com/uulab-official/3d-printer-agent/commit/501a512c0352b5acc52ac8c8c17265418f9039ee). Expected-head publication preserved the prior main. All three required workflows succeeded on attempt 1.
+- [Application CI 43599424484](https://github.com/uulab-official/3d-printer-agent/actions/runs/43599424484): 467 Python tests, 137 controller checks and 38 actual Chromium workflows (19 per viewport), no failed/flaky/skipped/retried cases. Downloaded browser evidence passed 203 independent assertions, including settings bytes, current CAD geometry, source identity and actual reconnect logs; history/draft assertion evidence is distinguished from separately retained bodies. Ten new-path screenshots were inspected; fixed-navigation/skip-link/toast overlap in tall crops is retained in the verification record rather than labeled unobscured coverage.
+- [Installed-package CI 43599424473](https://github.com/uulab-official/3d-printer-agent/actions/runs/43599424473): 154 actual checks per Ubuntu 24.04, macOS 15 and Windows 2025. One 177,443-byte wheel, SHA-256 `8cc92f7fbb4453940394fa59b0ea46447741bbb28f439b6e093e4e6f4486157f`; 22 application files equal committed source. All 29 source files match each backup and pre-start restore. Independent downloaded-evidence review passed 546 assertions, distinguishing retained bodies from HTTP-log/script evidence and Windows line-ending normalization.
+- [Native CI 43599424530](https://github.com/uulab-official/3d-printer-agent/actions/runs/43599424530): actual pinned Linux Studio `02.09.01.70`; old two cases each pass 32 adapter / 30 core / 9 qualification checks. New production project case passes 34 / 30 / 18. Its actual native-exported source cube differs from the current cable geometry. Raw prepared settings preserve 612 keys; native readback records 610 unchanged values, two arrangement changes and one added empty compatibility key. The current mesh/connectivity and legal placement were independently recomputed. Fresh evidence review passed 174 assertions.
+- [Promotion 43599756190](https://github.com/uulab-official/3d-printer-agent/actions/runs/43599756190) published [v0.4.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.4.0), release 445314195, at 2026-11-14 13:26:45 UTC. Both gate revalidations retained the same successful run IDs and attempt 1. Public readback passed 67 independent assertions: exact source tag, non-draft/non-prerelease, exactly seven assets downloaded without authentication, qualified bytes and independently reconstructed release evidence.
+- This documentation-only evidence update changes neither release tag nor wheel/application files. [VERIFICATION.md](../../VERIFICATION.md), [STATUS.md](../../STATUS.md), [RELEASES.md](../../RELEASES.md), README and [STUDIO_PROJECTS.md](../../STUDIO_PROJECTS.md) record the observed scope and actual interface labels. Native qualification remains synthetic/version-specific; captured GUI exports, user hardware, physical prints and hosted operation are not inferred.
