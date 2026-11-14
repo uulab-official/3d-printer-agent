@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "3d-printer-agent-local"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first CAD generation and evidence-aware 3D printing preparation"
 readme = "README.md"
 license = "MIT"

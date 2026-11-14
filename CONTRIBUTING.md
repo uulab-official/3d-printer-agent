@@ -14,6 +14,8 @@ On Linux, `npx playwright install --with-deps chromium` installs Chromium system
 
 Desktop and mobile browser projects check real CAD creation/downloads, profile evidence, saved filament workspaces and guided edits, shipping cost uncertainty, saved outcomes and failed-job history. `npm run test:browser:list` lists tests without launching a browser. DOM/controller tests and the real browser suite provide different evidence; report which one you actually ran.
 
+Runtime browser scenarios additionally start and stop their own isolated loopback processes. They check actual session expiry/reconnection, unchanged unfinished inputs, explicit history replacement, recovery and pagination beyond 100 records. Synthetic failed/interrupted history seeds and injected HTTP failures are labelled in the tests; real CAD generation is never mocked.
+
 Thanks for helping improve 3D Printer Agent. Bug reports, reproducible fixes, accessibility improvements, and documentation are welcome. You may write issues and pull requests in Korean or English.
 
 Start with the [README](README.md), [product roadmap](docs/PRODUCT_ROADMAP.md), and [verification record](docs/VERIFICATION.md). They distinguish implemented features from plans and from hardware that has actually been tested.
@@ -59,6 +61,8 @@ These tests use temporary files and synthetic slicer/provider responses. They do
 The separate [native Bambu workflow](.github/workflows/native-bambu.yml) executes a digest-pinned official Linux release on Ubuntu 24.04. It preserves the official CLI example inputs for a bootstrap check and separately exercises the application's adapter with explicitly synthetic settings on original STL/3MF geometry. It needs no printer credentials. `python scripts/qualify_bambu.py --work-dir qa-output/native-bambu` runs the same qualification on a compatible Linux machine with the required runtime libraries; use a fresh output directory. The script downloads a roughly 256 MB native executable, verifies its digest and runs it locally. Logs and generated settings remain in ignored `qa-output/`; they are evidence for that version and fixture, not production print presets. See [BAMBU_STUDIO.md](docs/BAMBU_STUDIO.md) and [VERIFICATION.md](docs/VERIFICATION.md).
 
 For a behavior change, add a focused regression test that fails for the reported problem. Documentation-only changes generally need link and command review rather than new tests. See the repository's workflows for checks required by CI.
+
+The [installed-package workflow](.github/workflows/package-qualification.yml) builds one wheel, records its byte hash and installs those exact bytes on Ubuntu 24.04, macOS 15 and Windows 2025 with Python 3.12. `scripts/qualify_install.py` must run outside the checkout with `--wheel`, `--receipt` and a new `--report-dir`; it verifies imported package bytes, actual CAD/STEP/3MF, HTTP endpoints, Unicode storage paths, ownership and restart persistence. It creates synthetic data in its report directory, including deliberately interrupted/damaged fixtures, and never runs a native slicer, LLM or printer. The wheel and per-platform reports are retained as workflow artifacts. Record actual runner/architecture/results, not just matrix definitions.
 
 ## Make a reviewable change
 

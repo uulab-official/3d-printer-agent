@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -77,23 +77,75 @@
     return "처리 결과를 확인하지 못했습니다. 입력과 연결을 확인해 주세요.";
   }
 
-  async function api(path, body, method) {
+  function updateConnectionActions() {
+    $("reconnect-button").disabled = Boolean(state.bootstrapPending);
+    $("retry-bootstrap").disabled = Boolean(state.bootstrapPending);
+    $("reconnect-button").textContent = state.bootstrapPending ? "연결 확인 중" : "다시 연결";
+    $("review-profile").disabled = !state.token || Boolean($("review-profile").dataset.busy) || Object.keys(state.guidedEdits || {}).length > 0;
+    $("compare-offers").disabled = !state.token || Boolean($("compare-offers").dataset.busy);
+  }
+
+  function renderConnection() {
+    const connected = state.connectionState === "connected";
+    setBadge("connection-status", connected ? "로컬 서버 연결됨" : state.connectionState === "connecting" ? "연결 확인 중" : "다시 연결 필요", connected ? "success" : state.connectionState === "connecting" ? "neutral" : "warning");
+    $("connection-detail").textContent = connected ? "입력과 파일 처리는 이 PC에서 이어집니다. 다시 연결해도 현재 편집 내용은 유지됩니다." : state.connectionState === "connecting" ? "현재 입력은 유지한 채 로컬 서버의 연결과 저장 위치를 확인합니다." : "현재 입력과 받은 결과는 이 화면에 남아 있습니다. 서버를 실행한 뒤 다시 연결해 주세요.";
+    const storage = state.storage;
+    $("storage-path").textContent = typeof storage?.path === "string" ? storage.path : "서버에서 저장 위치를 아직 확인하지 못했습니다.";
+    const sources = { argument: "실행 시 지정한 폴더", environment: "환경 설정으로 지정한 폴더", legacy: "기존 작업이 있는 data 폴더", user_default: "이 사용자 계정의 기본 앱 폴더" };
+    $("storage-source").textContent = sources[storage?.source] || "저장 위치 확인 전";
+    const recovery = storage?.recovery || {};
+    const count = (key) => Number.isInteger(recovery[key]) && recovery[key] >= 0 ? recovery[key] : 0;
+    $("storage-recovery").textContent = storage ? `시작할 때 확인한 기록 ${count("indexed")}개 · 중단 처리 ${count("interrupted")}개 · 읽기 확인 필요 ${count("unreadable")}개. 중단되거나 손상된 기록의 원본은 보존합니다.` : "연결되면 현재 앱 데이터 위치와 시작 시 복구 결과를 보여줍니다.";
+    updateConnectionActions();
+  }
+
+  function connectionFailed(message) {
+    state.connectionEpoch += 1;
+    state.connectionState = "disconnected";
+    state.token = null;
+    $("bootstrap-error").hidden = false;
+    $("bootstrap-error-detail").textContent = message;
+    renderConnection();
+    updateWorkflowControls();
+    updateWorkspaceStatus();
+  }
+
+  async function api(path, body, method, context = {}) {
     const options = { method: method || (body === undefined ? "GET" : "POST"), credentials: "same-origin", cache: "no-store", headers: {} };
+    const epoch = state.connectionEpoch;
+    const current = () => epoch === state.connectionEpoch && (!context.current || context.current());
+    const requireCurrentConnection = () => {
+      if (epoch === state.connectionEpoch) return;
+      const message = body === undefined
+        ? "연결이 바뀌어 이전 서버의 응답을 현재 화면에 적용하지 않았습니다. 현재 입력과 결과는 유지했습니다. 필요한 기록을 다시 불러와 주세요."
+        : "연결이 바뀌어 이전 요청의 응답을 현재 작업에 적용하지 않았습니다. 이전 요청의 처리 여부는 이 화면에서 확정할 수 없습니다. 생성·저장이 완료됐을 수 있으니 이전 저장 위치의 작업 기록이나 저장된 재료 작업을 확인해 주세요. 요청을 취소하거나 자동으로 반복하지 않았습니다.";
+      const error = new Error(message);
+      error.code = "connection_changed";
+      throw error;
+    };
     if (body !== undefined) {
-      if (!state.token) throw new Error("작업 공간에 연결한 뒤 다시 시도해 주세요.");
+      if (!state.token) throw new Error("작업 공간에 다시 연결한 뒤 시도해 주세요. 현재 입력은 유지했습니다.");
       options.headers["Content-Type"] = "application/json";
       options.headers["X-Session-Token"] = state.token;
       options.body = JSON.stringify(body);
     }
     let response;
     try { response = await fetch(path, options); }
-    catch { throw new Error("로컬 서버에 연결하지 못했습니다. 서버가 실행 중인지 확인해 주세요."); }
+    catch {
+      requireCurrentConnection();
+      const message = body === undefined ? "로컬 서버에 연결하지 못했습니다. 서버가 실행 중인지 확인한 뒤 다시 연결해 주세요." : "서버 응답을 받지 못해 요청의 처리 여부를 확인할 수 없습니다. 다시 연결한 뒤 저장된 기록을 확인해 주세요. 요청을 자동으로 반복하지 않았습니다.";
+      if (current()) connectionFailed(message);
+      throw new Error(message);
+    }
     let data;
     try { data = await response.json(); }
-    catch { throw new Error(`서버 응답을 읽지 못했습니다. (HTTP ${response.status})`); }
+    catch { requireCurrentConnection(); throw new Error(`서버 응답을 읽지 못했습니다. (HTTP ${response.status})`); }
+    requireCurrentConnection();
     if (!response.ok) {
       const error = new Error(friendly(errorMessage(data.detail || data.message)));
       error.status = response.status;
+      error.code = data.code;
+      if (error.code === "session_expired" && current()) connectionFailed("서버가 다시 시작되어 연결을 갱신해야 합니다. 현재 입력은 유지했습니다. 다시 연결한 뒤 원하는 작업을 눌러 주세요.");
       throw error;
     }
     return data;
@@ -116,6 +168,7 @@
       button.disabled = disabled;
       delete button.dataset.busy;
       button.classList.remove("is-loading");
+      updateConnectionActions();
     }
   }
 
@@ -134,9 +187,11 @@
     $("plan-button").disabled = busy || !state.token;
     $("generate-button").disabled = busy || !state.token || !state.template;
     $("reset-parameters").disabled = busy || !state.template;
-    $("save-outcome").disabled = busy || !state.job;
+    $("save-outcome").disabled = busy || !state.token || !state.job;
     updateSliceControls();
     updateDiscoveryControls();
+    $("model-confirm-replace").disabled = busy || !state.modelReplacement;
+    $("model-cancel-replace").disabled = busy;
   }
 
   function invalidateCurrentJob(message) {
@@ -394,6 +449,7 @@
     const match = (state.discoveryMatches || []).find((item) => item.project.id === state.discoveryBrowsed);
     if (!match) return;
     if (draftHasChanges()) {
+      cancelModelReplacement();
       state.projectReplacement = match.project;
       $("discovery-replace-confirm").hidden = false;
       updateDiscoveryControls();
@@ -440,7 +496,7 @@
     renderDiscovery();
     showNotice("discovery-feedback", "로컬 시작점의 기본 크기를 비교하고 있습니다. 조건을 바꾸면 이전 응답은 적용하지 않습니다.");
     try {
-      const result = await api("/api/discovery", query);
+      const result = await api("/api/discovery", query, undefined, { current: () => request === state.discoveryRequest && epoch === state.discoveryEpoch && signature === discoverySignature() });
       if (request !== state.discoveryRequest || epoch !== state.discoveryEpoch || signature !== discoverySignature()) return;
       state.discoveryStale = false;
       state.discoveryMatches = result.matches || [];
@@ -456,7 +512,98 @@
   }
 
   function modelDraftSignature() {
-    return JSON.stringify([state.template, $("request-text").value, $("plan-mode").value, state.projectSource?.id || state.projectSource?.project_id, state.projectSource?.recipe_sha256, ...document.querySelectorAll("[data-parameter]")].map((value) => value?.dataset?.parameter ? [value.dataset.parameter, value.value, Boolean(value.validity?.badInput)] : value));
+    const template = state.templates.find((item) => item.id === state.template);
+    return JSON.stringify([state.template, $("request-text").value, $("plan-mode").value, state.projectSource?.id || state.projectSource?.project_id, state.projectSource?.recipe_sha256, ...(template?.editable_fields || []).map((key) => {
+      const input = $(`parameter-${key}`);
+      return [key, input.value, Boolean(input.validity?.badInput)];
+    })]);
+  }
+
+  function modelHasUnsavedChanges() {
+    if (!state.template) return false;
+    if (state.modelCleanSignature) return modelDraftSignature() !== state.modelCleanSignature;
+    if (state.projectSource || $("request-text").value.trim()) return true;
+    const template = state.templates.find((item) => item.id === state.template);
+    return (template?.editable_fields || []).some((key) => {
+      const input = $(`parameter-${key}`);
+      return input.validity?.badInput || input.validity?.valid === false || input.value === "" || String(input.value) !== String(template.defaults[key]);
+    });
+  }
+
+  function slicerHasUnsavedChanges() {
+    return state.slicerStaged || Object.keys(state.slicerPending || {}).length > 0 || $("slicer-json").value !== (state.slicerSavedText || "");
+  }
+
+  function outcomeHasUnsavedChanges() {
+    return Boolean(state.job) && ($("outcome-result").value !== (state.job.user_outcome?.result || "not_tested") || $("outcome-notes").value !== (state.job.user_outcome?.notes || ""));
+  }
+
+  function hasPendingWork() {
+    return state.retainedOutcomeDrafts.length > 0 || state.workflowBusy || state.workspaceBusy || modelHasUnsavedChanges() || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges() || workspaceDirty();
+  }
+
+  function replacementSignature() {
+    return JSON.stringify([modelDraftSignature(), state.job?.id, $("slicer-json").value, state.slicerContext, state.slicerStaged, $("outcome-result").value, $("outcome-notes").value]);
+  }
+
+  function cancelModelReplacement() {
+    const previous = state.modelReplacement;
+    state.modelReplacement = null;
+    state.modelTransitionRequest += 1;
+    $("model-replace-confirm").hidden = true;
+    if (previous?.button?.isConnected) previous.button.focus({ preventScroll: true });
+  }
+
+  function requestModelReplacement(action) {
+    if (state.workflowBusy) return;
+    cancelModelReplacement();
+    cancelProjectApplication();
+    if (modelHasUnsavedChanges() || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges()) {
+      state.modelReplacement = { ...action, signature: replacementSignature() };
+      const titles = { history: "현재 제작안을 저장된 모델로 바꿀까요?", retry: "현재 제작안을 이 기록의 치수로 바꿀까요?", template: "현재 제작안을 다른 템플릿으로 바꿀까요?", reset: "현재 제작안을 기본 치수로 되돌릴까요?" };
+      $("model-replace-title").textContent = titles[action.kind] || "현재 제작안을 바꿀까요?";
+      $("model-replace-detail").textContent = `${action.title || "선택한 제작안"}을 준비합니다. 저장하지 않은 치수와 출력 메모가 바뀔 수 있으며, 현재 미리보기와 다운로드는 교체됩니다. 생성해 둔 파일은 작업 기록에 남습니다.`;
+      $("model-replace-confirm").hidden = false;
+      updateWorkflowControls();
+      $("model-replace-confirm").scrollIntoView?.({ block: "center", behavior: "auto" });
+      $("model-confirm-replace").focus({ preventScroll: true });
+      return;
+    }
+    performModelReplacement(action);
+  }
+
+  function confirmModelReplacement() {
+    if (state.workflowBusy || !state.modelReplacement) return;
+    const action = state.modelReplacement;
+    if (action.signature !== replacementSignature()) {
+      action.signature = replacementSignature();
+      $("model-replace-detail").textContent = "확인 안내가 열린 뒤 편집 내용이 바뀌었습니다. 바뀐 현재 제작안을 교체하려면 한 번 더 확인해 주세요. 유지하면 모든 입력을 그대로 남깁니다.";
+      return;
+    }
+    cancelModelReplacement();
+    performModelReplacement(action);
+  }
+
+  function performModelReplacement(action) {
+    if (state.workflowBusy) return;
+    if (action.kind === "history") {
+      applyDraft(action.job.result.template, action.job.result.parameters, action.job.design_source || null);
+      renderJob(action.job);
+      hideNotice("model-feedback");
+      hideNotice("plan-feedback");
+      changeView("models");
+    } else if (action.kind === "retry") {
+      applyDraft(action.job.request.template, action.job.request, action.job.design_source || null);
+      hideNotice("plan-feedback");
+      showNotice("model-feedback", "저장된 요청의 치수를 준비했습니다. 치수를 확인한 뒤 새 모델을 생성해 주세요. 이전 중단·실패 기록은 그대로 남습니다.");
+      changeView("models");
+    } else {
+      applyDraft(action.template);
+      hideNotice("plan-feedback");
+      hideNotice("model-feedback");
+      if (action.kind === "reset") toast("선택한 템플릿의 기본값을 적용했습니다.");
+    }
+    $("parameter-heading").focus({ preventScroll: true });
   }
 
   $("discovery-form").addEventListener("submit", (event) => { event.preventDefault(); recommendProjects(); });
@@ -481,7 +628,7 @@
       button.append(top, node("strong", "", template.title), node("p", "", template.description));
       const defaults = template.defaults || {};
       button.append(node("span", "template-size", `${defaults.width} × ${defaults.depth} × ${defaults.height} mm · 기본 크기`));
-      button.addEventListener("click", () => { if (state.workflowBusy) return; applyDraft(template.id); hideNotice("plan-feedback"); hideNotice("model-feedback"); });
+      button.addEventListener("click", () => requestModelReplacement({ kind: "template", template: template.id, title: template.title, button }));
       list.append(button);
     });
   }
@@ -489,6 +636,8 @@
   function applyDraft(templateId, parameters, source = null) {
     const template = state.templates.find((item) => item.id === templateId);
     if (!template) throw new Error("지원하지 않는 제작 템플릿입니다.");
+    cancelModelReplacement();
+    state.modelCleanSignature = null;
     state.projectSource = source;
     state.projectReplacement = null;
     $("discovery-replace-confirm").hidden = true;
@@ -532,7 +681,9 @@
     if (event.target.dataset.parameter) invalidateCurrentJob("치수가 바뀌었습니다. 새 모델을 생성하면 변경한 형상을 확인할 수 있습니다.");
   });
 
-  $("reset-parameters").addEventListener("click", () => { if (state.workflowBusy) return; applyDraft(state.template); hideNotice("plan-feedback"); toast("선택한 템플릿의 기본값을 적용했습니다."); });
+  $("reset-parameters").addEventListener("click", () => requestModelReplacement({ kind: "reset", template: state.template, title: "현재 템플릿의 기본 치수", button: $("reset-parameters") }));
+  $("model-confirm-replace").addEventListener("click", confirmModelReplacement);
+  $("model-cancel-replace").addEventListener("click", cancelModelReplacement);
 
   async function preparePlan() {
     if (state.workflowBusy) return;
@@ -540,7 +691,7 @@
     hideNotice("plan-feedback");
     try {
       await withWorkflow($("plan-button"), "요청 해석 중", async () => {
-        const result = await api("/api/plan", { text: $("request-text").value, mode: $("plan-mode").value });
+        const result = await api("/api/plan", { text: $("request-text").value, mode: $("plan-mode").value }, undefined, { current: () => signature === modelDraftSignature() });
         if (signature !== modelDraftSignature()) return;
         if (result.status === "ready" && result.parameters) {
           applyDraft(result.parameters.template, result.parameters);
@@ -579,7 +730,7 @@
     if (state.projectSource) parameters.project_selection = { id: state.projectSource.project_id || state.projectSource.id, recipe_sha256: state.projectSource.recipe_sha256 };
     try {
       await withWorkflow($("generate-button"), "CAD 생성 · 검증 중", async () => {
-        const job = await api("/api/models", parameters);
+        const job = await api("/api/models", parameters, undefined, { current: () => signature === modelDraftSignature() });
         if (signature !== modelDraftSignature()) {
           invalidateCurrentJob("생성 중에 제작안이 바뀌었습니다. 생성한 파일은 작업 기록에서 확인하고, 현재 치수로 다시 생성해 주세요.");
           showNotice("model-feedback", "생성 중에 제작안이 바뀌었습니다. 생성한 파일은 작업 기록에서 확인할 수 있습니다. 현재 치수는 유지했습니다.");
@@ -589,7 +740,7 @@
         showNotice("model-feedback", "실제 CAD 모델과 파일을 생성했습니다. 오른쪽에서 형상과 검증 결과를 확인하세요.", "success");
         toast("모델 파일이 준비됐습니다.");
       });
-    } catch (error) { showNotice("model-feedback", error.status === 409 && state.projectSource ? `${error.message} 현재 치수는 유지했습니다. 출처 연결을 해제하거나 새 시작점을 선택한 뒤 다시 생성해 주세요.` : error.message, "error"); }
+    } catch (error) { showNotice("model-feedback", error.status === 409 && error.code !== "resource_busy" && state.projectSource ? `${error.message} 현재 치수는 유지했습니다. 출처 연결을 해제하거나 새 시작점을 선택한 뒤 다시 생성해 주세요.` : error.message, "error"); }
   }
 
   $("model-form").addEventListener("submit", (event) => { event.preventDefault(); generateModel(); });
@@ -613,6 +764,7 @@
     area.replaceChildren();
     const labels = { stl: "STL", step: "STEP", three_mf: "3MF 형상", source: "Python 소스", manifest: "생성 기록", sliced_three_mf: "슬라이스 3MF", slice: "슬라이스 결과" };
     const files = { ...(job.artifacts || {}) };
+    if (["running", "interrupted"].includes(job.latest_slice?.phase)) { delete files.sliced_three_mf; delete files.slice; }
     if (job.bundle_url) files.bundle = job.bundle_url;
     labels.bundle = "전체 묶음";
     for (const [key, url] of Object.entries(files)) {
@@ -635,7 +787,7 @@
     state.slicePrepared = false;
     $("model-result").hidden = false;
     $("outcome-card").hidden = false;
-    $("result-heading").textContent = job.title || "모델 파일이 준비됐어요";
+    $("result-heading").textContent = (job.title || "모델 파일이 준비됐어요").replace(/\s+mm\b/g, "\u00a0mm");
     const dims = result.dimensions_mm || {};
     $("model-metrics").replaceChildren(
       metric("가로 × 세로 × 높이", `${numberFormat.format(dims.x)} × ${numberFormat.format(dims.y)} × ${numberFormat.format(dims.z)} mm`),
@@ -655,10 +807,13 @@
     $("preview-caption").textContent = "생성된 모델 · 드래그 또는 방향키로 조작";
     $("outcome-result").value = job.user_outcome?.result || "not_tested";
     $("outcome-notes").value = job.user_outcome?.notes || "";
+    state.modelCleanSignature = modelDraftSignature();
     hideNotice("outcome-feedback");
     $("slice-result").replaceChildren();
     showNotice("slice-feedback", state.environment.available ? "전체 설정을 제공하고 실행 계획을 먼저 검토해 주세요." : "Bambu Studio를 사용할 수 없어 현재 환경에서는 슬라이싱을 실행할 수 없습니다.");
-    if (job.latest_slice) renderSliceResult(job.latest_slice.plan || {}, job.latest_slice.execution, true);
+    if (job.latest_slice?.phase === "running") showNotice("slice-feedback", "이 기록의 슬라이싱 요청은 실행 중으로 저장되어 있습니다. 완료 여부는 작업 기록에서 다시 열어 확인해 주세요. 이전 슬라이스 파일을 현재 결과로 제공하지 않습니다.", "info");
+    else if (job.latest_slice?.phase === "interrupted") showNotice("slice-feedback", "이전 슬라이싱은 완료 결과를 저장하기 전에 중단되었습니다. 설정을 다시 검토한 뒤 실행해 주세요. CAD 모델은 유지되며 이전 슬라이스 파일은 현재 결과로 제공하지 않습니다.", "warning");
+    else if (job.latest_slice) renderSliceResult(job.latest_slice.plan || {}, job.latest_slice.execution, true);
     if (state.slicerStaged) resetSlicePreparation("선택 중인 설정 파일이 있습니다. 묶음을 만들거나 편집을 취소한 뒤 이 모델의 실행 계획을 검토해 주세요.");
     renderSlicerFiles();
     updateWorkflowControls();
@@ -733,9 +888,11 @@
       await withWorkflow(button, execute ? "슬라이싱 실행 중" : "전체 설정 검토 중", async () => {
         const jobId = state.job?.id;
         if (!jobId) throw new Error("먼저 현재 제작안의 모델을 생성해 주세요.");
-        const bundle = parseObject($("slicer-json").value, "슬라이서 전체 설정");
+        const submittedText = $("slicer-json").value;
+        const bundle = parseObject(submittedText, "슬라이서 전체 설정");
         resetSlicePreparation(execute ? "검토한 설정으로 슬라이싱하고 있습니다." : "전체 설정과 실행 계획을 검토하고 있습니다.");
         const response = await api("/api/slice", { job_id: jobId, config_bundle: bundle, execute });
+        state.slicerSavedText = submittedText;
         state.slicePrepared = Boolean(response.plan?.ready) && !execute;
         renderSliceResult(response.plan || {}, response.execution);
         try { state.job = await api(`/api/jobs/${encodeURIComponent(jobId)}`); renderDownloads(state.job); }
@@ -1006,7 +1163,7 @@
   async function loadWorkspaces() {
     const request = ++state.workspaceListRequest;
     try {
-      const result = await api("/api/profile-workspaces");
+      const result = await api("/api/profile-workspaces", undefined, undefined, { current: () => request === state.workspaceListRequest });
       if (request !== state.workspaceListRequest) return;
       state.workspaces = result.workspaces || [];
       const select = $("workspace-list");
@@ -1041,7 +1198,7 @@
       state.workspaceBusy = true;
       updateWorkspaceStatus();
       hideNotice("workspace-feedback");
-      const record = await api(id ? `/api/profile-workspaces/${encodeURIComponent(id)}` : "/api/profile-workspaces", payload, id ? "PUT" : "POST");
+      const record = await api(id ? `/api/profile-workspaces/${encodeURIComponent(id)}` : "/api/profile-workspaces", payload, id ? "PUT" : "POST", { current: () => epoch === state.workspaceEpoch });
       if (epoch !== state.workspaceEpoch) return;
       state.workspaceId = record.id;
       state.workspaceRevision = record.revision;
@@ -1089,7 +1246,7 @@
     state.workspaceBusy = true;
     updateWorkspaceStatus();
     try {
-      const record = await api(`/api/profile-workspaces/${encodeURIComponent(id)}`);
+      const record = await api(`/api/profile-workspaces/${encodeURIComponent(id)}`, undefined, undefined, { current: () => epoch === state.workspaceEpoch && edits === state.workspaceEdits });
       if (epoch !== state.workspaceEpoch || edits !== state.workspaceEdits) {
         showNotice("workspace-feedback", "불러오는 동안 편집한 내용이 있어 현재 작업을 유지했습니다. 저장된 작업을 열려면 다시 눌러 주세요.");
         return;
@@ -1120,7 +1277,7 @@
     state.workspaceBusy = true;
     updateWorkspaceStatus();
     try {
-      await api(`/api/profile-workspaces/${encodeURIComponent(id)}`, { expected_revision: state.workspaceRevision }, "DELETE");
+      await api(`/api/profile-workspaces/${encodeURIComponent(id)}`, { expected_revision: state.workspaceRevision }, "DELETE", { current: () => epoch === state.workspaceEpoch });
       if (epoch === state.workspaceEpoch && id === state.workspaceId) {
         state.workspaceId = null;
         state.workspaceRevision = null;
@@ -1559,7 +1716,7 @@
       if (!currentProfileImport(request)) return;
       const chunks = [];
       for (let offset = 0; offset < bytes.length; offset += 32768) chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
-      const result = await api("/api/profiles/import-archive", { filename: file.name, content_base64: btoa(chunks.join("")) });
+      const result = await api("/api/profiles/import-archive", { filename: file.name, content_base64: btoa(chunks.join("")) }, undefined, { current: () => currentProfileImport(request) });
       if (!currentProfileImport(request)) return;
       const imported = result.documents.map((entry) => ({ ...profileDocument(entry), draftText: typeof entry.draft_text === "string" ? entry.draft_text : JSON.stringify(entry.profile, null, 2) }));
       const summary = appendProfileDocuments(imported);
@@ -1613,12 +1770,12 @@
           if (!targetName.trim()) throw new Error("선택한 프로필의 name에 정확한 이름이 필요합니다. 이름 필드는 소문자 name으로 입력해 주세요.");
           const originals = state.profileDocuments.map((entry) => profileDocument(entry));
           const edited = documents.filter((entry, index) => !sameJson(entry.profile, originals[index].profile)).map((entry) => entry.filename);
-          const result = await api("/api/profiles/resolve", { documents, target_name: targetName, setup, baseline: { documents: originals, target_name: profileName(state.profileDocuments[state.profileTarget].profile) } });
+          const result = await api("/api/profiles/resolve", { documents, target_name: targetName, setup, baseline: { documents: originals, target_name: profileName(state.profileDocuments[state.profileTarget].profile) } }, undefined, { current: () => revision === state.profileRevision });
           if (revision !== state.profileRevision) return;
           renderProfileResolution({ ...result, setup, imported_documents: result.imported_documents || originals, edited_filenames: edited });
           if (result.review) renderProfile(result.review);
         } else {
-          const result = await api("/api/profiles/review", { profile, setup });
+          const result = await api("/api/profiles/review", { profile, setup }, undefined, { current: () => revision === state.profileRevision });
           if (revision === state.profileRevision) renderProfile(result);
         }
       });
@@ -1751,7 +1908,7 @@
   $("workspace-new").addEventListener("click", newWorkspace);
   $("workspace-delete").addEventListener("click", deleteWorkspace);
   window.addEventListener("beforeunload", (event) => {
-    if (workspaceDirty()) { event.preventDefault(); event.returnValue = ""; }
+    if (hasPendingWork()) { event.preventDefault(); event.returnValue = ""; }
   });
   window.addEventListener("pagehide", () => { if (state.profileDownloadUrl) URL.revokeObjectURL(state.profileDownloadUrl); });
 
@@ -1875,57 +2032,101 @@
     return Number.isNaN(date.getTime()) ? "시간 정보 없음" : new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
   }
 
-  async function loadHistory() {
-    hideNotice("history-feedback");
-    const container = $("history-list");
-    container.replaceChildren(node("p", "muted", "작업 기록을 불러오는 중입니다."));
+  function updateHistoryControls() {
+    $("history-more").hidden = !state.historyCursor;
+    $("history-more").disabled = state.historyPending || !state.historyCursor;
+    $("history-more").textContent = state.historyPending ? "불러오는 중" : "이전 기록 더 보기";
+    $("history-list").setAttribute("aria-busy", String(Boolean(state.historyPending)));
+    $("history-summary").textContent = state.historyPending ? `${state.historyItems.length}개 기록을 유지하며 목록을 불러오고 있습니다.` : state.historyLoaded ? `${state.historyItems.length}개 기록을 표시합니다.${state.historyCursor ? " 이전 기록을 더 불러올 수 있습니다." : " 현재 목록의 마지막 기록입니다."}` : "작업 기록을 아직 불러오지 않았습니다.";
+  }
+
+  async function openHistoryJob(job, button) {
+    if (state.workflowBusy) return;
+    const request = ++state.modelTransitionRequest;
+    const signature = replacementSignature();
+    let full;
     try {
-      const result = await api("/api/jobs");
-      container.replaceChildren();
-      if (!result.jobs?.length) {
-        const empty = node("div", "history-empty");
-        const button = node("button", "button button-secondary", "첫 모델 만들기 →");
-        button.type = "button";
-        button.addEventListener("click", () => changeView("models"));
-        empty.append(node("h3", "", "아직 만들어 둔 모델이 없어요"), node("p", "", "모델을 생성하면 실제 파일과 검증 상태가 이곳에 기록됩니다."), button);
-        container.append(empty);
+      await withWorkflow(button, "불러오는 중", async () => {
+        full = await api(`/api/jobs/${encodeURIComponent(job.id)}`, undefined, undefined, { current: () => request === state.modelTransitionRequest && signature === replacementSignature() });
+      });
+      if (request !== state.modelTransitionRequest || signature !== replacementSignature()) {
+        if (request === state.modelTransitionRequest) showNotice("history-feedback", "불러오는 동안 제작안이 바뀌어 현재 편집을 유지했습니다. 원하는 기록을 다시 열어 주세요.");
         return;
       }
-      result.jobs.forEach((job) => {
-        const card = node("article", "history-item");
-        const title = node("div");
-        title.append(node("h3", "", job.title || "생성한 모델"), node("p", "", dateTime(job.created_at)));
-        const statuses = node("div", "history-statuses");
-        const statusLabel = { geometry_validated: "CAD 검증 완료", failed: "모델 생성 실패", generating: "모델 생성 중" }[job.status] || friendly(job.status || "상태 미확인");
-        statuses.append(node("span", `badge badge-${job.status === "failed" ? "warning" : job.status === "geometry_validated" ? "blue" : "neutral"}`, statusLabel));
-        const outcome = job.user_outcome?.result;
-        statuses.append(node("span", `badge badge-${outcome === "success" ? "success" : outcome === "failure" ? "warning" : "neutral"}`, outcome === "success" ? "출력 성공 · 사용자 보고" : outcome === "failure" ? "출력 실패 · 사용자 보고" : "실물 출력 미기록"));
-        const open = node("button", "button button-secondary", job.status === "failed" ? "기록 보기 ↗" : "열기 ↗");
-        open.type = "button";
-        open.disabled = state.workflowBusy;
-        open.addEventListener("click", async () => {
-          try {
-            await withWorkflow(open, "불러오는 중", async () => {
-              const full = await api(`/api/jobs/${encodeURIComponent(job.id)}`);
-              if (!full.result) {
-                const reasons = (full.events || []).filter((entry) => entry.type === "generation_failed").map((entry) => entry.message);
-                showNotice("history-feedback", full.status === "failed" ? "모델 생성에 실패한 기록입니다. 원인을 확인하고 치수를 조정해 다시 생성할 수 있습니다." : "이 작업에는 아직 생성된 모델이 없습니다.", full.status === "failed" ? "warning" : "info", reasons);
-                return;
-              }
-              applyDraft(full.result.template, full.result.parameters, full.design_source || null);
-              renderJob(full);
-              hideNotice("model-feedback");
-              hideNotice("plan-feedback");
-              changeView("models");
-            });
-          } catch (error) { showNotice("history-feedback", error.message, "error"); }
-        });
-        card.append(node("span", "history-icon", "CAD"), title, statuses, open);
-        container.append(card);
-      });
-    } catch (error) { container.replaceChildren(); showNotice("history-feedback", error.message, "error"); }
+      if (!full.result) {
+        const reasons = (full.events || []).filter((entry) => ["generation_failed", "generation_interrupted"].includes(entry.type)).map((entry) => entry.message);
+        const messages = { failed: "모델 생성에 실패한 기록입니다. 원인을 확인한 뒤 저장된 치수로 다시 준비할 수 있습니다.", interrupted: "서버가 끝나기 전에 생성이 완료되지 않은 기록입니다. 부분 파일을 출력 가능한 모델로 제공하지 않습니다.", unreadable: "이 작업 기록을 읽을 수 없습니다. 원본 파일은 보존했습니다. 저장 위치에서 백업과 기록을 확인해 주세요." };
+        showNotice("history-feedback", messages[full.status] || "이 작업에는 아직 생성된 모델이 없습니다.", full.status === "generating" ? "info" : "warning", reasons);
+        if (full.request && state.templates.some((template) => template.id === full.request.template) && ["failed", "interrupted"].includes(full.status)) {
+          const retry = node("button", "button button-secondary", "저장된 치수로 다시 준비");
+          retry.type = "button";
+          retry.addEventListener("click", () => requestModelReplacement({ kind: "retry", job: full, title: full.title, button: retry }));
+          $("history-feedback").append(retry);
+        }
+        return;
+      }
+      requestModelReplacement({ kind: "history", job: full, title: full.title, button });
+    } catch (error) {
+      if (request === state.modelTransitionRequest && signature === replacementSignature()) showNotice("history-feedback", error.message, "error");
+    }
   }
-  $("refresh-history").addEventListener("click", loadHistory);
+
+  function renderHistory() {
+    const container = $("history-list");
+    container.replaceChildren();
+    if (!state.historyItems.length) {
+      if (!state.historyLoaded) return;
+      const empty = node("div", "history-empty");
+      const button = node("button", "button button-secondary", "첫 모델 만들기 →");
+      button.type = "button";
+      button.addEventListener("click", () => changeView("models"));
+      empty.append(node("h3", "", "아직 만들어 둔 모델이 없어요"), node("p", "", "모델을 생성하면 실제 파일과 검증 상태가 이곳에 기록됩니다."), button);
+      container.append(empty);
+      return;
+    }
+    state.historyItems.forEach((job) => {
+      const card = node("article", "history-item");
+      const title = node("div");
+      title.append(node("h3", "", job.title || "생성한 모델"), node("p", "", dateTime(job.created_at)));
+      if (job.diagnostic) title.append(node("p", "history-diagnostic", job.diagnostic));
+      const statuses = node("div", "history-statuses");
+      const warning = ["failed", "interrupted", "unreadable"].includes(job.status);
+      const statusLabel = { geometry_validated: "CAD 검증 완료", failed: "모델 생성 실패", generating: "모델 생성 중", interrupted: "생성 중단 · 완료 결과 없음", unreadable: "기록 읽기 확인 필요" }[job.status] || friendly(job.status || "상태 미확인");
+      statuses.append(node("span", `badge badge-${warning ? "warning" : job.status === "geometry_validated" ? "blue" : "neutral"}`, statusLabel));
+      const outcome = job.user_outcome?.result;
+      statuses.append(node("span", `badge badge-${outcome === "success" ? "success" : outcome === "failure" ? "warning" : "neutral"}`, outcome === "success" ? "출력 성공 · 사용자 보고" : outcome === "failure" ? "출력 실패 · 사용자 보고" : "실물 출력 미기록"));
+      const open = node("button", "button button-secondary", warning ? "기록 보기 ↗" : "열기 ↗");
+      open.type = "button";
+      open.disabled = state.workflowBusy;
+      open.addEventListener("click", () => openHistoryJob(job, open));
+      card.append(node("span", "history-icon", "CAD"), title, statuses, open);
+      container.append(card);
+    });
+  }
+
+  async function loadHistory(more = false) {
+    if (more && (!state.historyCursor || state.historyPending)) return;
+    const request = ++state.historyRequest;
+    const cursor = more ? state.historyCursor : null;
+    state.historyPending = true;
+    hideNotice("history-feedback");
+    updateHistoryControls();
+    try {
+      const result = await api(`/api/jobs?limit=20${cursor ? `&before=${encodeURIComponent(cursor)}` : ""}`, undefined, undefined, { current: () => request === state.historyRequest });
+      if (request !== state.historyRequest) return;
+      const records = more ? [...state.historyItems, ...(result.jobs || [])] : result.jobs || [];
+      state.historyItems = Array.from(new Map(records.map((record) => [record.id, record])).values());
+      state.historyCursor = result.next_cursor || null;
+      state.historyLoaded = true;
+      renderHistory();
+    } catch (error) {
+      if (request === state.historyRequest) showNotice("history-feedback", `${error.message}${state.historyLoaded ? " 이미 불러온 기록은 유지했습니다. 다시 불러올 수 있습니다." : " 기록을 다시 불러와 주세요."}`, "error");
+    } finally {
+      if (request === state.historyRequest) { state.historyPending = false; updateHistoryControls(); }
+    }
+  }
+  $("refresh-history").addEventListener("click", () => loadHistory());
+  $("history-more").addEventListener("click", () => loadHistory(true));
 
   class MeshViewer {
     constructor(canvas) {
@@ -2099,15 +2300,99 @@
   $("zoom-out").addEventListener("click", () => viewer.changeZoom(1 / 1.15));
   $("reset-view").addEventListener("click", () => viewer.reset());
 
+  function renderRetainedOutcomes() {
+    const area = $("retained-outcome-notes");
+    area.replaceChildren();
+    area.hidden = !state.retainedOutcomeDrafts.length;
+    if (area.hidden) return;
+    area.append(node("h3", "", "저장하지 않은 이전 출력 메모"), node("p", "", "저장 위치를 바꿀 때 입력 중이던 내용을 이 화면에 보관했습니다. 원래 작업에 옮기거나 복사한 뒤 보관을 해제하세요. 새 모델에 자동으로 연결하거나 저장하지 않습니다."));
+    const labels = { success: "출력 성공 · 입력 중", failure: "출력 실패 · 입력 중", not_tested: "출력 미실시 · 입력 중" };
+    for (const draft of state.retainedOutcomeDrafts) {
+      const details = node("details", "help-details");
+      details.open = true;
+      details.append(node("summary", "", draft.title || "이전 작업의 출력 메모"), node("p", "", `원래 저장 위치: ${draft.storage_path}`), node("p", "", `작업 ID: ${draft.job_id} · ${labels[draft.result] || draft.result}`), node("pre", "", draft.notes || "텍스트 메모 없음"));
+      const dismiss = node("button", "button button-secondary", "메모를 옮겼어요 · 보관 해제");
+      dismiss.type = "button";
+      dismiss.addEventListener("click", () => {
+        state.retainedOutcomeDrafts = state.retainedOutcomeDrafts.filter((item) => item !== draft);
+        renderRetainedOutcomes();
+      });
+      details.append(dismiss);
+      area.append(details);
+    }
+  }
+
+  function detachPreviousStorage(previousPath) {
+    if (outcomeHasUnsavedChanges()) {
+      state.retainedOutcomeDrafts.push({ job_id: state.job.id, title: state.job.title, storage_path: previousPath, result: $("outcome-result").value, notes: $("outcome-notes").value });
+      renderRetainedOutcomes();
+    }
+    const hadWorkspace = Boolean(state.workspaceId) || workspaceDirty();
+    cancelSlicerReads();
+    state.job = null;
+    state.slicePrepared = false;
+    state.slicerSavedText = "";
+    state.modelCleanSignature = null;
+    viewer.clear();
+    renderProjectSource("generated-source", null);
+    $("model-result").hidden = true;
+    $("outcome-card").hidden = true;
+    $("download-links").replaceChildren();
+    $("slice-result").replaceChildren();
+    setBadge("preview-status", "저장 위치 변경 · 다시 생성 필요");
+    $("preview-caption").textContent = "현재 치수는 유지했습니다. 이전 모델은 원래 저장 위치의 작업 기록에서 확인하세요.";
+    $("preview-empty").querySelector("h3").textContent = "새 저장 위치에서 모델을 만들어 주세요";
+    $("preview-empty").querySelector("p").textContent = "이전에 생성한 파일은 원래 폴더에서 확인해 주세요. 입력한 치수와 시작 설계는 유지했습니다.";
+    state.workspaceEpoch += 1;
+    state.workspaceEdits += 1;
+    state.profileImport += 1;
+    state.workspaceId = null;
+    state.workspaceRevision = null;
+    state.workspaceSavedSignature = hadWorkspace ? null : workspaceSignature();
+    state.workspaces = [];
+    const placeholder = node("option", "", "새 저장 위치의 작업을 불러오는 중입니다");
+    placeholder.value = "";
+    $("workspace-list").replaceChildren(placeholder);
+    $("workspace-list").value = "";
+    state.historyItems = [];
+    state.historyCursor = null;
+    state.historyLoaded = false;
+    renderHistory();
+    updateHistoryControls();
+    renderSlicerFiles();
+    showNotice("storage-change-notice", "저장 위치가 바뀌었습니다. 현재 치수, 요청과 재료 편집 내용은 유지했습니다. 이전 결과와 저장본은 원래 폴더의 기록에서 확인하세요. 이전 폴더에 연결된 다운로드와 저장본 연결은 해제했으며, 현재 재료 편집은 새 위치에 새 작업으로 저장할 수 있습니다.", "warning");
+    $("storage-change-notice").append(node("p", "", `이전 저장 위치: ${previousPath}`), node("p", "", `현재 저장 위치: ${state.storage.path}`));
+    showNotice("model-feedback", "저장 위치가 바뀌어 이전 모델의 다운로드 연결을 해제했습니다. 현재 치수로 새 모델을 생성하거나 원래 폴더의 기록을 확인해 주세요.", "info");
+    showNotice("slice-feedback", "새 저장 위치에서 현재 치수의 모델을 생성한 뒤 슬라이싱 설정을 다시 검토해 주세요.", "info");
+  }
+
   async function bootstrap() {
     const request = ++state.bootstrapRequest;
+    const previousStoragePath = state.storage?.path;
+    state.connectionEpoch += 1;
+    cancelModelReplacement();
+    state.historyRequest += 1;
+    state.historyPending = false;
+    state.workspaceListRequest += 1;
+    updateHistoryControls();
+    state.bootstrapPending = true;
+    state.connectionState = "connecting";
+    state.token = null;
+    renderConnection();
+    updateWorkflowControls();
     state.discoveryEpoch += 1;
     state.discoveryRequest += 1;
+    state.discoveryPending = false;
+    if (state.discovery) { state.discoveryStale = true; renderDiscovery(); }
     $("bootstrap-error").hidden = true;
     try {
-      const data = await api("/api/bootstrap");
+      const data = await api("/api/bootstrap", undefined, undefined, { current: () => request === state.bootstrapRequest });
       if (request !== state.bootstrapRequest) return;
       state.token = data.session_token;
+      state.connectionState = "connected";
+      state.storage = data.storage || null;
+      if (typeof previousStoragePath === "string" && typeof state.storage?.path === "string" && previousStoragePath !== state.storage.path) detachPreviousStorage(previousStoragePath);
+      renderConnection();
       state.templates = data.templates || [];
       state.environment = data.environment || {};
       state.provider = data.provider || {};
@@ -2133,9 +2418,14 @@
       if (request !== state.bootstrapRequest) return;
       $("bootstrap-error").hidden = false;
       $("bootstrap-error-detail").textContent = error.message;
-      setBadge("environment-badge", "서버 연결 확인 필요", "warning");
+      state.connectionState = "disconnected";
+      state.token = null;
+      renderConnection();
+    } finally {
+      if (request === state.bootstrapRequest) { state.bootstrapPending = false; renderConnection(); updateWorkflowControls(); updateWorkspaceStatus(); }
     }
   }
+  $("reconnect-button").addEventListener("click", bootstrap);
   $("retry-bootstrap").addEventListener("click", bootstrap);
   renderOfferRows();
   state.workspaceSavedSignature = workspaceSignature();

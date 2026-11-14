@@ -6,7 +6,7 @@
 
 **An open-source local workspace for parameterized CAD, filament profile review, and Bambu Studio preparation.**
 
-한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **개발 초기 버전 v0.1**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
+한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **로컬 작업 공간 v0.2**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
 
 이 버전은 `수납함`, `열린 케이블 받침`, `원형 인셋 프레임` 세 가지 파라메트릭 모델을 실제 CAD로 생성합니다. 일반적인 자유형 모델링, MakerWorld 검색·리믹스, 실시간 쇼핑 수집, 프린터 직접 제어는 후속 개발 범위입니다. [현재 개발 상태](docs/STATUS.md), [로컬 검증 기록](docs/VERIFICATION.md), [기여 안내](CONTRIBUTING.md)를 함께 확인하세요.
 
@@ -16,7 +16,7 @@
 
 ## 시작하기
 
-검증 환경은 Linux와 Python 3.12.14입니다. 새 PC에서는 Python 3.12 가상환경을 권장합니다. Windows·macOS의 설치와 native Bambu 실행은 아직 별도로 검증하지 않았습니다.
+권장 실행 경로는 **Python 3.12 가상환경**입니다. Linux·macOS·Windows의 설치 패키지 검증과 native Bambu 실행 검증은 분리합니다. 플랫폼별로 실제 통과한 커밋과 범위는 [검증 기록](docs/VERIFICATION.md)을 확인하세요. 이 앱은 자신의 PC에서 사용하는 단일 사용자 앱이며 공개 서버로 배포하는 구성은 제공하지 않습니다.
 
 저장소를 받은 다음 프로젝트 폴더로 이동합니다.
 
@@ -28,7 +28,7 @@ cd 3d-printer-agent
 macOS / Linux:
 
 ```bash
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m print_agent
@@ -50,11 +50,23 @@ python -m print_agent --port 8766 --data-dir ./my-print-data
 python -m unittest discover -v
 ```
 
+화면 위의 **로컬 연결과 저장 위치**에서 실제 데이터 폴더를 확인할 수 있습니다.
+서버를 재시작했다면 **다시 연결**을 누르세요. 현재 입력을 유지하고 연결만 갱신하며,
+실행 결과를 모르는 모델 생성·슬라이싱·저장 요청을 자동으로 반복하지 않습니다.
+같은 데이터 폴더는 한 서버만 사용할 수 있습니다. 중단된 생성은 작업 기록에서
+확인하고 **저장된 치수로 다시 준비**할 수 있습니다.
+
+새 설치는 운영체제의 사용자 데이터 폴더에 저장합니다. 명시한 `--data-dir`,
+`PPA_DATA_DIR`, 기존 작업이 있는 `./data`는 우선 적용하며 기존 데이터를 자동으로
+옮기지 않습니다. `doctor`는 선택한 경로와 필수 구성 요소를 검사하고, 필수 검사에
+실패하면 종료 코드 1을 반환합니다. 설치·업데이트·백업·복구 절차는
+[로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
+
 UI 상태 회귀 검사는 개발용 Node.js가 있을 때 `node tests/test_ui_state.cjs`로 실행할 수 있습니다. DOM 대역을 사용하는 검사이며 실제 브라우저 테스트와 구분합니다.
 
 CI는 Python 검사와 패키지 설치, UI 상태 검사, 실제 Chromium에서의 브라우저 검사를 실행하도록 구성했습니다. 실행 결과는 [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions)에서 커밋별로 확인합니다. 브라우저 검사에는 개발용 Node.js가 필요하며 실행 방법은 [기여 안내](CONTRIBUTING.md)를 따릅니다.
 
-개발 소스에서 실행하는 방법이며 `pip install .` 후 `printer-agent` 진입점도 제공합니다. GitHub Actions의 새 Linux 환경에서 wheel 빌드·설치와 소스 디렉터리 밖의 실행을 검증했습니다. Windows·macOS 설치는 별도 검증이 필요합니다. API 키 없이 템플릿 모드와 실제 CAD 생성이 동작합니다.
+위는 개발 소스에서 실행하는 방법이며 `pip install .` 후 `printer-agent` 진입점도 제공합니다. 별도의 [패키지 검증 workflow](.github/workflows/package-qualification.yml)는 같은 wheel 바이트를 세 운영체제에 설치하고 소스 폴더 밖에서 실제 CAD·API·저장·재시작을 검사합니다. 실행 결과와 다운로드 가능한 wheel 산출물은 [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions/workflows/package-qualification.yml)에서 커밋별로 확인할 수 있습니다.
 
 ## 사용할 수 있는 작업
 
@@ -68,7 +80,7 @@ CI는 Python 검사와 패키지 설치, UI 상태 검사, 실제 Chromium에서
 | 교정 변경 검토 | K, flow ratio, MVS 기록의 재검토 필요성 판정 | API 제공. 측정이나 프린터 저장은 하지 않음 |
 | Bambu Studio | 명시적 CLI 확인, 설정 파일 묶음 도우미, 플레이트 지정, CLI 실행과 결과 검토 | 버전별 native 검증은 [연동 안내](docs/BAMBU_STUDIO.md)와 검증 기록 참조. 실물 출력은 미검증 |
 | 구매 비교 | 직접 입력한 가격·중량·배송비로 kg당 단가 계산 | 실시간 가격·재고·쿠폰은 수집하지 않음 |
-| 작업 기록 | 생성 파라미터·파일·이벤트·사용자 출력 결과 | 사용자 결과는 `user_reported`로 구분 |
+| 작업 기록 | 생성 요청·파일·이벤트·사용자 출력 결과, 이전 기록 더 보기, 중단 작업 다시 준비 | 다운로드 바이트 검증과 시작 시 이력 복구. 사용자 결과는 `user_reported`로 구분 |
 | LLM 연결 | OpenAI-compatible Chat Completions 어댑터 | 합성 서버 응답으로 계약 검증. 실제 모델 연결은 미검증 |
 
 ### 무엇을 만들지 고르기
@@ -250,7 +262,7 @@ LLM은 허용된 템플릿의 숫자와 설명만 제안합니다. 실행 코드
 
 상품명, 통화, 가격, 중량(g), 배송비를 직접 입력합니다. 배송비를 비우면 `미확인`이며 무료 배송으로 계산하지 않습니다. 배송비를 확인해 0을 넣은 경우만 무료로 계산합니다. 통화가 다르면 별도로 정렬합니다. 최소 중량은 0.001g이며 배송비 포함 kg당 단가는 소수 두 자리까지 반올림합니다. 세금·쿠폰·재고·제품 동일성 확인은 후속 작업입니다.
 
-작업 데이터는 기본 `./data/` 아래에 저장됩니다. `PPA_DATA_DIR` 또는 `--data-dir`로 바꿀 수 있습니다. 작업별 폴더에는 모델 파일, 파라미터, SHA-256 manifest, 이벤트가 있고 SQLite는 기록 목록의 인덱스입니다. `manifest.json`은 생성 시점의 형상 증거이고, 후속 슬라이싱·사용자 결과는 `job.json`의 별도 기록입니다.
+작업 데이터는 화면에 표시한 사용자 데이터 폴더에 저장됩니다. `--data-dir`, `PPA_DATA_DIR` 또는 기존 작업이 있는 legacy `./data/`가 우선하며 자동 이동은 하지 않습니다. 작업별 폴더에는 모델 파일, 입력 요청, SHA-256 manifest, 이벤트가 있고 `history.sqlite3`는 목록의 파생 인덱스입니다. `manifest.json`은 생성 시점의 형상 증거이고, 후속 슬라이싱·사용자 결과는 `job.json`의 별도 기록입니다. 필라멘트 작업의 원본 저장소는 `profile-workspaces.sqlite3`입니다. [로컬 운영 안내](docs/LOCAL_OPERATION.md)의 백업·복구 절차를 확인하세요.
 
 필라멘트 작업은 같은 데이터 디렉터리의 `profile-workspaces.sqlite3`에 별도로 저장합니다. 브라우저를 새로고침하거나 앱을 다시 실행해도 이 데이터 디렉터리를 유지하면 작업을 다시 열 수 있습니다.
 

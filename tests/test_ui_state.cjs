@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
-const names = ['node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
+const names = ['renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 class Element {
   constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
   set textContent(value) { this._text=String(value); this.children=[]; }
@@ -23,11 +23,12 @@ function fixture() {
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
     $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa,
-    state:{token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
+    state:{retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
-    viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
+    viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},workspaceDirty(){return false;},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
   };
+  $('parameter-width').value='120';$('outcome-result').value='not_tested';
   vm.createContext(context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
@@ -93,6 +94,154 @@ const job = () => ({
     try { await test(); passed++; console.log('PASS',name); }
     catch(error) { failed++; console.log('FAIL',name,error.message); }
   }
+  await check('Expired sessions expose reconnect, clear credentials and never replay the failed mutation',async()=>{
+    const c=fixture();let calls=0;c.$('bootstrap-error').hidden=true;
+    c.fetch=async()=>{calls++;return {ok:false,status:403,json:async()=>({detail:'다시 연결해 주세요.',code:'session_expired'})};};
+    await assert.rejects(c.api('/api/models',{template:'tray'}),error=>error.status===403);
+    assert.equal(calls,1);assert.equal(c.state.token,null);assert.equal(c.$('bootstrap-error').hidden,false);assert.match(c.$('connection-status').textContent,/연결/);
+  });
+  await check('Page exit protects model-only unfinished input and a pending model operation',()=>{
+    const c=profileFixture();c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true,valid:false};c.state.workflowBusy=true;
+    let handler,prevented=false;c.window.addEventListener=(name,callback)=>{if(name==='beforeunload')handler=callback;};
+    const start=source.indexOf('  window.addEventListener("beforeunload"'),end=source.indexOf('  window.addEventListener("pagehide"',start);
+    vm.runInContext(source.slice(start,end),c);handler({preventDefault(){prevented=true;}});assert.equal(prevented,true);
+  });
+  await check('History asks before replacing an unfinished model and cancel keeps its exact state',async()=>{
+    const c=fixture(),saved=job();saved.result.parameters.width=88;c.state.parameters.width=120;c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true,valid:false};c.$('model-replace-confirm').hidden=true;c.changeView=()=>{};
+    c.api=async path=>path.startsWith('/api/jobs?')||path==='/api/jobs'?{jobs:[saved],next_cursor:null}:saved;
+    await c.loadHistory();await c.$('history-list').children[0].children.find(child=>child.listeners.click).listeners.click();
+    assert.equal(c.state.parameters.width,120);assert.equal(c.state.job,null);assert.equal(c.$('model-replace-confirm').hidden,false);
+    c.cancelModelReplacement();assert.equal(c.$('parameter-width').value,'');assert.equal(c.$('parameter-width').validity.badInput,true);assert.equal(c.state.parameters.width,120);
+  });
+  await check('Older history failure cannot erase a newer successful list',async()=>{
+    const c=fixture(),pending=[];c.api=()=>new Promise((resolve,reject)=>pending.push({resolve,reject}));
+    const old=c.loadHistory(),fresh=c.loadHistory();pending[1].resolve({jobs:[job()],next_cursor:null});await fresh;const latest=c.$('history-list').textContent;
+    pending[0].reject(new Error('older failure'));await old;assert.equal(c.$('history-list').textContent,latest);assert.doesNotMatch(c.$('history-feedback').textContent,/older failure/);
+  });
+  await check('History uses a bounded cursor page and retains loaded records if more loading fails',async()=>{
+    const c=fixture();const requested=[];c.api=async path=>{requested.push(path);return {jobs:[job()],next_cursor:'next cursor'};};
+    await c.loadHistory();assert.equal(requested[0],'/api/jobs?limit=20');assert.equal(c.$('history-more').hidden,false);
+    const previous=c.$('history-list').textContent;c.api=async path=>{requested.push(path);throw new Error('page failed');};await c.loadHistory(true);
+    assert.equal(requested[1],'/api/jobs?limit=20&before=next%20cursor');assert.equal(c.$('history-list').textContent,previous);assert.equal(c.$('history-more').hidden,false);
+  });
+  await check('A successful CAD response from before reconnect cannot replace the current result',async()=>{
+    const c=fixture(),kept={...job(),id:'kept-job'},stale={...job(),id:'old-server-job'};c.renderJob(kept);const downloads=c.$('download-links').textContent;let release;const calls=[];
+    c.fetch=async path=>{calls.push(path);if(path==='/api/models')return new Promise(resolve=>{release=resolve;});return {ok:true,status:200,json:async()=>({session_token:'new-token',templates:c.state.templates,environment:{available:false},storage:{path:'/new-root',source:'argument',recovery:{}}})};};
+    const pending=c.generateModel();await c.bootstrap();release({ok:true,status:200,json:async()=>stale});await pending;
+    assert.equal(c.state.job,kept);assert.equal(c.$('download-links').textContent,downloads);assert.equal(c.state.token,'new-token');assert.equal(c.state.storage.path,'/new-root');assert.equal(calls.filter(path=>path==='/api/models').length,1);assert.match(c.$('model-feedback').textContent,/이전|연결/);assert.match(c.$('model-feedback').textContent,/기록/);assert.doesNotMatch(c.$('model-feedback').textContent,/실제 CAD 모델과 파일을 생성/);
+  });
+  await check('A successful text plan from the old connection cannot replace current dimensions',async()=>{
+    const c=fixture();c.$('request-text').value='keep this request';let release;c.fetch=async path=>path==='/api/plan'?new Promise(resolve=>{release=resolve;}):{ok:true,status:200,json:async()=>({session_token:'new-token',templates:c.state.templates,environment:{}})};
+    const pending=c.preparePlan();await c.bootstrap();release({ok:true,status:200,json:async()=>({status:'ready',parameters:{template:'tray',width:88},message:'old plan'})});await pending;
+    assert.equal(c.state.parameters.width,120);assert.equal(c.$('parameter-width').value,'120');assert.equal(c.$('request-text').value,'keep this request');assert.doesNotMatch(c.$('plan-feedback').textContent,/old plan/);assert.match(c.$('plan-feedback').textContent,/연결/);
+  });
+  await check('A successful workspace save from the old connection cannot adopt its record identity',async()=>{
+    const c=profileFixture();c.$('workspace-title').value='Keep title';c.$('profile-json').value='{ unfinished';const snapshot=c.captureProfileSnapshot(),before=c.state.workspaceSavedSignature;let release;c.loadWorkspaces=async()=>{};
+    c.fetch=async path=>path==='/api/profile-workspaces'?new Promise(resolve=>{release=resolve;}):{ok:true,status:200,json:async()=>({session_token:'new-token',templates:c.state.templates,environment:{},storage:{path:'/new-root',source:'argument',recovery:{}}})};
+    const pending=c.saveWorkspace();await c.bootstrap();release({ok:true,status:200,json:async()=>workspaceRecord(snapshot)});await pending;
+    assert.equal(c.state.workspaceId,null);assert.equal(c.state.workspaceRevision,null);assert.equal(c.state.workspaceSavedSignature,before);assert.equal(c.$('profile-json').value,'{ unfinished');assert.equal(c.$('workspace-title').value,'Keep title');assert.match(c.$('workspace-feedback').textContent,/기록/);
+  });
+  await check('Old slice success cannot become current or fetch its job from the new connection',async()=>{
+    const c=fixture();c.renderJob(job());c.$('slicer-json').value='{"machine":{},"process":{},"filaments":[]}';let release;const calls=[];
+    c.fetch=async path=>{calls.push(path);if(path==='/api/slice')return new Promise(resolve=>{release=resolve;});return {ok:true,status:200,json:async()=>({session_token:'new-token',templates:c.state.templates,environment:{available:false}})};};
+    const pending=c.runSlice(false);await c.bootstrap();release({ok:true,status:200,json:async()=>({plan:{ready:true,diagnostics:[]},execution:null})});await pending;
+    assert.equal(c.state.slicePrepared,false);assert.equal(calls.some(path=>path.startsWith('/api/jobs/')),false);assert.match(c.$('slice-feedback').textContent,/연결/);assert.match(c.$('slice-feedback').textContent,/기록/);
+  });
+  await check('Connection changes while JSON is arriving reject successful reads before consumers receive data',async()=>{
+    const c=fixture();let finishJson,ready;const reading=new Promise(resolve=>{ready=resolve;});c.fetch=async()=>({ok:true,status:200,json:()=>new Promise(resolve=>{finishJson=resolve;ready();})});const pending=c.api('/api/jobs/job-a');await reading;c.state.connectionEpoch+=1;c.state.token='new-token';finishJson(job());
+    await assert.rejects(pending,error=>error.code==='connection_changed');assert.equal(c.state.token,'new-token');assert.equal(c.state.connectionState,'connected');
+  });
+  await check('A known storage location change detaches old job and workspace identities while preserving edits',async()=>{
+    const c=profileFixture(),source=project();c.state.storage={path:'/old-root',source:'argument'};c.renderJob(job());c.state.projectSource=source;c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true,valid:false};c.$('request-text').value='keep request';c.$('profile-json').value='{ unfinished';c.$('workspace-title').value='keep title';c.state.workspaceId='old-workspace';c.state.workspaceRevision=7;c.state.workspaceSavedSignature=c.workspaceSignature();c.state.guidedEdits={nozzle_temperature:{value:'-'}};c.$('slicer-json').value='{ keep raw config';c.state.historyItems=[job()];c.state.historyLoaded=true;c.state.historyCursor='old-cursor';c.renderHistory();
+    c.api=async path=>path==='/api/bootstrap'?{session_token:'new-token',templates:c.state.templates,environment:{},storage:{path:'/new-root',source:'argument',recovery:{indexed:0,interrupted:0,unreadable:0}}}:{workspaces:[]};await c.bootstrap();
+    assert.equal(c.state.job,null);assert.equal(c.$('model-result').hidden,true);assert.equal(c.$('download-links').children.length,0);assert.equal(c.state.workspaceId,null);assert.equal(c.state.workspaceRevision,null);assert.equal(c.state.workspaceSavedSignature,null);assert.equal(c.state.historyItems.length,0);assert.equal(c.state.historyCursor,null);assert.equal(c.$('history-list').children.length,0);assert.equal(c.$('parameter-width').value,'');assert.equal(c.$('parameter-width').validity.badInput,true);assert.equal(c.$('request-text').value,'keep request');assert.equal(c.state.projectSource,source);assert.equal(c.$('profile-json').value,'{ unfinished');assert.equal(c.$('workspace-title').value,'keep title');assert.equal(c.state.guidedEdits.nozzle_temperature.value,'-');assert.equal(c.$('slicer-json').value,'{ keep raw config');assert.equal(c.workspaceDirty(),true);assert.match(c.$('storage-change-notice').textContent,/저장 위치가 바뀌/);assert.match(c.$('storage-change-notice').textContent,/old-root/);assert.match(c.$('storage-change-notice').textContent,/원래/);
+  });
+  await check('Reconnect to the same known storage preserves current result and saved workspace identity',async()=>{
+    const c=profileFixture(),saved=job();c.state.storage={path:'/same-root',source:'argument'};c.renderJob(saved);c.state.workspaceId='same-workspace';c.state.workspaceRevision=4;c.$('workspace-title').value='Saved title';c.state.workspaceSavedSignature=c.workspaceSignature();const signature=c.state.workspaceSavedSignature,downloads=c.$('download-links').textContent;
+    c.api=async path=>path==='/api/bootstrap'?{session_token:'new-token',templates:c.state.templates,environment:{},storage:{path:'/same-root',source:'argument',recovery:{}}}:{workspaces:[]};await c.bootstrap();
+    assert.equal(c.state.job,saved);assert.equal(c.state.workspaceId,'same-workspace');assert.equal(c.state.workspaceRevision,4);assert.equal(c.state.workspaceSavedSignature,signature);assert.equal(c.$('download-links').textContent,downloads);
+  });
+  await check('Storage switches retain readable unsaved outcome notes with their original job and protect exit',async()=>{
+    const c=profileFixture(),original={...job(),id:'old-job'};c.state.storage={path:'/old-root',source:'argument'};c.renderJob(original);c.$('outcome-result').value='failure';c.$('outcome-notes').value='Unsubmitted result notes';
+    c.api=async path=>path==='/api/bootstrap'?{session_token:'new-token',templates:c.state.templates,environment:{},storage:{path:'/new-root',source:'argument',recovery:{}}}:{workspaces:[]};await c.bootstrap();
+    assert.match(c.$('retained-outcome-notes').textContent,/Unsubmitted result notes/);assert.match(c.$('retained-outcome-notes').textContent,/old-job/);assert.match(c.$('retained-outcome-notes').textContent,/old-root/);assert.equal(c.$('retained-outcome-notes').hidden,false);assert.equal(c.hasPendingWork(),true);
+    c.renderJob({...job(),id:'new-job'});assert.equal(c.$('outcome-notes').value,'');assert.match(c.$('retained-outcome-notes').textContent,/Unsubmitted result notes/);assert.equal(c.state.retainedOutcomeDrafts[0].result,'failure');assert.equal(c.hasPendingWork(),true);
+    const dismiss=findElement(c.$('retained-outcome-notes'),element=>Boolean(element.listeners.click));dismiss.listeners.click();assert.equal(c.state.retainedOutcomeDrafts.length,0);assert.equal(c.$('retained-outcome-notes').hidden,true);assert.equal(c.hasPendingWork(),false);
+  });
+  await check('Multiple storage switches retain each unsaved outcome under its own original job and path',async()=>{
+    const c=profileFixture();c.state.storage={path:'/root-a',source:'argument'};let target='/root-b';c.api=async path=>path==='/api/bootstrap'?{session_token:'new-token',templates:c.state.templates,environment:{},storage:{path:target,source:'argument',recovery:{}}}:{workspaces:[]};
+    c.renderJob({...job(),id:'job-a'});c.$('outcome-notes').value='note A';await c.bootstrap();c.renderJob({...job(),id:'job-b'});c.$('outcome-notes').value='note B';target='/root-c';await c.bootstrap();
+    assert.deepEqual(plain(c.state.retainedOutcomeDrafts.map(item=>[item.job_id,item.storage_path,item.notes])),[['job-a','/root-a','note A'],['job-b','/root-b','note B']]);assert.match(c.$('retained-outcome-notes').textContent,/note A/);assert.match(c.$('retained-outcome-notes').textContent,/note B/);assert.equal(c.state.job,null);
+  });
+  await check('Unrelated HTTP failures do not expire a working session',async()=>{
+    const c=fixture();c.$('bootstrap-error').hidden=true;c.fetch=async()=>({ok:false,status:403,json:async()=>({detail:'다른 조건의 거절',code:'other_rejection'})});
+    await assert.rejects(c.api('/api/models',{}),error=>error.status===403&&error.code==='other_rejection');assert.equal(c.state.token,'test-token');assert.equal(c.$('bootstrap-error').hidden,true);
+  });
+  await check('A stale history network failure cannot change current connection state',async()=>{
+    const c=fixture(),pending=[];c.fetch=()=>new Promise((resolve,reject)=>pending.push({resolve,reject}));
+    const old=c.loadHistory(),fresh=c.loadHistory();pending[1].resolve({ok:true,json:async()=>({jobs:[job()],next_cursor:'more'})});await fresh;
+    pending[0].reject(new Error('old network failure'));await old;assert.equal(c.state.token,'test-token');assert.equal(c.state.connectionState,'connected');assert.match(c.$('history-list').textContent,/Tray/);assert.equal(c.state.historyCursor,'more');
+  });
+  await check('A network failure from before reconnect cannot invalidate the new session',async()=>{
+    const c=fixture();let reject;c.fetch=()=>new Promise((_resolve,fail)=>{reject=fail;});const pending=c.api('/api/models',{});c.state.connectionEpoch+=1;c.state.token='new-session';
+    reject(new Error('old disconnect'));await assert.rejects(pending,/처리 여부/);assert.equal(c.state.token,'new-session');assert.equal(c.state.connectionState,'connected');
+  });
+  await check('Reconnect preserves pending model and filament input, source and downloads while showing storage',async()=>{
+    const c=profileFixture(),saved=job();c.renderJob(saved);const source=project();c.state.projectSource=source;c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true,valid:false};c.$('request-text').value='new request';c.$('profile-json').value='{ unfinished';c.$('setup-printer-model').value='keep printer';c.$('workspace-title').value='keep work';c.state.guidedEdits={nozzle_temperature:{value:'-'}};
+    const downloads=c.$('download-links').textContent,paths=[];c.api=async path=>{paths.push(path);return path==='/api/bootstrap'?{session_token:'new-token',templates:c.state.templates,environment:{},storage:{path:'/Users/test/한글 폴더',source:'user_default',legacy:false,recovery:{indexed:12,interrupted:2,unreadable:1}}}:{workspaces:[]};};await c.bootstrap();
+    assert.equal(c.state.token,'new-token');assert.equal(c.state.connectionState,'connected');assert.equal(c.$('parameter-width').value,'');assert.equal(c.$('parameter-width').validity.badInput,true);assert.equal(c.$('request-text').value,'new request');assert.equal(c.$('profile-json').value,'{ unfinished');assert.equal(c.$('setup-printer-model').value,'keep printer');assert.equal(c.$('workspace-title').value,'keep work');assert.equal(c.state.projectSource,source);assert.equal(c.state.job,saved);assert.equal(c.$('download-links').textContent,downloads);assert.equal(c.state.guidedEdits.nozzle_temperature.value,'-');assert.equal(c.$('storage-path').textContent,'/Users/test/한글 폴더');assert.match(c.$('storage-recovery').textContent,/중단 처리 2개/);assert.deepEqual(paths,['/api/bootstrap','/api/profile-workspaces']);
+  });
+  await check('Reconnect invalidates a pending history open without replacing current work',async()=>{
+    const c=fixture();let reply;c.changeView=()=>{};c.api=path=>path==='/api/jobs/job-a'?new Promise(resolve=>{reply=resolve;}):Promise.resolve({session_token:'new-token',templates:c.state.templates,environment:{}});
+    const open=c.openHistoryJob(job(),new Element());await c.bootstrap();reply(job());await open;assert.equal(c.state.job,null);assert.equal(c.state.modelReplacement,null);assert.equal(c.state.token,'new-token');
+  });
+  await check('Saved generated work is clean until its input, outcome, or slicer draft changes',()=>{
+    const c=profileFixture();c.renderJob(job());assert.equal(c.hasPendingWork(),false);
+    c.$('parameter-width').value='120.0';assert.equal(c.hasPendingWork(),true);c.$('parameter-width').value='120';assert.equal(c.hasPendingWork(),false);
+    c.$('outcome-notes').value='unsaved observation';assert.equal(c.hasPendingWork(),true);c.$('outcome-notes').value='';
+    c.state.slicerStaged=true;assert.equal(c.hasPendingWork(),true);c.state.slicerStaged=false;c.state.workspaceBusy=true;assert.equal(c.hasPendingWork(),true);
+  });
+  await check('Template and reset replacement cancellation preserves exact numeric input and generated result',()=>{
+    for(const action of [{kind:'template',template:'cable_comb'},{kind:'reset',template:'tray'}]) {
+      const c=fixture(),saved=job();c.renderJob(saved);c.$('parameter-width').value='0120';c.state.projectSource=project();const downloads=c.$('download-links').textContent;
+      c.requestModelReplacement(action);assert.equal(c.state.template,'tray');assert.equal(c.$('model-replace-confirm').hidden,false);c.cancelModelReplacement();assert.equal(c.$('parameter-width').value,'0120');assert.equal(c.state.projectSource.id,'idea');assert.equal(c.state.job,saved);assert.equal(c.$('download-links').textContent,downloads);
+    }
+  });
+  await check('Editing after replacement confirmation requires renewed confirmation before applying',()=>{
+    const c=fixture();c.$('parameter-width').value='121';c.requestModelReplacement({kind:'template',template:'cable_comb'});c.$('parameter-width').value='122';c.confirmModelReplacement();assert.equal(c.state.template,'tray');assert.equal(c.$('parameter-width').value,'122');assert.match(c.$('model-replace-detail').textContent,/한 번 더/);
+    c.confirmModelReplacement();assert.equal(c.state.template,'cable_comb');assert.equal(c.state.parameters.width,80);assert.equal(c.$('model-replace-confirm').hidden,true);
+  });
+  await check('Only the latest explicitly chosen replacement target can be applied',()=>{
+    const c=fixture();c.$('parameter-width').value='121';c.requestModelReplacement({kind:'template',template:'cable_comb'});c.requestModelReplacement({kind:'reset',template:'tray'});c.confirmModelReplacement();assert.equal(c.state.template,'tray');assert.equal(c.state.parameters.width,120);
+  });
+  await check('History response arriving after a draft edit cannot apply or ask for an obsolete replacement',async()=>{
+    const c=fixture();let reply;c.api=()=>new Promise(resolve=>{reply=resolve;});const pending=c.openHistoryJob(job(),new Element());c.$('parameter-width').value='121';reply(job());await pending;
+    assert.equal(c.state.job,null);assert.equal(c.state.modelReplacement,null);assert.equal(c.$('parameter-width').value,'121');assert.match(c.$('history-feedback').textContent,/편집을 유지/);
+  });
+  await check('History refresh keeps prior records and cursor after a current failure, then recovers',async()=>{
+    const c=fixture();c.api=async()=>({jobs:[job()],next_cursor:'cursor-a'});await c.loadHistory();const shown=c.$('history-list').textContent;c.api=async()=>{throw new Error('temporary failure');};await c.loadHistory();assert.equal(c.$('history-list').textContent,shown);assert.equal(c.state.historyCursor,'cursor-a');assert.match(c.$('history-feedback').textContent,/유지/);
+    c.api=async()=>({jobs:[{...job(),id:'job-b',title:'Recovered'}],next_cursor:null});await c.loadHistory();assert.match(c.$('history-list').textContent,/Recovered/);assert.doesNotMatch(c.$('history-list').textContent,/Tray/);assert.equal(c.$('history-more').hidden,true);
+  });
+  await check('History cursor appends unique records and visibly distinguishes interrupted and unreadable items',async()=>{
+    const c=fixture();let count=0;c.api=async()=>++count===1?{jobs:[job()],next_cursor:'more'}:{jobs:[job(),{id:'stopped',title:'Stopped',status:'interrupted'},{id:'broken',title:'Broken',status:'unreadable',diagnostic:'원본 파일은 보존했습니다.'}],next_cursor:null};await c.loadHistory();await c.loadHistory(true);
+    assert.equal(c.state.historyItems.length,3);assert.equal(c.$('history-list').children.length,3);assert.match(c.$('history-list').textContent,/생성 중단/);assert.match(c.$('history-list').textContent,/기록 읽기 확인 필요/);assert.match(c.$('history-list').textContent,/원본 파일은 보존/);assert.equal(c.$('history-more').hidden,true);
+  });
+  await check('Interrupted requests prepare editable dimensions only after confirmation and create no model',async()=>{
+    const c=fixture(),saved={id:'stopped',title:'중단된 모델 생성',status:'interrupted',result:null,request:{template:'tray',width:88},design_source:project(),events:[{type:'generation_interrupted',message:'완료 전에 중단되었습니다.'}]};c.changeView=()=>{};c.renderJob(job());c.$('parameter-width').value='123';c.api=async()=>saved;
+    await c.openHistoryJob(saved,new Element());assert.match(c.$('history-feedback').textContent,/중단/);const retry=c.$('history-feedback').children.find(child=>child.listeners.click);assert(retry);retry.listeners.click();assert.equal(c.state.parameters.width,120);c.confirmModelReplacement();assert.equal(c.state.parameters.width,88);assert.equal(c.state.projectSource.id,'idea');assert.equal(c.state.job,null);assert.equal(c.$('model-result').hidden,true);assert.equal(c.$('download-links').children.length,0);assert.match(c.$('model-feedback').textContent,/새 모델을 생성/);
+  });
+  await check('Legacy interrupted records without saved inputs do not invent a retry or download',async()=>{
+    const c=fixture(),record={id:'legacy',status:'interrupted',result:null,events:[]};c.api=async()=>record;await c.openHistoryJob(record,new Element());assert.equal(c.$('history-feedback').children.some(child=>child.listeners.click),false);assert.equal(c.state.job,null);assert.equal(c.$('download-links').children.length,0);
+  });
+  await check('Unreadable history errors keep the current draft and prior visible list',async()=>{
+    const c=fixture();c.state.historyItems=[{id:'bad',status:'unreadable',title:'Bad'}];c.state.historyLoaded=true;c.renderHistory();const shown=c.$('history-list').textContent;c.$('parameter-width').value='0120';c.api=async()=>{const error=new Error('원본 파일은 보존했습니다.');error.status=409;error.code='job_record_unreadable';throw error;};await c.openHistoryJob(c.state.historyItems[0],new Element());assert.equal(c.$('parameter-width').value,'0120');assert.equal(c.$('history-list').textContent,shown);assert.equal(c.state.job,null);assert.match(c.$('history-feedback').textContent,/원본 파일은 보존/);
+  });
+  await check('Running and interrupted slice phases never render old slice success or sliced downloads',()=>{
+    for(const phase of ['running','interrupted']) {const c=fixture(),saved=job();saved.latest_slice={phase,plan:{ready:true},execution:{status:'sliced',checks:[]}};c.renderJob(saved);assert.match(c.$('slice-feedback').textContent,phase==='running'?/실행 중/:/중단/);assert.doesNotMatch(c.$('download-links').textContent,/슬라이스 3MF/);assert.match(c.$('download-links').textContent,/STL/);assert.equal(c.state.slicePrepared,false);}
+  });
+  await check('A busy CAD response retains source without falsely reporting a changed recipe',async()=>{
+    const c=fixture();c.state.projectSource=project();c.api=async()=>{const error=new Error('다른 모델 작업을 처리 중입니다.');error.status=409;error.code='resource_busy';throw error;};await c.generateModel();assert.match(c.$('model-feedback').textContent,/처리 중/);assert.doesNotMatch(c.$('model-feedback').textContent,/출처 연결/);assert.equal(c.state.projectSource.id,'idea');
+  });
   await check('Browsing and filtering preserve exact unfinished draft and generated source',()=>{
     const c=fixture(),saved=job(); c.state.job=saved;c.state.projectSource={id:'saved',recipe_sha256:'b'.repeat(64)};
     c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true,valid:false};c.$('request-text').value='keep text';
@@ -139,7 +288,7 @@ const job = () => ({
   });
   await check('History and generated source use the saved snapshot rather than today’s catalog',async()=>{
     const c=fixture(),value=job();value.design_source={kind:'project_catalog',project_id:'idea',recipe_sha256:'b'.repeat(64),recipe:{...project(),title:'Saved old title'}};
-    c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.changeView=()=>{};c.api=async path=>path==='/api/jobs'?{jobs:[value]}:value;await c.loadHistory();
+    c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.changeView=()=>{};c.api=async path=>path.startsWith('/api/jobs?')?{jobs:[value],next_cursor:null}:value;await c.loadHistory();
     await c.$('history-list').children[0].children.find(child=>child.listeners.click).listeners.click();
     assert.match(c.$('generated-source').textContent,/Saved old title/);assert.equal(c.state.projectSource.recipe_sha256,'b'.repeat(64));assert.match(c.$('draft-source').textContent,/Saved old title/);
   });
@@ -180,7 +329,7 @@ const job = () => ({
     assert.equal(c.$('parameter-width').value,'');assert.equal(c.$('request-text').value,'new draft');assert.equal(c.$('space-width').value,'21');assert.equal(c.state.projectSource.id,'idea');assert.equal(c.state.job.id,'job-a');assert.equal(c.state.discoveryMatches[0].project.id,'idea');
   });
   await check('A generated response cannot relabel a changed live draft as the generated result',async()=>{
-    const c=fixture(),input=Object.assign(new Element(),{dataset:{parameter:'width'},value:'120',valueAsNumber:120});c.document.querySelectorAll=selector=>selector==='[data-parameter]'?[input]:[];let done;c.api=()=>new Promise(resolve=>{done=resolve;});
+    const c=fixture(),input=Object.assign(c.$('parameter-width'),{dataset:{parameter:'width'},value:'120',valueAsNumber:120});c.document.querySelectorAll=selector=>selector==='[data-parameter]'?[input]:[];let done;c.api=()=>new Promise(resolve=>{done=resolve;});
     const pending=c.generateModel();input.value='121';done(job());await pending;assert.equal(c.state.job,null);assert.match(c.$('model-feedback').textContent,/작업 기록/);
   });
   await check('An old empty result is labelled as previous conditions after a filter edit',()=>{
@@ -309,7 +458,7 @@ const job = () => ({
   });
   await check('Failed history opens the recorded cause without dereferencing a model',async()=>{
     const c=fixture();const failedJob={id:'failed-job',title:'모델 생성 실패',status:'failed',created_at:'2026-11-12T00:00:00Z',result:null,events:[{type:'generation_failed',message:'벽과 바닥 안쪽에 양수 크기의 공간이 필요합니다.'}]};
-    c.api=async path=>path==='/api/jobs'?{jobs:[failedJob]}:failedJob;
+    c.api=async path=>path.startsWith('/api/jobs?')?{jobs:[failedJob],next_cursor:null}:failedJob;
     await c.loadHistory();
     const card=c.$('history-list').children[0];
     const button=card.children.find(child=>child.listeners.click);

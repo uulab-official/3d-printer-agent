@@ -79,6 +79,7 @@ class APITests(unittest.TestCase):
         with patch.object(store, 'get', return_value={'status': 'geometry_validated'}), \
              patch.object(store, 'artifact_path', return_value=Path(self.temp.name) / 'model.3mf'), \
              patch.object(store, 'directory', return_value=Path(self.temp.name)), \
+             patch.object(store, 'begin_slice'), \
              patch.object(store, 'record_slice'), \
              patch('print_agent.app.prepare_slice', return_value=plan) as prepare, \
              patch('print_agent.app.execute_slice') as execute:

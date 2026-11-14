@@ -8,6 +8,30 @@ The ownership notes below record the initial parallel implementation only. Curre
 
 The additive catalog, recommendation and generation-source contracts are in [PROJECT_DISCOVERY.md](PROJECT_DISCOVERY.md). `print_agent/discovery.py` owns strict discovery/selection models and pure matching; the geometry schema remains unchanged. Bootstrap includes the catalog, `POST /api/discovery` compares optional placement dimensions, and the API-only model payload accepts an optional server-validated `project_selection`. Source snapshots are stored separately from executable geometry parameters. The current six recipes reuse the existing three templates; their selection does not establish print readiness or physical fit.
 
+## Local runtime and recovery (v0.2)
+
+`runtime.resolve_data_directory()` resolves argument, nonempty environment, recognizable legacy data and then per-user default in that order. The returned `{path, source, legacy}` is included in bootstrap with `recovery: {indexed, interrupted, unreadable}`. `indexed` counts valid canonical records; unreadable diagnostic rows are counted separately. `interrupted` counts recovered CAD generation, while unfinished slices have their own event/phase. The production ASGI lifespan owns `DataDirectoryLease` before creating stores or calling `JobStore.recover()`. Explicit `test_mode=True` is for isolated fixture tests and does not acquire ownership or run automatic recovery.
+
+`JobStore.reserve(*, request=None, design_source=None)` saves a normalized typed request and optional server-resolved design source before generating CAD. On restart, an abandoned `generating` job becomes `interrupted` once and retains its original files without public downloads. Valid job files are canonical; history SQLite is a derived index. A corrupt derived index is preserved byte-for-byte under a unique `history-unreadable-<uuid>.sqlite3` backup before replacement. A corrupt canonical filament workspace database is not rebuilt. Unreadable job files remain untouched and appear as diagnostic history entries.
+
+`GET /api/jobs?limit=20&before=<opaque cursor>` returns `{jobs, next_cursor}` ordered by descending creation timestamp and ID. Limit is 1..100 and defaults to 100. Without either query parameter, the endpoint retains the original `{jobs}` response and first-100 batch. Cursors are bounded validated data, not paths. Refresh and pagination are separate from opening or replacing a model draft.
+
+The UI rejects both successful and failed responses from an earlier connection epoch; it does not replay mutations or imply their server-side cancellation. Reconnecting to the same storage path preserves current drafts and results. A known path change preserves input text and edits while detaching the old job, download links and saved workspace identity, so an update cannot target an unrelated workspace in the new directory.
+
+`read_artifact(job_id, kind)` returns `(Path, bytes)` only after checking the stored receipt. The HTTP response and bundle use these exact bytes. New jobs retain private receipts for generated files and exact manifest bytes; private fields are excluded from public job JSON. Legacy jobs use their original manifest/record evidence and do not acquire invented historical hashes. `begin_slice` removes the previous slice download and persists `latest_slice.phase='running'`; completion uses `finished`, and restart recovery uses `interrupted` while preserving the valid CAD result.
+
+| HTTP condition | Status / machine code | Effect |
+|---|---|---|
+| Missing, expired or malformed session token | 403 / `session_expired` | Reconnect explicitly; no automatic mutation replay |
+| CAD/slicer occupied | 409 / `resource_busy`, `Retry-After: 2` | No queued CAD job or new reservation |
+| File differs from saved receipt | 409 / `artifact_integrity` | No mismatched download; source bytes remain |
+| Job record unreadable | 409 / `job_record_unreadable` | Explain recovery path without replacing the source |
+| Storage operation unavailable | 503 / `storage_unavailable` | Completion may be uncertain; inspect saved state before retrying |
+
+The optional provider adapter stops consuming a successful response at its 100,000-byte budget, requests identity encoding and rejects compressed responses before decoding, rejects advertised oversize and non-success status before buffering the body, and applies a 60-second whole-request deadline in addition to HTTPX's per-operation timeout. A timeout is not a claim of remote computation cancellation. Only supported typed geometry is accepted.
+
+Runtime operation and update/backup procedures are documented in [LOCAL_OPERATION.md](LOCAL_OPERATION.md). Actual installed-package and browser evidence is recorded by commit in [VERIFICATION.md](VERIFICATION.md).
+
 ## Geometry worker
 Implement `generate_model(spec: GeometryRequest, output_dir: Path) -> dict` and `template_catalog() -> list[dict]`.
 GeometryRequest fields: template enum tray|cable_comb|magnet_frame; width=120, depth=80, height=35, wall=2, bottom=2, dividers=0, slots=5, cable_diameter=6, inset_diameter=52, inset_depth=2, fit_clearance=0.3. All lengths mm. GeometryRequest generic finite/range validation exists; geometry worker validates actual cross-field/geometry constraints per template. The default object is an open-top tray; dividers add internal partitions along width. Cable comb is an open-top cable cradle with rounded channels across depth (not a snapping clamp). Magnet frame has a circular inset pocket for a disc; fit_clearance is extra diameter, not per-side; no claim of magnet-retention or strength.

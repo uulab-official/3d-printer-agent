@@ -1,10 +1,12 @@
 # Development status
 
-Date: 2026-11-13 (Asia/Seoul).
+Date: 2026-11-14 (Asia/Seoul).
 
 Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. This is an experimental local application, not a claim of production or physical-print qualification.
 
 ## Implemented
+
+Version 0.2 adds exclusive data-directory ownership, explicit restart recovery, verified download bytes, useful installation diagnostics and stable per-user storage with legacy compatibility. The UI exposes its actual storage path, reconnects without reloading or replaying uncertain mutations, protects unfinished model work and pages through older history. A dedicated workflow qualifies one shared wheel on three desktop operating systems; observed results are recorded separately below and in [VERIFICATION.md](VERIFICATION.md). See [LOCAL_OPERATION.md](LOCAL_OPERATION.md) for installation, update and recovery behavior.
 
 The app generates three parameterized CAD models; reviews user-supplied filament evidence and calibration changes; prepares Bambu CLI jobs; calculates user-entered delivered prices; and stores job artifacts and user reports. The optional LLM adapter only proposes supported typed model parameters. The Korean UI provides the same operations locally.
 

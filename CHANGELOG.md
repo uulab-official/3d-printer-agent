@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased — 2026-11-13
+## 0.2.0 — 2026-11-14
+
+- Hold an exclusive operating-system lease for each running app's data directory; reject a second writer before opening stores or attempting recovery.
+- Use a stable per-user data location for new installations, retain recognizable legacy `./data` without moving it, and show the selected absolute path in the UI and diagnostics.
+- Reconcile job files into the history index at startup, mark interrupted generation/slicing explicitly, preserve typed generation requests and damaged source records, and never expose partial files as validated downloads.
+- Verify artifact sizes and SHA-256 receipts before downloading; serve and bundle the same verified bytes, including sliced output, while retaining a documented legacy-receipt compatibility path.
+- Reconnect to a restarted local server without reloading the page or replaying a mutation. Protect unfinished model/slicer/outcome work on page exit and before history/template/reset replacement.
+- Page through older history with deterministic cursors, retain the last loaded list on failure and ignore superseded responses.
+- Reject occupied CAD/slicer requests before queueing or reserving another job. Clear a previous slice when a new attempt begins, including failed or interrupted preparation.
+- Stream optional model-provider responses within a bounded byte budget and total deadline; do not read upstream error bodies or expose credentials.
+- Make `doctor` report required dependency/assets/storage failures as structured diagnostics with a nonzero exit code, while keeping unconfigured optional integrations nonblocking.
+- Add installed-wheel qualification for Linux, macOS and Windows with actual CAD/STEP/3MF read-back, HTTP/downloads, directory ownership and restart persistence. Workflow definitions are not results; observed runs are recorded separately in `docs/VERIFICATION.md`.
+
+### Earlier additions included in 0.2.0
 
 - Discover six original starting projects by purpose and optional placement-space dimensions, with measurement guidance and explicit horizontal-rotation results.
 - Prepare a selected project's editable dimensions without generating CAD automatically; preserve unfinished drafts while browsing and require an explicit choice before replacing them.

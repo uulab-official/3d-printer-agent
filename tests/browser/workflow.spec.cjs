@@ -2,9 +2,12 @@ const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
 const { test, expect } = require('@playwright/test');
 const { filamentArchive, printerArchive } = require('./archive-fixture.cjs');
+const { isolatedRuntime } = require('./runtime-server.cjs');
 
-// The server and CAD engine are real. The discovery recovery test explicitly
-// delays one real response and injects one labelled HTTP 503; CAD is never mocked.
+// Servers and CAD are real. Recovery scenarios explicitly label delayed real
+// responses and synthetic HTTP 503 failures. Runtime scenarios restart a real
+// isolated process; the history seed creates synthetic failed/interrupted jobs.
+// CAD generation is never mocked.
 async function openView(page, view) {
   const menu = page.locator('#menu-toggle');
   if (await menu.isVisible()) await menu.click();
@@ -67,6 +70,196 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(async ({ page }) => {
   expect(page.__errors).toEqual([]);
+});
+
+test('real server restart reconnects without replay and preserves unfinished work before confirmed history restore', async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  const runtime = await isolatedRuntime(testInfo);
+  try {
+    await runtime.start();
+    await page.goto(runtime.url);
+    await expect(page.locator('#generate-button')).toBeEnabled();
+    await expect(page.locator('#storage-path')).toContainText('로컬 작업 데이터');
+    await page.locator('#storage-details > summary').click();
+    await expect(page.locator('#storage-path')).toBeVisible();
+    await page.locator('#discovery-cards [data-project-id="small-parts-tray"]').click();
+    await page.locator('#discovery-apply').click();
+    // The server really creates CAD, but reconnect happens before this older
+    // successful response reaches the browser. Recover it explicitly in history.
+    let releaseGeneration, generated;
+    const heldGeneration = new Promise(resolve => { releaseGeneration = resolve; });
+    const generatedOnServer = new Promise(resolve => { generated = resolve; });
+    await page.route(runtime.url + '/api/models', async route => {
+      const actual = await route.fetch();
+      expect(actual.status()).toBe(200);
+      generated();
+      await heldGeneration;
+      await route.fulfill({ response: actual });
+    }, { times: 1 });
+    const created = page.waitForResponse(response => response.url() === runtime.url + '/api/models');
+    await page.locator('#generate-button').click();
+    await generatedOnServer;
+    const refreshedConnection = page.waitForResponse(response => response.url() === runtime.url + '/api/bootstrap');
+    await page.locator('#reconnect-button').click();
+    await (await refreshedConnection).finished();
+    releaseGeneration();
+    const job = await (await created).json();
+    expect(job.result.geometry_status).toBe('validated');
+    await expect(page.locator('#generate-button')).toBeEnabled();
+    await expect(page.locator('#model-result')).toBeHidden();
+    await expect(page.locator('#model-feedback')).toContainText(/연결|이전/);
+    await openView(page, 'history');
+    await page.locator('.history-item').filter({ hasText: job.title }).getByRole('button', { name: '열기' }).click();
+    await expect(page.locator('#model-replace-confirm')).toBeVisible();
+    await page.locator('#model-confirm-replace').click();
+    await expect(page.locator('#model-result')).toBeVisible();
+
+    const requestText = '연결이 끊겨도 이 요청과 미완성 치수는 그대로 보관합니다.';
+    await page.locator('#request-text').fill(requestText);
+    await page.locator('#parameter-width').fill('');
+    await page.locator('#parameter-width').press('-');
+    expect(await page.locator('#parameter-width').evaluate(input => input.validity.badInput)).toBe(true);
+    await openView(page, 'profiles');
+    const unfinishedProfile = '{ "name": "재연결 중 보존할 편집",';
+    await page.locator('#profile-json').fill(unfinishedProfile);
+    await openView(page, 'models');
+
+    await runtime.stop();
+    const restarted = await runtime.start();
+    page.__expectedHttpFailures.push({ path: '/api/discovery', status: 403 });
+    expect((await findProjects(page)).status()).toBe(403);
+    await expect(page.locator('#connection-detail')).toContainText('연결');
+    await expect(page.locator('#reconnect-button')).toBeEnabled();
+    await page.locator('#local-runtime').screenshot({ path: testInfo.outputPath('session-expired.png'), scale: 'css' });
+
+    const writes = [];
+    const countWrites = request => { if (!['GET', 'HEAD'].includes(request.method())) writes.push(request.url()); };
+    page.on('request', countWrites);
+    const freshBootstrap = page.waitForResponse(response => response.url() === runtime.url + '/api/bootstrap');
+    await page.locator('#reconnect-button').click();
+    expect((await (await freshBootstrap).json()).session_token).toBe(restarted.session_token);
+    await expect(page.locator('#generate-button')).toBeEnabled();
+    expect(await page.locator('#parameter-width').evaluate(input => input.validity.badInput)).toBe(true);
+    await expect(page.locator('#request-text')).toHaveValue(requestText);
+    await expect(page.locator('#profile-json')).toHaveValue(unfinishedProfile);
+    expect(writes).toEqual([]);
+    page.off('request', countWrites);
+    await page.locator('#local-runtime').screenshot({ path: testInfo.outputPath('session-reconnected.png'), scale: 'css' });
+
+    await openView(page, 'history');
+    const card = page.locator('.history-item').filter({ hasText: job.title });
+    await card.getByRole('button', { name: '열기' }).click();
+    await expect(page.locator('#model-replace-confirm')).toBeVisible();
+    await noHorizontalOverflow(page);
+    await page.locator('#model-replace-confirm').screenshot({ path: testInfo.outputPath('history-replacement.png'), scale: 'css' });
+    await page.locator('#model-cancel-replace').click();
+    expect(await page.locator('#parameter-width').evaluate(input => input.validity.badInput)).toBe(true);
+    await expect(page.locator('#request-text')).toHaveValue(requestText);
+    await card.getByRole('button', { name: '열기' }).click();
+    await page.locator('#model-confirm-replace').click();
+    await expect(page.locator('#model-result')).toBeVisible();
+    await expect(page.locator('#parameter-width')).toHaveValue('90');
+    await expect(page.locator('#generated-source')).toContainText('작은 물건 트레이');
+    await expect(page.locator('#profile-json')).toHaveValue(unfinishedProfile);
+
+    const retained = await (await page.request.get(runtime.url + '/api/jobs/' + job.id)).json();
+    expect(retained.design_source).toEqual(job.design_source);
+    const manifest = await (await page.request.get(runtime.url + job.artifacts.manifest)).json();
+    const bytes = await (await page.request.get(runtime.url + job.artifacts.three_mf)).body();
+    expect(crypto.createHash('sha256').update(bytes).digest('hex')).toBe(manifest.artifacts.three_mf.sha256);
+    await fs.writeFile(testInfo.outputPath('recovered-job.json'), JSON.stringify(retained, null, 2));
+    await fs.writeFile(testInfo.outputPath('recovered-manifest.json'), JSON.stringify(manifest, null, 2));
+    await fs.writeFile(testInfo.outputPath('recovered-model.3mf'), bytes);
+    await noHorizontalOverflow(page);
+  } finally {
+    await runtime.stop();
+  }
+});
+
+test('history reaches older real CAD beyond a hundred records and retains its list after superseded failures', async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  const runtime = await isolatedRuntime(testInfo);
+  try {
+    await runtime.start();
+    await page.goto(runtime.url);
+    await expect(page.locator('#generate-button')).toBeEnabled();
+    const created = page.waitForResponse(response => response.url() === runtime.url + '/api/models');
+    await page.locator('#generate-button').click();
+    const original = await (await created).json();
+    await expect(page.locator('#model-result')).toBeVisible();
+    await runtime.stop();
+    const seeded = await runtime.seedInterruptedHistory();
+    const bootstrap = await runtime.start();
+    expect(bootstrap.storage.recovery).toEqual({ indexed: 104, interrupted: 1, unreadable: 1 });
+    await page.locator('#reconnect-button').click();
+    await expect(page.locator('#storage-recovery')).toContainText('1');
+    await openView(page, 'history');
+    await expect(page.locator('.history-item')).toHaveCount(20);
+    await expect(page.locator('#history-more')).toBeVisible();
+    await expect(page.locator('#history-list')).toContainText('중단');
+
+    // Hold a real list response, then replace only that older response with an
+    // explicitly synthetic failure after a newer real refresh has succeeded.
+    let release, fetched;
+    const held = new Promise(resolve => { release = resolve; });
+    const ready = new Promise(resolve => { fetched = resolve; });
+    page.__expectedHttpFailures.push({ path: '/api/jobs?limit=20', status: 503 });
+    await page.route('**/api/jobs?limit=20', async route => {
+      const actual = await route.fetch();
+      expect(actual.status()).toBe(200);
+      fetched();
+      await held;
+      await route.fulfill({ status: 503, contentType: 'application/json',
+        body: JSON.stringify({ detail: '브라우저 검사 전용 오래된 실패 응답' }) });
+    }, { times: 1 });
+    const staleResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/jobs?limit=20' && response.status() === 503);
+    await page.locator('#refresh-history').click();
+    await ready;
+    const latestResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/jobs?limit=20' && response.status() === 200);
+    await openView(page, 'models');
+    await openView(page, 'history');
+    await (await latestResponse).finished();
+    await expect(page.locator('.history-item')).toHaveCount(20);
+    release();
+    await (await staleResponse).finished();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator('.history-item')).toHaveCount(20);
+    await expect(page.locator('#history-feedback')).not.toContainText('오래된 실패');
+
+    await page.route('**/api/jobs?limit=20', route => route.fulfill({ status: 503,
+      contentType: 'application/json', body: JSON.stringify({ detail: '브라우저 검사 전용 현재 목록 오류' }) }), { times: 1 });
+    await page.locator('#refresh-history').click();
+    await expect(page.locator('#history-feedback')).toContainText('현재 목록 오류');
+    await expect(page.locator('.history-item')).toHaveCount(20);
+    await page.locator('#refresh-history').click();
+    await expect(page.locator('#history-feedback')).toBeHidden();
+    for (let count = 0; count < 5; count++) {
+      await page.locator('#history-more').click();
+      await expect(page.locator('.history-item')).toHaveCount(Math.min(40 + count * 20, 105));
+    }
+    await expect(page.locator('#history-more')).toBeHidden();
+    const oldest = page.locator('.history-item').filter({ hasText: original.title });
+    await expect(oldest).toBeVisible();
+    await noHorizontalOverflow(page);
+    await oldest.screenshot({ path: testInfo.outputPath('older-cad-history.png'), scale: 'css' });
+    await page.locator('#storage-details > summary').click();
+    await expect(page.locator('#storage-path')).toBeVisible();
+    await page.locator('#local-runtime').screenshot({ path: testInfo.outputPath('startup-recovery.png'), scale: 'css' });
+    await oldest.getByRole('button', { name: '열기' }).click();
+    await expect(page.locator('#model-result')).toBeVisible();
+    const interrupted = await (await page.request.get(runtime.url + '/api/jobs/' + seeded.interrupted)).json();
+    expect(interrupted.status).toBe('interrupted');
+    expect(interrupted.request.width).toBe(139);
+    expect(interrupted.artifacts).toEqual({});
+    const originalAgain = await (await page.request.get(runtime.url + '/api/jobs/' + original.id)).json();
+    expect(originalAgain.result).toEqual(original.result);
+    await fs.writeFile(testInfo.outputPath('history-recovery.json'), JSON.stringify({
+      seed: seeded, recovery: bootstrap.storage.recovery, interrupted, original_job_id: original.id,
+      reached_records: 105, older_real_cad_preserved: true,
+    }, null, 2));
+  } finally {
+    await runtime.stop();
+  }
 });
 
 async function findProjects(page) {
@@ -380,11 +573,15 @@ test('Korean request creates real CAD, downloads it, records an outcome, and inv
   const card = page.locator('.history-item').filter({ hasText: job.title }).first();
   await expect(card).toBeVisible();
   await card.getByRole('button', { name: '열기' }).click();
+  await expect(page.locator('#model-replace-confirm')).toBeVisible();
+  await page.locator('#model-confirm-replace').click();
   await expect(page.locator('#model-result')).toBeVisible();
   await expect(page.locator('#outcome-notes')).toHaveValue(notes);
   await expect(page.locator('#generate-button')).toBeEnabled();
 
   await page.locator('.template-card[data-template="cable_comb"]').click();
+  await expect(page.locator('#model-replace-confirm')).toBeVisible();
+  await page.locator('#model-confirm-replace').click();
   await expect(page.locator('#model-result')).toBeHidden();
   await expect(canvas).toBeHidden();
   await expect(page.locator('#download-links a')).toHaveCount(0);

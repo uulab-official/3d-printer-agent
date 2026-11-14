@@ -546,3 +546,28 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .source-label { font-weight: 650; color: #5c708b; }
 .source-metadata { margin-top: 10px; }
 .source-metadata[open] > summary { margin-bottom: 7px; }
+
+/* Connection recovery and history remain available without discarding the editor. */
+.workspace-health { margin: 0 0 25px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.connection-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.connection-row > div { min-width: 0; }
+.connection-row > .button { flex-shrink: 0; }
+.connection-row p { margin-top: 7px; font-size: 12px; line-height: 1.7; color: #61728a; }
+.storage-details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 11px; }
+.storage-details summary { color: #526987; font-size: 12px; cursor: pointer; }
+.storage-details code { display: block; margin: 7px 0; padding: 10px 12px; border-radius: 7px; background: #f5f7fb; font-size: 12px; line-height: 1.7; color: #405573; overflow-wrap: anywhere; white-space: pre-wrap; }
+.storage-details .field-help { color: #61728a; }
+.model-replacement { margin: 18px 0 25px; scroll-margin-top: 90px; }
+.model-replacement h2 { font-size: 16px; line-height: 1.6; }
+.model-replacement p { font-size: 13px; }
+.history-summary { margin: 0 0 15px; color: #61728a; font-size: 12px; line-height: 1.8; }
+.history-pagination { display: flex; justify-content: center; margin: 20px 0 0; }
+.history-item .history-diagnostic { color: #856842; font-size: 12px; line-height: 1.7; }
+@media (max-width: 540px) {
+  .workspace-health { padding: 14px; }
+  .connection-row { flex-wrap: wrap; align-items: flex-start; gap: 11px; }
+  .connection-row > .button { min-height: 40px; }
+  .result-card > .card-heading { flex-wrap: wrap; align-items: flex-start; gap: 9px; }
+  .result-card > .card-heading > div { flex-basis: 100%; }
+  .model-replacement > div { display: flex; flex-direction: column; }
+}

@@ -1,4 +1,5 @@
 """Constrained planning. Both rule and LLM modes propose typed template parameters only."""
+import asyncio
 import json
 import os
 import re
@@ -18,6 +19,8 @@ DEFAULTS = {
 LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임'}
 NUMBER = r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'
 UNIT = r'\s*(mm|cm|밀리미터|센티미터|밀리|센티)?'
+MAX_LLM_RESPONSE_BYTES = 100_000
+LLM_DEADLINE_SECONDS = 60
 
 
 def _question(message, *, action=None, engine='template_rules'):
@@ -188,25 +191,42 @@ async def plan_with_llm(text: str) -> dict:
         'For N tray compartments use dividers=N-1. fit_clearance adds to diameter. Missing dimensions must be described as assumptions in explanation. '
         'Allowed parameter schema: '+json.dumps(GeometryRequest.model_json_schema(),ensure_ascii=False)
     )
-    headers={'Content-Type':'application/json'}
+    # Keep the wire budget meaningful: HTTPX decodes compressed responses before
+    # yielding aiter_bytes chunks, so a small compressed body could expand first.
+    headers={'Content-Type':'application/json', 'Accept-Encoding':'identity'}
     api_key=os.getenv('PPA_LLM_API_KEY','').strip()
     if api_key:
         headers['Authorization']='Bearer '+api_key
     try:
-        async with httpx.AsyncClient(timeout=60,trust_env=False,follow_redirects=False) as client:
-            response=await client.post(config['base_url']+'/chat/completions',headers=headers,json={
-                'model':config['model'],'temperature':0.1,'messages':[{'role':'system','content':system},{'role':'user','content':text}],
-            })
-            response.raise_for_status()
-            if len(response.content)>100_000:
-                raise ValueError('LLM 응답이 허용 크기를 초과했습니다.')
-            content=response.json()['choices'][0]['message']['content']
-            if not isinstance(content,str):
-                raise ValueError('LLM의 텍스트 응답이 없습니다.')
-            content=re.sub(r'^```(?:json)?\s*|\s*```$','',content.strip())
-            raw=json.loads(content,parse_constant=lambda x: (_ for _ in ()).throw(ValueError('Nonfinite JSON')))
-            return validate_llm_plan(raw)
+        # HTTPX's read timeout applies to each chunk. A separate deadline also
+        # bounds a peer that keeps sending a small amount of data indefinitely.
+        async with asyncio.timeout(LLM_DEADLINE_SECONDS):
+            async with httpx.AsyncClient(timeout=60,trust_env=False,follow_redirects=False) as client:
+                async with client.stream('POST',config['base_url']+'/chat/completions',headers=headers,json={
+                    'model':config['model'],'temperature':0.1,'messages':[{'role':'system','content':system},{'role':'user','content':text}],
+                }) as response:
+                    # Error bodies may contain credentials or be arbitrarily
+                    # large. Neither read nor echo them.
+                    response.raise_for_status()
+                    if response.headers.get('content-encoding','identity').strip().lower() not in ('','identity'):
+                        raise ValueError('LLM 서버의 압축 응답은 지원하지 않습니다. 비압축 JSON 응답을 사용하도록 서버를 확인하세요.')
+                    length=response.headers.get('content-length','')
+                    if length.isdigit() and int(length)>MAX_LLM_RESPONSE_BYTES:
+                        raise ValueError('LLM 응답이 허용 크기를 초과했습니다.')
+                    body=bytearray()
+                    async for chunk in response.aiter_bytes(chunk_size=16_384):
+                        if len(body)+len(chunk)>MAX_LLM_RESPONSE_BYTES:
+                            raise ValueError('LLM 응답이 허용 크기를 초과했습니다.')
+                        body.extend(chunk)
+        content=json.loads(body)['choices'][0]['message']['content']
+        if not isinstance(content,str):
+            raise ValueError('LLM의 텍스트 응답이 없습니다.')
+        content=re.sub(r'^```(?:json)?\s*|\s*```$','',content.strip())
+        raw=json.loads(content,parse_constant=lambda x: (_ for _ in ()).throw(ValueError('LLM 응답에는 유한한 JSON 값만 사용할 수 있습니다.')))
+        return validate_llm_plan(raw)
+    except TimeoutError as exc:
+        raise ValueError('LLM 응답 대기 시간을 초과했습니다. 연결 상태를 확인하거나 템플릿 모드를 사용하세요.') from exc
     except httpx.HTTPStatusError as exc:
         raise ValueError(f'LLM 서버 요청 실패 (HTTP {exc.response.status_code}). 모델과 API 설정을 확인하세요.') from exc
-    except (httpx.InvalidURL,httpx.RequestError,KeyError,IndexError,TypeError,json.JSONDecodeError) as exc:
+    except (httpx.InvalidURL,httpx.RequestError,KeyError,IndexError,TypeError,json.JSONDecodeError,UnicodeDecodeError,RecursionError) as exc:
         raise ValueError('LLM 서버 연결 또는 응답 형식을 확인할 수 없습니다. 템플릿 모드는 계속 사용할 수 있습니다.') from exc

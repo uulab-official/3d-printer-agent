@@ -1,16 +1,18 @@
 """Loopback web app: plan, generate CAD, review evidence, and prepare slicing."""
 import base64
 import binascii
+from contextlib import asynccontextmanager
 import json
 import logging
-import os
 import secrets
+import sqlite3
 import threading
 import uuid
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,9 +29,10 @@ from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
 from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
+from .runtime import DataDirectoryLease, resolve_data_directory
 from .schemas import GeometryRequest
 from .slicer import detect_environment, execute_slice, prepare_slice, probe_environment
-from .storage import JobStore
+from .storage import ArtifactIntegrityError, JobRecordError, JobStore
 from .workspaces import ProfileWorkspaceStore, WorkspaceConflict
 
 MAX_BODY = 2 * 1024 * 1024
@@ -50,12 +53,17 @@ class LocalSessionMiddleware:
         headers = {key.decode('latin-1').lower():value.decode('latin-1') for key,value in scope.get('headers',[])}
         mutates = scope['path'].startswith('/api/') and scope['method'] not in ('GET','HEAD','OPTIONS')
 
-        async def reject(code, detail):
-            await JSONResponse({'detail':detail}, status_code=code)(scope, receive, send)
+        async def reject(code, detail, *, reason=None):
+            content = {'detail':detail}
+            if reason:
+                content['code'] = reason
+            await JSONResponse(content, status_code=code)(scope, receive, send)
 
         if mutates:
-            if not secrets.compare_digest(headers.get('x-session-token',''), self.token):
-                return await reject(403, '현재 앱 화면에서 요청해주세요. 페이지를 새로 고치면 다시 연결됩니다.')
+            # ASGI header values are arbitrary bytes. compare_digest(str, str)
+            # rejects non-ASCII strings; byte comparison safely rejects them.
+            if not secrets.compare_digest(headers.get('x-session-token','').encode('latin-1'), self.token.encode('ascii')):
+                return await reject(403, '작업 공간의 연결이 만료됐습니다. 다시 연결하면 입력 내용을 유지할 수 있습니다.', reason='session_expired')
             origin = headers.get('origin')
             expected_origin = scope.get('scheme','http') + '://' + headers.get('host','')
             if origin is not None and origin != expected_origin:
@@ -198,16 +206,50 @@ class OutcomePayload(StrictPayload):
 
 
 def create_app(data_dir: Path | None = None, *, test_mode=False):
-    data_root = data_dir or Path(os.getenv('PPA_DATA_DIR','data'))
-    store = JobStore(data_root)
-    workspaces = ProfileWorkspaceStore(data_root)
+    selection = resolve_data_directory(data_dir)
+    data_root = Path(selection['path'])
+    recovery = {'indexed': 0, 'interrupted': 0, 'unreadable': 0}
+    # Tests explicitly opt into an isolated, eagerly available factory. Normal
+    # ASGI/CLI startup opens neither database until it owns the directory lease.
+    store = JobStore(data_root) if test_mode else None
+    workspaces = ProfileWorkspaceStore(data_root) if test_mode else None
+
+    @asynccontextmanager
+    async def lifespan(application):
+        nonlocal store, workspaces, recovery
+        if test_mode:
+            yield
+            return
+        with DataDirectoryLease(data_root):
+            store = JobStore(data_root)
+            workspaces = ProfileWorkspaceStore(data_root)
+            recovery = store.recover()
+            application.state.store = store
+            application.state.workspaces = workspaces
+            yield
+
     token = secrets.token_urlsafe(32)
-    app = FastAPI(title='3D Printer Agent', version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title='3D Printer Agent', version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store = store
     app.state.workspaces = workspaces
     app.add_middleware(LocalSessionMiddleware, token=token)
     hosts = ['localhost','127.0.0.1'] + (['testserver'] if test_mode else [])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
+
+    @app.exception_handler(ArtifactIntegrityError)
+    async def artifact_integrity(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'artifact_integrity'}, status_code=409)
+
+    @app.exception_handler(JobRecordError)
+    async def unreadable_job(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'job_record_unreadable'}, status_code=409)
+
+    @app.exception_handler(OSError)
+    @app.exception_handler(sqlite3.Error)
+    async def storage_error(_request, exception):
+        LOGGER.error('Local storage operation failed: exception=%s', type(exception).__name__)
+        return JSONResponse({'detail': '저장 작업을 완료했는지 확인할 수 없습니다. 데이터 폴더의 권한·여유 공간을 확인한 뒤 작업 기록을 먼저 확인해 주세요.',
+                             'code': 'storage_unavailable'}, status_code=503)
 
     @app.exception_handler(WorkspaceConflict)
     async def workspace_conflict(_request, exception):
@@ -229,7 +271,12 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     def bootstrap():
         return {'app':{'name':'3D Printer Agent','version':__version__},'templates':template_catalog(),
                 'discovery':project_catalog(), 'environment':detect_environment(),
-                'provider':provider_config(),'session_token':token}
+                'provider':provider_config(),'session_token':token,
+                'storage': {**selection, 'recovery': dict(recovery)}}
+
+    def resource_busy():
+        return JSONResponse({'detail': '다른 작업이 이 컴퓨터의 생성·슬라이싱 기능을 사용하고 있습니다. 잠시 뒤 직접 다시 시도해 주세요.',
+                             'code': 'resource_busy'}, status_code=409, headers={'Retry-After': '2'})
 
     @app.post('/api/discovery')
     def discovery(payload: DiscoveryRequest):
@@ -237,8 +284,12 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
 
     @app.post('/api/slicer/probe')
     def slicer_probe(_payload: SlicerProbePayload):
-        with SLICER_LOCK:
+        if not SLICER_LOCK.acquire(blocking=False):
+            return resource_busy()
+        try:
             return probe_environment()
+        finally:
+            SLICER_LOCK.release()
 
     @app.post('/api/plan')
     async def plan(payload: PlanPayload):
@@ -249,22 +300,30 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         spec = GeometryRequest.model_validate(payload.model_dump(exclude={'project_selection'}))
         design_source = (resolve_project_selection(payload.project_selection, spec)
                          if payload.project_selection is not None else None)
-        job_id, folder = store.reserve()
+        if not CAD_LOCK.acquire(blocking=False):
+            return resource_busy()
+        job_id = None
         try:
-            with CAD_LOCK:
-                result = generate_model(spec,folder)
+            job_id, folder = store.reserve(request=spec.model_dump(), design_source=design_source)
+            result = generate_model(spec,folder)
             return store.finish(job_id,result,design_source=design_source)
         except ValueError as exc:
-            store.fail(job_id,str(exc))
+            if job_id is not None:
+                store.fail(job_id,str(exc))
             raise
         except Exception as exc:
-            store.fail(job_id,'CAD 생성 중 오류가 발생했습니다. 치수를 줄이거나 다른 템플릿으로 다시 시도해주세요.')
+            if job_id is not None:
+                store.fail(job_id,'CAD 생성 중 오류가 발생했습니다. 치수를 줄이거나 다른 템플릿으로 다시 시도해주세요.')
             LOGGER.error('CAD generation failed: job=%s, exception=%s',job_id,type(exc).__name__)
             raise HTTPException(500,'CAD 생성에 실패했습니다. 작업 기록에서 상태를 확인할 수 있습니다.') from exc
+        finally:
+            CAD_LOCK.release()
 
     @app.get('/api/jobs')
-    def jobs():
-        return {'jobs':store.list_jobs()}
+    def jobs(limit: int | None = Query(default=None, ge=1, le=100), before: str | None = Query(default=None, max_length=512)):
+        if limit is None and before is None:
+            return {'jobs': store.list_jobs()}
+        return store.list_jobs_page(limit=limit if limit is not None else 100, before=before)
 
     @app.get('/api/jobs/{job_id}')
     def job(job_id: str):
@@ -272,10 +331,12 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
 
     @app.get('/api/jobs/{job_id}/files/{kind}')
     def artifact(job_id: str, kind: str):
-        path = store.artifact_path(job_id,kind)
+        path, content = store.read_artifact(job_id,kind)
         media = {'stl':'model/stl','step':'application/step','three_mf':'model/3mf',
                  'sliced_three_mf':'model/3mf','source':'text/plain','manifest':'application/json'}.get(kind,'application/octet-stream')
-        return FileResponse(path,media_type=media,filename=path.name)
+        filename = quote(path.name)
+        disposition = f'attachment; filename="{path.name}"' if filename == path.name else "attachment; filename*=utf-8''" + filename
+        return Response(content, media_type=media, headers={'Content-Disposition': disposition})
 
     @app.get('/api/jobs/{job_id}/bundle')
     def bundle(job_id: str):
@@ -340,13 +401,29 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         job = store.get(payload.job_id)
         if job['status'] != 'geometry_validated':
             raise ValueError('형상 검증이 완료된 모델이 필요합니다.')
-        input_path = store.artifact_path(payload.job_id,'three_mf')
-        work_dir = store.directory(payload.job_id) / 'slices' / uuid.uuid4().hex
-        with SLICER_LOCK:
+        if not SLICER_LOCK.acquire(blocking=False):
+            return resource_busy()
+        began = False
+        try:
+            store.begin_slice(payload.job_id)
+            began = True
+            input_path = store.artifact_path(payload.job_id,'three_mf')
+            work_dir = store.directory(payload.job_id) / 'slices' / uuid.uuid4().hex
             plan = prepare_slice(input_path,work_dir,payload.config_bundle)
             execution = execute_slice(plan) if payload.execute and plan['ready'] else None
-        store.record_slice(payload.job_id,plan,execution)
-        return {'plan':plan,'execution':execution}
+            store.record_slice(payload.job_id,plan,execution)
+            return {'plan':plan,'execution':execution}
+        except Exception as exc:
+            if began:
+                store.record_slice(payload.job_id,
+                    {'ready': False, 'diagnostics': ['새 슬라이싱 요청을 완료하지 못했습니다. 설정과 저장 위치를 확인해 주세요.']},
+                    {'status': 'failed', 'print_status': 'not_started', 'output_path': None})
+            if isinstance(exc, (ValueError, OSError, sqlite3.Error)):
+                raise
+            LOGGER.error('Slice operation failed: job=%s, exception=%s', payload.job_id, type(exc).__name__)
+            raise HTTPException(500, '슬라이싱 요청을 완료하지 못했습니다. 작업 기록에서 마지막 상태를 확인해 주세요.') from exc
+        finally:
+            SLICER_LOCK.release()
 
     static_dir = Path(__file__).parent/'static'
 
