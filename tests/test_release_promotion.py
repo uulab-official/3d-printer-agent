@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import unittest
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 import zipfile
 
 from scripts import promote_release as promotion
@@ -169,7 +170,10 @@ class FakeAPI:
             return deepcopy(self.releases[0])
         raise AssertionError((method, path))
 
-    def download(self, path, *, limit):
+    def download(self, path, *, limit, accept):
+        expected = ('application/vnd.github+json' if '/actions/artifacts/' in path
+                    else 'application/octet-stream')
+        assert accept == expected, (path, accept)
         self.downloads.append(path)
         content = self.binary[path]
         if len(content) > limit:
@@ -212,6 +216,40 @@ class PromotionTests(unittest.TestCase):
         for name, content in self.api.artifact_files['installable-wheel-' + SHA].items():
             self.assertEqual(uploaded[name], content)
         self.assertEqual(self.api.writes[-1], ('PATCH', f'/repos/{REPOSITORY}/releases/90', {'draft': False}))
+
+    def test_download_callers_send_endpoint_specific_accept_headers(self):
+        requests, redirects = [], {}
+        fixture = self.api
+        class Opener:
+            def open(self, request, timeout):
+                requests.append(request)
+                address = urlsplit(request.full_url)
+                if address.hostname == 'api.github.com':
+                    artifact = '/actions/artifacts/' in address.path
+                    expected = 'application/vnd.github+json' if artifact else 'application/octet-stream'
+                    if request.get_header('Accept') != expected:
+                        raise HTTPError(request.full_url, 415, 'Unsupported Media Type', {}, None)
+                    content = fixture.binary[address.path]
+                    if artifact:
+                        target = 'https://release-assets.githubusercontent.com/synthetic/' + digest(address.path.encode())
+                        redirects[target] = content
+                        raise HTTPError(request.full_url, 302, 'redirect', {'Location': target}, None)
+                    return Response(content)
+                return Response(redirects[request.full_url])
+        self.api.download = promotion.GitHubAPI('private-token', opener=Opener()).download
+        self.assertEqual(self.promote()['status'], 'published')
+        actions = [request for request in requests if '/actions/artifacts/' in request.full_url]
+        assets = [request for request in requests if '/releases/assets/' in request.full_url]
+        redirected = [request for request in requests if request.full_url in redirects]
+        self.assertEqual((len(actions), len(assets), len(redirected)), (4, 7, 4))
+        for request in actions:
+            self.assertEqual(request.get_header('Accept'), 'application/vnd.github+json')
+        for request in assets:
+            self.assertEqual(request.get_header('Accept'), 'application/octet-stream')
+        for request in actions + assets:
+            self.assertEqual(request.get_header('Authorization'), 'Bearer private-token')
+        for request in redirected:
+            self.assertIsNone(request.get_header('Authorization'))
 
     def test_each_event_boundary_blocks_publishing_without_mutations(self):
         mutations = [lambda event: event['workflow_run'].update(event='pull_request'),
@@ -491,21 +529,26 @@ class TransportTests(unittest.TestCase):
                 return Response(b'x' * 100)
         api = promotion.GitHubAPI('private-token', opener=Opener())
         with self.assertRaises(promotion.PromotionError):
-            api.download('/repos/example/repo/actions/artifacts/1/zip', limit=10)
+            api.download('/repos/example/repo/actions/artifacts/1/zip', limit=10,
+                         accept='application/vnd.github+json')
 
     def test_signed_download_redirect_never_receives_the_api_token(self):
-        requests = []
-        class Opener:
-            def open(self, request, timeout):
-                requests.append(request)
-                if len(requests) == 1:
-                    raise HTTPError(request.full_url, 302, 'redirect',
-                                    {'Location': 'https://release-assets.githubusercontent.com/synthetic?secret=signed'}, None)
-                return Response(b'qualified bytes')
-        api = promotion.GitHubAPI('private-token', opener=Opener())
-        self.assertEqual(api.download('/repos/example/repo/actions/artifacts/1/zip', limit=100), b'qualified bytes')
-        self.assertEqual(requests[0].get_header('Authorization'), 'Bearer private-token')
-        self.assertIsNone(requests[1].get_header('Authorization'))
+        for path, accept in [('/repos/example/repo/actions/artifacts/1/zip', 'application/vnd.github+json'),
+                             ('/repos/example/repo/releases/assets/1', 'application/octet-stream')]:
+            with self.subTest(path=path):
+                requests = []
+                class Opener:
+                    def open(self, request, timeout):
+                        requests.append(request)
+                        if len(requests) == 1:
+                            raise HTTPError(request.full_url, 302, 'redirect',
+                                            {'Location': 'https://release-assets.githubusercontent.com/synthetic?secret=signed'}, None)
+                        return Response(b'qualified bytes')
+                api = promotion.GitHubAPI('private-token', opener=Opener())
+                self.assertEqual(api.download(path, limit=100, accept=accept), b'qualified bytes')
+                self.assertEqual(requests[0].get_header('Accept'), accept)
+                self.assertEqual(requests[0].get_header('Authorization'), 'Bearer private-token')
+                self.assertIsNone(requests[1].get_header('Authorization'))
 
     def test_non_https_redirect_and_external_authenticated_request_are_rejected(self):
         calls = []
@@ -515,7 +558,8 @@ class TransportTests(unittest.TestCase):
                 raise HTTPError(request.full_url, 302, 'redirect', {'Location': 'http://127.0.0.1/private'}, None)
         api = promotion.GitHubAPI('private-token', opener=Opener())
         with self.assertRaises(promotion.PromotionError) as caught:
-            api.download('/repos/example/repo/actions/artifacts/1/zip', limit=100)
+            api.download('/repos/example/repo/actions/artifacts/1/zip', limit=100,
+                         accept='application/vnd.github+json')
         self.assertNotIn('private-token', str(caught.exception))
         self.assertNotIn('127.0.0.1', str(caught.exception))
         with self.assertRaises(promotion.PromotionError):

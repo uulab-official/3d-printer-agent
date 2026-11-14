@@ -3,7 +3,8 @@
 
 GitHub workflow_run uses trusted current-main code. API authentication is restricted
 to GitHub API/upload hosts; download redirects receive no authorization header.
-Official contracts: https://docs.github.com/en/rest/releases/releases and
+Official contracts: https://docs.github.com/en/rest/actions/artifacts ,
+https://docs.github.com/en/rest/releases/releases and
 https://docs.github.com/en/rest/releases/assets .
 """
 import argparse
@@ -164,10 +165,12 @@ class GitHubAPI:
                 'Untrusted artifact redirect was refused')
         return url
 
-    def download(self, path, *, limit):
+    def download(self, path, *, limit, accept):
+        require(accept in ('application/vnd.github+json', 'application/octet-stream'),
+                'Unsupported GitHub download media type')
         url, authenticated = self._api_url(path), True
         for _ in range(6):
-            headers = self._headers('application/octet-stream') if authenticated else {'User-Agent': '3d-printer-agent-release-promotion'}
+            headers = self._headers(accept) if authenticated else {'User-Agent': '3d-printer-agent-release-promotion'}
             request = urllib.request.Request(url, headers=headers)
             try:
                 with self._opener.open(request, timeout=45) as response:
@@ -356,7 +359,8 @@ def verified_package(api, repository, run, source):
                 and re.fullmatch(r'sha256:[a-f0-9]{64}', item.get('digest', ''))
                 and item.get('workflow_run', {}).get('id') == run['id']
                 and item.get('workflow_run', {}).get('head_sha') == source.commit, 'Qualification artifact identity is invalid')
-        content = api.download(prefix + f'/actions/artifacts/{item["id"]}/zip', limit=MAX_ZIP_BYTES)
+        content = api.download(prefix + f'/actions/artifacts/{item["id"]}/zip', limit=MAX_ZIP_BYTES,
+                               accept='application/vnd.github+json')
         require(len(content) == item['size_in_bytes'] and 'sha256:' + sha256(content) == item['digest'],
                 'Qualification artifact archive digest/size differs')
         payloads[name] = safe_zip(content)
@@ -430,7 +434,8 @@ def verify_asset(api, prefix, asset, name, content):
             and asset.get('state') == 'uploaded' and asset.get('size') == len(content), 'Release asset metadata differs')
     if asset.get('digest') is not None:
         require(asset['digest'] == 'sha256:' + sha256(content), 'Release asset digest differs')
-    actual = api.download(prefix + f'/releases/assets/{asset["id"]}', limit=MAX_ZIP_BYTES)
+    actual = api.download(prefix + f'/releases/assets/{asset["id"]}', limit=MAX_ZIP_BYTES,
+                          accept='application/octet-stream')
     require(actual == content, 'Release asset read-back differs; existing bytes were preserved')
 
 

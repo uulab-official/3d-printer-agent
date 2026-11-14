@@ -9,6 +9,10 @@ on:
       - "scripts/qualify_bambu.py"
       - ".github/workflows/native-bambu.yml"
       - "tests/test_slicer.py"
+      # Release changes require all three gates on the same main commit.
+      - "scripts/promote_release.py"
+      - "tests/test_release_promotion.py"
+      - ".github/workflows/release.yml"
   pull_request:
     paths:
       - "print_agent/**"
@@ -16,6 +20,9 @@ on:
       - "scripts/qualify_bambu.py"
       - ".github/workflows/native-bambu.yml"
       - "tests/test_slicer.py"
+      - "scripts/promote_release.py"
+      - "tests/test_release_promotion.py"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
