@@ -147,10 +147,11 @@ class ArtifactIntegrityTests(unittest.TestCase):
     def test_mismatched_executor_receipt_never_registers_new_output(self):
         path = self.folder / 'changed.gcode.3mf'
         path.write_bytes(b'changed after execution read-back')
-        with self.assertRaises(storage.ArtifactIntegrityError):
-            self.store.record_slice(self.job_id, {'ready': True}, {
-                'status': 'sliced', 'output_path': str(path), 'output_sha256': '0' * 64})
-        self.assertNotIn('sliced_three_mf', self.store.get(self.job_id)['artifacts'])
+        for digest in ('0' * 64, None):
+            with self.subTest(digest=digest), self.assertRaises(storage.ArtifactIntegrityError):
+                self.store.record_slice(self.job_id, {'ready': True}, {
+                    'status': 'sliced', 'output_path': str(path), 'output_sha256': digest})
+            self.assertNotIn('sliced_three_mf', self.store.get(self.job_id)['artifacts'])
 
     def test_legacy_slice_without_original_hash_is_not_recertified(self):
         path = self.folder / 'old.gcode.3mf'

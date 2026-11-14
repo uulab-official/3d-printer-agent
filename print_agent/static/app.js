@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -101,6 +101,9 @@
 
   function connectionFailed(message) {
     state.connectionEpoch += 1;
+    invalidateStudioRequests();
+    state.slicePrepared = false;
+    if (state.job) showNotice("slice-feedback", "연결을 다시 확인한 뒤 현재 설정으로 준비해 주세요. 처리 중이던 요청의 결과는 작업 기록에서 확인할 수 있습니다. 요청을 자동으로 반복하지 않습니다.", "warning");
     state.connectionState = "disconnected";
     state.token = null;
     $("bootstrap-error").hidden = false;
@@ -196,6 +199,8 @@
 
   function invalidateCurrentJob(message) {
     cancelSlicerReads();
+    state.studioRecorded = null;
+    state.studioSavedIdentity = null;
     renderSlicerFiles();
     if (!state.job) return;
     state.job = null;
@@ -531,7 +536,7 @@
   }
 
   function slicerHasUnsavedChanges() {
-    return state.slicerStaged || Object.keys(state.slicerPending || {}).length > 0 || $("slicer-json").value !== (state.slicerSavedText || "");
+    return studioHasUnsavedChanges() || state.slicerStaged || Object.keys(state.slicerPending || {}).length > 0 || $("slicer-json").value !== (state.slicerSavedText || "");
   }
 
   function outcomeHasUnsavedChanges() {
@@ -762,9 +767,9 @@
   function renderDownloads(job) {
     const area = $("download-links");
     area.replaceChildren();
-    const labels = { stl: "STL", step: "STEP", three_mf: "3MF 형상", source: "Python 소스", manifest: "생성 기록", sliced_three_mf: "슬라이스 3MF", slice: "슬라이스 결과" };
+    const labels = { stl: "STL", step: "STEP", three_mf: "3MF 형상", source: "Python 소스", manifest: "생성 기록", prepared_three_mf: "설정 포함 3MF", sliced_three_mf: "슬라이스 3MF", slice: "슬라이스 결과" };
     const files = { ...(job.artifacts || {}) };
-    if (["running", "interrupted"].includes(job.latest_slice?.phase)) { delete files.sliced_three_mf; delete files.slice; }
+    if (["running", "interrupted"].includes(job.latest_slice?.phase)) { delete files.prepared_three_mf; delete files.sliced_three_mf; delete files.slice; }
     if (job.bundle_url) files.bundle = job.bundle_url;
     labels.bundle = "전체 묶음";
     for (const [key, url] of Object.entries(files)) {
@@ -783,6 +788,8 @@
     if (!result) throw new Error("작업에 모델 결과가 없습니다.");
     cancelSlicerReads();
     state.job = job;
+    state.studioRecorded = job.latest_slice?.plan?.kind === "studio_project" ? job.latest_slice.plan.project_source || null : null;
+    state.studioSavedIdentity = studioSourceIdentity(state.studioRecorded);
     renderProjectSource("generated-source", job.design_source);
     state.slicePrepared = false;
     $("model-result").hidden = false;
@@ -819,6 +826,231 @@
     updateWorkflowControls();
   }
 
+  function studioSourceIdentity(inspection) {
+    if (!inspection || !/^[a-f0-9]{32}$/.test(inspection.source_id || "") || !/^[a-f0-9]{64}$/.test(inspection.source?.sha256 || "") || !/^[a-f0-9]{64}$/.test(inspection.settings_sha256 || "")) return "";
+    return JSON.stringify([inspection.source_id, inspection.source.sha256, inspection.settings_sha256]);
+  }
+
+  function studioModelSignature() {
+    return JSON.stringify([state.job?.id || null, state.job?.artifacts?.three_mf || null, state.job?.result?.parameters || null, state.job?.result?.dimensions_mm || null]);
+  }
+
+  function studioContext() {
+    return JSON.stringify([state.studioRequest, state.studioRevision, state.connectionEpoch, state.storage?.path || null, state.slicerContext, studioModelSignature(), studioSourceIdentity(state.studioApplied)]);
+  }
+
+  function studioContextCurrent(context) {
+    return context === studioContext();
+  }
+
+  function studioSourceCurrent() {
+    return Boolean(state.token && state.studioApplied?.supported === true && studioSourceIdentity(state.studioApplied) && state.studioAppliedEpoch === state.connectionEpoch && state.studioAppliedStorage === (state.storage?.path || null));
+  }
+
+  function studioHasUnsavedChanges() {
+    return Boolean(state.studioPending || state.studioCandidate || (state.studioApplied && studioSourceIdentity(state.studioApplied) !== state.studioSavedIdentity));
+  }
+
+  function invalidateStudioRequests() {
+    state.studioRequest = (state.studioRequest || 0) + 1;
+    state.studioRevision = (state.studioRevision || 0) + 1;
+    state.studioPending = false;
+    state.studioPendingName = "";
+    state.studioSlicePrepared = false;
+    state.studioPreparedSignature = null;
+  }
+
+  function renderStudioSource(area, inspection, title, verified = false) {
+    area.replaceChildren();
+    area.hidden = !inspection;
+    if (!inspection) return;
+    const value = (item) => item === undefined || item === null || item === "" ? "기록 없음" : Array.isArray(item) ? item.join(" · ") : String(item);
+    area.append(node("h4", "", title), node("p", "", inspection.source?.filename || "기록된 프로젝트"));
+    const fields = [["프린터", "printer_model"], ["프린터 프리셋", "printer_preset"], ["노즐 지름 · mm", "nozzle_diameter"], ["플레이트", "plate_type"], ["필라멘트", "filament_name"], ["재료 종류", "filament_type"], ["출력 공정", "process_preset"]];
+    const list = node("dl", "studio-source-summary");
+    for (const [label, key] of fields) {
+      const row = node("div");
+      row.append(node("dt", "", label), node("dd", "", value(inspection.summary?.[key])));
+      list.append(row);
+    }
+    area.append(list, node("p", "", "프로젝트에 기록된 값입니다. 실제 장착 장비·제품 식별·출력 품질을 확인한 결과는 아닙니다."));
+    if (inspection.issues?.length) {
+      const issues = node("ul", "reason-list");
+      inspection.issues.forEach((issue) => issues.append(node("li", "", issue.message || issue.code)));
+      area.append(issues);
+    }
+    const details = node("details", "help-details");
+    details.append(node("summary", "", "원본·버전·기록된 수치 확인"), node("pre", "", JSON.stringify({ source: inspection.source, producer: inspection.producer, settings_sha256: inspection.settings_sha256, recorded_settings: inspection.summary, warnings: inspection.warnings || [] }, null, 2)));
+    area.append(details);
+    const path = `/api/studio-projects/${inspection.source_id}/archive`;
+    if (verified && studioSourceIdentity(inspection) && inspection.archive_url === path) {
+      const link = node("a", "text-button", "보관한 원본 프로젝트 다운로드");
+      link.href = path;
+      link.setAttribute("download", "");
+      area.append(link);
+    }
+  }
+
+  function renderStudioProject() {
+    const busy = state.workflowBusy || state.bootstrapPending;
+    const candidate = state.studioCandidate;
+    const candidateCurrent = Boolean(candidate && state.studioCandidateEpoch === state.connectionEpoch && state.studioCandidateStorage === (state.storage?.path || null));
+    const appliedCurrent = studioSourceCurrent();
+    renderStudioSource($("studio-project-candidate"), candidate, candidate?.supported ? "확인한 후보 · 아직 적용하지 않았습니다" : "이 후보의 지원 조건을 확인해 주세요", candidateCurrent);
+    renderStudioSource($("studio-project-applied"), state.studioApplied, appliedCurrent ? "현재 선택한 프로젝트 설정" : "보관 중인 선택 · 원본 다시 확인 필요", appliedCurrent);
+    renderStudioSource($("studio-project-recorded"), state.studioRecorded, "이 모델의 작업 기록에 남은 원본");
+    $("studio-project-file").disabled = busy || !state.token;
+    $("studio-project-candidate-actions").hidden = !candidate && !state.studioPending;
+    $("studio-project-apply").disabled = busy || state.studioPending || !state.token || !candidateCurrent || candidate?.supported !== true;
+    $("studio-project-apply").textContent = state.studioApplied || $("slicer-json").value ? "이 후보 설정 선택 · 기존 입력은 보관" : "이 프로젝트 설정 선택";
+    $("studio-project-cancel").disabled = busy || (!candidate && !state.studioPending);
+    const needsRevalidation = Boolean(candidate ? !candidateCurrent : state.studioApplied && !appliedCurrent);
+    $("studio-project-revalidate").hidden = !needsRevalidation;
+    $("studio-project-revalidate").disabled = busy || state.studioPending || !state.token || !needsRevalidation;
+    $("studio-project-revalidate").textContent = candidate ? "후보 원본 다시 확인" : "선택한 원본 다시 확인";
+    const canPrepare = Boolean(state.token && state.job?.result && appliedCurrent && !busy && !state.studioPending && !candidate);
+    if (!$("prepare-studio-project").dataset.busy) $("prepare-studio-project").disabled = !canPrepare;
+    if (!$("execute-studio-project").dataset.busy) $("execute-studio-project").disabled = !canPrepare || !state.environment.available || !state.studioSlicePrepared || !studioContextCurrent(state.studioPreparedSignature);
+    $("studio-project-history-source").hidden = !studioSourceIdentity(state.studioRecorded);
+    $("studio-project-history-source").disabled = busy || state.studioPending || !state.token || !studioSourceIdentity(state.studioRecorded);
+    $("studio-project-status").textContent = state.studioPending ? `${state.studioPendingName || "원본"} 확인 중… 기존 선택은 유지합니다.` : candidate ? "후보를 확인한 뒤 선택하거나 취소하세요." : state.studioApplied ? appliedCurrent ? "선택한 원본의 전역 설정을 사용할 수 있습니다." : "현재 연결에서 원본을 다시 확인하거나 파일을 다시 선택하세요." : "사용하던 Studio 프로젝트를 선택하세요.";
+    $("studio-project-next").textContent = candidate ? "후보를 선택하기 전까지 기존 설정과 수동 JSON을 바꾸지 않습니다. 다른 재료 작업의 원본과 편집 내용도 유지합니다." : !state.studioApplied ? "프로젝트를 확인한 뒤 사용할 설정을 직접 선택합니다. 수동 JSON과 재료 편집 내용은 유지됩니다." : !appliedCurrent ? "저장 위치나 연결이 바뀌면 같은 원본인지 다시 확인해야 합니다. 이전 요청을 자동으로 반복하지 않습니다." : !state.job?.result ? "설정을 선택했습니다. 적용할 CAD 모델을 먼저 만들어 주세요." : "현재 CAD에 설정을 담은 뒤 파일을 내려받거나 지원되는 Studio에서 별도로 슬라이싱할 수 있습니다.";
+    const download = $("studio-project-prepared-download");
+    const prepared = state.job?.latest_slice?.plan;
+    const settled = !["running", "interrupted"].includes(state.job?.latest_slice?.phase);
+    const href = settled && appliedCurrent && prepared?.kind === "studio_project" && prepared.project_prepared && studioSourceIdentity(prepared.project_source) === studioSourceIdentity(state.studioApplied) ? localDownload(state.job?.artifacts?.prepared_three_mf) : null;
+    download.hidden = !href;
+    if (href) download.href = href; else download.removeAttribute("href");
+  }
+
+  async function importStudioProject(input) {
+    const file = input.files?.[0];
+    if (!file || state.workflowBusy) return;
+    input.value = "";
+    invalidateStudioRequests();
+    state.studioCandidate = null;
+    state.studioCandidateEpoch = null;
+    state.studioCandidateStorage = null;
+    state.studioPending = true;
+    state.studioPendingName = file.name;
+    const request = state.studioRequest, context = studioContext();
+    hideNotice("studio-project-feedback");
+    renderStudioProject();
+    try {
+      if (!/\.3mf$/i.test(file.name) || file.name.length > 240) throw new Error("이름이 240자 이하인 Studio .3mf 프로젝트 파일을 선택해 주세요.");
+      if (file.size > 16 * 1024 * 1024) throw new Error("Studio 프로젝트는 16 MiB 이하여야 합니다.");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!studioContextCurrent(context)) return;
+      if (!bytes.length || bytes.length > 16 * 1024 * 1024) throw new Error("읽은 프로젝트 파일의 크기는 1바이트 이상, 16 MiB 이하여야 합니다.");
+      const chunks = [];
+      for (let offset = 0; offset < bytes.length; offset += 32768) chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
+      const result = await api("/api/studio-projects/import", { filename: file.name, content_base64: btoa(chunks.join("")) }, undefined, { current: () => studioContextCurrent(context) });
+      if (!studioContextCurrent(context)) return;
+      if (!studioSourceIdentity(result) || typeof result.supported !== "boolean") throw new Error("서버의 프로젝트 원본 확인 응답을 읽지 못했습니다.");
+      state.studioCandidate = result;
+      state.studioCandidateEpoch = state.connectionEpoch;
+      state.studioCandidateStorage = state.storage?.path || null;
+      showNotice("studio-project-feedback", result.supported ? "원본과 기록된 설정을 확인했습니다. 사용할 후보를 직접 선택해 주세요." : "원본은 보관했지만 이 프로젝트의 설정은 현재 준비 경로에서 지원하지 않습니다. 아래 확인 사항을 살펴보세요.", result.supported ? "info" : "warning");
+    } catch (error) {
+      if (studioContextCurrent(context)) showNotice("studio-project-feedback", `${file.name}: ${error.message} 기존 선택과 편집 내용은 유지했습니다.`, "error");
+    } finally {
+      if (request === state.studioRequest) { state.studioPending = false; state.studioPendingName = ""; }
+      renderStudioProject();
+    }
+  }
+
+  function cancelStudioCandidate() {
+    invalidateStudioRequests();
+    state.studioCandidate = null;
+    state.studioCandidateEpoch = null;
+    state.studioCandidateStorage = null;
+    $("studio-project-file").value = "";
+    hideNotice("studio-project-feedback");
+    renderStudioProject();
+  }
+
+  function applyStudioCandidate() {
+    const candidate = state.studioCandidate;
+    if (state.workflowBusy || state.studioPending || !state.token || candidate?.supported !== true || !studioSourceIdentity(candidate) || state.studioCandidateEpoch !== state.connectionEpoch || state.studioCandidateStorage !== (state.storage?.path || null)) return;
+    cancelSlicerReads();
+    state.studioApplied = candidate;
+    state.studioAppliedEpoch = state.connectionEpoch;
+    state.studioAppliedStorage = state.storage?.path || null;
+    state.studioCandidate = null;
+    state.studioCandidateEpoch = null;
+    state.studioCandidateStorage = null;
+    state.studioSavedIdentity = null;
+    resetSlicePreparation("프로젝트 설정을 선택했습니다. 현재 CAD에 설정을 담아 새로 준비해 주세요. 수동 JSON과 재료 편집 내용은 유지했습니다.");
+    showNotice("studio-project-feedback", "선택한 원본의 전역 설정을 사용합니다. 아직 설정 포함 3MF 생성이나 슬라이싱을 실행하지 않았습니다.", "info");
+    renderStudioProject();
+  }
+
+  async function revalidateStudioProject(recorded = false) {
+    const mode = recorded ? "recorded" : state.studioCandidate ? "candidate" : "applied";
+    const selected = mode === "recorded" ? state.studioRecorded : mode === "candidate" ? state.studioCandidate : state.studioApplied;
+    const identity = studioSourceIdentity(selected);
+    if (!identity || state.workflowBusy || !state.token) return;
+    invalidateStudioRequests();
+    state.studioPending = true;
+    state.studioPendingName = selected.source.filename;
+    const request = state.studioRequest, context = studioContext();
+    renderStudioProject();
+    try {
+      const result = await api(`/api/studio-projects/${selected.source_id}`, undefined, undefined, { current: () => studioContextCurrent(context) });
+      if (!studioContextCurrent(context)) return;
+      if (studioSourceIdentity(result) !== identity) throw new Error("현재 저장 위치의 원본 식별 정보가 이전 기록과 일치하지 않습니다. 파일을 다시 선택해 주세요.");
+      if (mode === "applied") {
+        state.studioApplied = result;
+        state.studioAppliedEpoch = state.connectionEpoch;
+        state.studioAppliedStorage = state.storage?.path || null;
+      } else {
+        state.studioCandidate = result;
+        state.studioCandidateEpoch = state.connectionEpoch;
+        state.studioCandidateStorage = state.storage?.path || null;
+      }
+      showNotice("studio-project-feedback", mode === "applied" ? "같은 원본임을 다시 확인했습니다. 현재 CAD에 설정을 담아 다시 준비해 주세요." : "기록과 같은 원본임을 확인했습니다. 후보를 직접 선택한 뒤 현재 CAD에 설정을 담아 주세요.", "info");
+    } catch (error) {
+      if (studioContextCurrent(context)) showNotice("studio-project-feedback", `${error.message} 기존 입력은 유지했습니다. 필요하면 원본 .3mf를 다시 선택해 주세요.`, "error");
+    } finally {
+      if (request === state.studioRequest) { state.studioPending = false; state.studioPendingName = ""; }
+      renderStudioProject();
+    }
+  }
+
+  async function runStudioSlice(execute) {
+    const button = execute ? $("execute-studio-project") : $("prepare-studio-project");
+    let context = null;
+    try {
+      if (!studioSourceCurrent() || state.studioCandidate || state.studioPending || !state.job?.result) throw new Error("원본을 다시 확인하고 프로젝트 설정과 현재 CAD를 선택해 주세요.");
+      if (execute && (!state.studioSlicePrepared || !studioContextCurrent(state.studioPreparedSignature) || !state.environment.available)) throw new Error("현재 원본과 CAD로 설정을 먼저 준비하고 지원되는 Studio 설치를 확인해 주세요.");
+      await withWorkflow(button, execute ? "프로젝트 슬라이싱 중" : "CAD에 설정 담는 중", async () => {
+        const sourceId = state.studioApplied.source_id, jobId = state.job.id;
+        invalidateStudioRequests();
+        resetSlicePreparation(execute ? "선택한 프로젝트와 현재 CAD로 슬라이싱하고 있습니다." : "원본의 전역 설정과 현재 CAD를 새 3MF에 담고 있습니다.");
+        context = studioContext();
+        const response = await api("/api/slice", { job_id: jobId, studio_project_id: sourceId, execute }, undefined, { current: () => studioContextCurrent(context) });
+        if (!studioContextCurrent(context)) return;
+        state.studioSavedIdentity = studioSourceIdentity(state.studioApplied);
+        state.studioSlicePrepared = Boolean(response.plan?.ready) && !execute;
+        state.studioPreparedSignature = state.studioSlicePrepared ? studioContext() : null;
+        state.studioRecorded = response.plan?.project_source || null;
+        renderSliceResult(response.plan || {}, response.execution);
+        try {
+          const full = await api(`/api/jobs/${encodeURIComponent(jobId)}`, undefined, undefined, { current: () => studioContextCurrent(context) });
+          if (!studioContextCurrent(context)) return;
+          state.job = full;
+          renderDownloads(full);
+          state.studioPreparedSignature = state.studioSlicePrepared ? studioContext() : null;
+        } catch (error) { if (studioContextCurrent(context)) toast("준비 결과는 받았지만 파일 목록을 불러오지 못했습니다. 작업 기록에서 확인해 주세요."); }
+      });
+    } catch (error) {
+      if (context !== null && !studioContextCurrent(context)) return;
+      state.studioSlicePrepared = false;
+      state.studioPreparedSignature = null;
+      showNotice("slice-feedback", error.message, "error");
+    } finally { updateSliceControls(); }
+  }
+
   function updateSliceControls() {
     const reading = Object.keys(state.slicerPending).length > 0;
     const busy = state.workflowBusy;
@@ -831,12 +1063,16 @@
     $("slicer-json").disabled = busy || state.slicerStaged || Boolean(state.slicerPending.bundle);
     $("slicer-file").disabled = busy || state.slicerStaged;
     for (const id of ["slicer-machine-file", "slicer-process-file", "slicer-filament-files", "slicer-plate"]) $(id).disabled = busy || Boolean(state.slicerPending.bundle);
+    renderStudioProject();
   }
 
   function resetSlicePreparation(message) {
     state.slicePrepared = false;
+    state.studioSlicePrepared = false;
+    state.studioPreparedSignature = null;
     if (state.job) {
       const artifacts = { ...state.job.artifacts };
+      delete artifacts.prepared_three_mf;
       delete artifacts.sliced_three_mf;
       delete artifacts.slice;
       state.job = { ...state.job, artifacts };
@@ -868,6 +1104,9 @@
       const details = node("details", "help-details");
       details.append(node("summary", "", "실행 기록과 검사 결과"), node("pre", "", JSON.stringify(execution, null, 2)));
       area.append(details);
+    } else if (plan.kind === "studio_project" && plan.project_prepared) {
+      const message = recorded ? "기록된 설정 포함 3MF가 있습니다. 원본을 다시 확인한 뒤 현재 CAD로 새로 준비해 주세요." : plan.ready ? "설정 포함 3MF를 준비했습니다. 파일을 내려받거나 지원되는 Studio에서 별도로 슬라이싱할 수 있습니다." : "설정 포함 3MF를 준비했습니다. 파일을 내려받아 Studio에서 열 수 있으며, 현재 환경의 로컬 슬라이싱 실행 조건은 별도로 확인해야 합니다.";
+      showNotice("slice-feedback", message, "info", plan.diagnostics || []);
     } else {
       const message = recorded
         ? (plan.ready ? "저장된 실행 계획이 있습니다. 현재 전체 설정으로 다시 검토한 뒤 슬라이싱을 실행해 주세요." : "저장된 실행 계획은 준비되지 않았습니다. 아래 사항과 현재 설정을 확인해 주세요.")
@@ -883,22 +1122,37 @@
 
   async function runSlice(execute) {
     const button = execute ? $("execute-slice") : $("prepare-slice");
+    let context = null, submittedText = null;
+    const current = () => context !== null && studioContextCurrent(context) && $("slicer-json").value === submittedText;
     try {
       if (state.slicerStaged || Object.keys(state.slicerPending).length) throw new Error("설정 파일을 선택 중입니다. 묶음을 만들거나 편집을 취소한 뒤 실행 계획을 검토해 주세요.");
       await withWorkflow(button, execute ? "슬라이싱 실행 중" : "전체 설정 검토 중", async () => {
         const jobId = state.job?.id;
         if (!jobId) throw new Error("먼저 현재 제작안의 모델을 생성해 주세요.");
-        const submittedText = $("slicer-json").value;
+        submittedText = $("slicer-json").value;
         const bundle = parseObject(submittedText, "슬라이서 전체 설정");
+        cancelSlicerReads();
         resetSlicePreparation(execute ? "검토한 설정으로 슬라이싱하고 있습니다." : "전체 설정과 실행 계획을 검토하고 있습니다.");
-        const response = await api("/api/slice", { job_id: jobId, config_bundle: bundle, execute });
+        context = studioContext();
+        const response = await api("/api/slice", { job_id: jobId, config_bundle: bundle, execute }, undefined, { current });
+        if (!current()) return;
         state.slicerSavedText = submittedText;
         state.slicePrepared = Boolean(response.plan?.ready) && !execute;
+        state.studioRecorded = null;
+        state.studioSavedIdentity = null;
         renderSliceResult(response.plan || {}, response.execution);
-        try { state.job = await api(`/api/jobs/${encodeURIComponent(jobId)}`); renderDownloads(state.job); }
-        catch { toast("검토 결과는 받았지만 파일 목록을 새로 불러오지 못했습니다. 작업 기록에서 다시 확인해 주세요."); }
+        try {
+          const full = await api(`/api/jobs/${encodeURIComponent(jobId)}`, undefined, undefined, { current });
+          if (!current()) return;
+          state.job = full;
+          renderDownloads(full);
+        } catch { if (current()) toast("검토 결과는 받았지만 파일 목록을 새로 불러오지 못했습니다. 작업 기록에서 다시 확인해 주세요."); }
       });
-    } catch (error) { state.slicePrepared = false; showNotice("slice-feedback", error.message, "error"); }
+    } catch (error) {
+      if (context !== null && !current()) return;
+      state.slicePrepared = false;
+      showNotice("slice-feedback", error.message, "error");
+    }
     finally { updateSliceControls(); }
   }
   $("prepare-slice").addEventListener("click", () => runSlice(false));
@@ -907,6 +1161,7 @@
   function cancelSlicerReads() {
     state.slicerContext += 1;
     state.slicerPending = {};
+    invalidateStudioRequests();
   }
 
   function renderSlicerFiles() {
@@ -1041,7 +1296,7 @@
     setBadge("slicer-status", !available ? "현재 환경에서 사용 불가" : supported === true ? "CLI 기능 확인됨" : supported === false ? "CLI 실행 조건 확인 필요" : "실행 파일 감지됨", supported === true ? "blue" : supported === false ? "warning" : "neutral");
     $("slicer-description").textContent = available
       ? "실행 파일을 찾았습니다. 설치된 슬라이서 확인을 누르면 버전과 필요한 명령줄 기능을 확인합니다. 모델과 전체 설정의 슬라이싱은 별도 단계입니다."
-      : "Bambu Studio 실행 파일을 찾지 못했습니다. 설치·실행 경로를 설정한 뒤 앱을 다시 열어 주세요. 설정 묶음 작성과 모델 파일 다운로드는 사용할 수 있습니다.";
+      : "Bambu Studio 실행 파일을 찾지 못했습니다. 프로젝트 설정 확인, 현재 CAD에 설정을 담은 3MF 생성과 다운로드는 사용할 수 있습니다. 로컬 슬라이싱은 Studio 설치·실행 경로를 설정한 뒤 다시 연결해 주세요.";
     const details = [];
     if (environment.path) details.push(`실행 파일: ${environment.path}`);
     if (supported !== undefined) {
@@ -1081,6 +1336,13 @@
   });
   $("cancel-slicer-assembly").addEventListener("click", cancelSlicerAssembly);
   $("probe-slicer").addEventListener("click", probeSlicer);
+  $("studio-project-file").addEventListener("change", (event) => importStudioProject(event.target));
+  $("studio-project-cancel").addEventListener("click", cancelStudioCandidate);
+  $("studio-project-apply").addEventListener("click", applyStudioCandidate);
+  $("studio-project-revalidate").addEventListener("click", () => revalidateStudioProject(false));
+  $("studio-project-history-source").addEventListener("click", () => revalidateStudioProject(true));
+  $("prepare-studio-project").addEventListener("click", () => runStudioSlice(false));
+  $("execute-studio-project").addEventListener("click", () => runStudioSlice(true));
 
   $("outcome-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -2358,6 +2620,8 @@
     cancelSlicerReads();
     state.job = null;
     state.slicePrepared = false;
+    state.studioRecorded = null;
+    state.studioSavedIdentity = null;
     state.slicerSavedText = "";
     state.modelCleanSignature = null;
     viewer.clear();
@@ -2397,6 +2661,9 @@
     const request = ++state.bootstrapRequest;
     const previousStoragePath = state.storage?.path;
     state.connectionEpoch += 1;
+    invalidateStudioRequests();
+    state.slicePrepared = false;
+    if (state.job) showNotice("slice-feedback", "연결을 다시 확인합니다. 현재 입력은 유지하며 실행 계획은 새로 준비해야 합니다. 처리 중이던 요청의 결과는 작업 기록에서 확인해 주세요.", "info");
     cancelModelReplacement();
     state.historyRequest += 1;
     state.historyPending = false;

@@ -15,7 +15,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import __version__
@@ -31,8 +31,10 @@ from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
 from .runtime import DataDirectoryLease, require_compatible_data, resolve_data_directory
 from .schemas import GeometryRequest
-from .slicer import detect_environment, execute_slice, prepare_slice, probe_environment
+from .slicer import detect_environment, execute_slice, prepare_slice, prepare_project_slice, probe_environment
 from .storage import ArtifactIntegrityError, JobRecordError, JobStore
+from .studio_project import MAX_ARCHIVE_BYTES, MAX_IMPORT_REQUEST_BYTES
+from .studio_sources import StudioProjectStore, StudioSourceIntegrityError
 from .workspaces import ProfileWorkspaceStore, WorkspaceConflict
 
 MAX_BODY = 2 * 1024 * 1024
@@ -75,7 +77,8 @@ class LocalSessionMiddleware:
             path = scope['path']
             large_import = (path in ('/api/slice', '/api/profiles/resolve', '/api/profiles/import-archive', '/api/profile-workspaces')
                             or path.startswith('/api/profile-workspaces/'))
-            max_body = MAX_WORKSPACE_BODY if large_import else MAX_BODY
+            max_body = (MAX_IMPORT_REQUEST_BYTES if path == '/api/studio-projects/import'
+                        else MAX_WORKSPACE_BODY if large_import else MAX_BODY)
             size_message = f'요청 전체는 {max_body // (1024 * 1024)} MiB 이하여야 합니다.'
             try:
                 if int(headers.get('content-length','0')) > max_body:
@@ -192,8 +195,20 @@ class OffersPayload(StrictPayload):
 
 class SlicePayload(StrictPayload):
     job_id: str
-    config_bundle: dict
+    config_bundle: dict | None = None
+    studio_project_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
     execute: bool = False
+
+    @model_validator(mode='after')
+    def one_source(self):
+        if (self.config_bundle is None) == (self.studio_project_id is None):
+            raise ValueError('전체 설정 묶음 또는 Studio 프로젝트 원본 중 하나만 선택하세요.')
+        return self
+
+
+class StudioProjectPayload(StrictPayload):
+    filename: str = Field(min_length=1, max_length=240)
+    content_base64: str = Field(min_length=1, max_length=4 * ((MAX_ARCHIVE_BYTES + 2) // 3))
 
 
 class SlicerProbePayload(StrictPayload):
@@ -213,10 +228,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     # ASGI/CLI startup opens neither database until it owns the directory lease.
     store = JobStore(data_root) if test_mode else None
     workspaces = ProfileWorkspaceStore(data_root) if test_mode else None
+    studio_sources = StudioProjectStore(data_root) if test_mode else None
 
     @asynccontextmanager
     async def lifespan(application):
-        nonlocal store, workspaces, recovery
+        nonlocal store, workspaces, studio_sources, recovery
         if test_mode:
             yield
             return
@@ -224,15 +240,18 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             require_compatible_data(data_root)
             store = JobStore(data_root)
             workspaces = ProfileWorkspaceStore(data_root)
+            studio_sources = StudioProjectStore(data_root)
             recovery = store.recover()
             application.state.store = store
             application.state.workspaces = workspaces
+            application.state.studio_sources = studio_sources
             yield
 
     token = secrets.token_urlsafe(32)
     app = FastAPI(title='3D Printer Agent', version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store = store
     app.state.workspaces = workspaces
+    app.state.studio_sources = studio_sources
     app.add_middleware(LocalSessionMiddleware, token=token)
     hosts = ['localhost','127.0.0.1'] + (['testserver'] if test_mode else [])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
@@ -244,6 +263,10 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.exception_handler(JobRecordError)
     async def unreadable_job(_request, exception):
         return JSONResponse({'detail': str(exception), 'code': 'job_record_unreadable'}, status_code=409)
+
+    @app.exception_handler(StudioSourceIntegrityError)
+    async def studio_source_integrity(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'studio_source_integrity'}, status_code=409)
 
     @app.exception_handler(OSError)
     @app.exception_handler(sqlite3.Error)
@@ -334,7 +357,8 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     def artifact(job_id: str, kind: str):
         path, content = store.read_artifact(job_id,kind)
         media = {'stl':'model/stl','step':'application/step','three_mf':'model/3mf',
-                 'sliced_three_mf':'model/3mf','source':'text/plain','manifest':'application/json'}.get(kind,'application/octet-stream')
+                 'sliced_three_mf':'model/3mf','prepared_three_mf':'model/3mf',
+                 'source':'text/plain','manifest':'application/json'}.get(kind,'application/octet-stream')
         filename = quote(path.name)
         disposition = f'attachment; filename="{path.name}"' if filename == path.name else "attachment; filename*=utf-8''" + filename
         return Response(content, media_type=media, headers={'Content-Disposition': disposition})
@@ -397,6 +421,24 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     def offers_compare(payload: OffersPayload):
         return compare_offers(payload.offers)
 
+    @app.post('/api/studio-projects/import', status_code=201)
+    def import_studio_project(payload: StudioProjectPayload):
+        try:
+            content = base64.b64decode(payload.content_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError('Studio 프로젝트 파일을 다시 선택해 주세요. 올바른 base64 데이터가 필요합니다.') from exc
+        return studio_sources.import_project(payload.filename, content)
+
+    @app.get('/api/studio-projects/{source_id}')
+    def get_studio_project(source_id: str):
+        return studio_sources.get(source_id)
+
+    @app.get('/api/studio-projects/{source_id}/archive')
+    def studio_project_archive(source_id: str):
+        filename, content = studio_sources.archive(source_id)
+        return Response(content, media_type='model/3mf',
+                        headers={'Content-Disposition': "attachment; filename*=utf-8''" + quote(filename)})
+
     @app.post('/api/slice')
     def slice_model(payload: SlicePayload):
         job = store.get(payload.job_id)
@@ -410,7 +452,12 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             began = True
             input_path = store.artifact_path(payload.job_id,'three_mf')
             work_dir = store.directory(payload.job_id) / 'slices' / uuid.uuid4().hex
-            plan = prepare_slice(input_path,work_dir,payload.config_bundle)
+            if payload.studio_project_id is not None:
+                snapshot, source_content = studio_sources.read(payload.studio_project_id)
+                plan = prepare_project_slice(input_path, work_dir, snapshot['source']['filename'], source_content,
+                                             source_id=payload.studio_project_id)
+            else:
+                plan = prepare_slice(input_path,work_dir,payload.config_bundle)
             execution = execute_slice(plan) if payload.execute and plan['ready'] else None
             store.record_slice(payload.job_id,plan,execution)
             return {'plan':plan,'execution':execution}
@@ -419,7 +466,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
                 store.record_slice(payload.job_id,
                     {'ready': False, 'diagnostics': ['새 슬라이싱 요청을 완료하지 못했습니다. 설정과 저장 위치를 확인해 주세요.']},
                     {'status': 'failed', 'print_status': 'not_started', 'output_path': None})
-            if isinstance(exc, (ValueError, OSError, sqlite3.Error)):
+            if isinstance(exc, (ValueError, KeyError, OSError, sqlite3.Error)):
                 raise
             LOGGER.error('Slice operation failed: job=%s, exception=%s', payload.job_id, type(exc).__name__)
             raise HTTPException(500, '슬라이싱 요청을 완료하지 못했습니다. 작업 기록에서 마지막 상태를 확인해 주세요.') from exc

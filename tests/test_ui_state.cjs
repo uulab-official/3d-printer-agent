@@ -4,6 +4,8 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
+const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice'];
+names.push(...studioNames);
 class Element {
   constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
   set textContent(value) { this._text=String(value); this.children=[]; }
@@ -38,6 +40,7 @@ function fixture() {
   }
   // Load actual offer event wiring as well as its controller functions.
   vm.runInContext(source.slice(source.indexOf('  function renderOfferRows()'),source.indexOf('  function dateTime(')),context);
+  Object.assign(context.state,{studioRequest:0,studioRevision:0,studioPending:false,studioCandidate:null,studioCandidateEpoch:null,studioCandidateStorage:null,studioApplied:null,studioAppliedEpoch:null,studioAppliedStorage:null,studioRecorded:null,studioSlicePrepared:false,studioPreparedSignature:null,studioSavedIdentity:null});
   return context;
 }
 function profileFixture() {
@@ -111,12 +114,135 @@ const job = () => ({
   result:{template:'tray',parameters:{width:120},dimensions_mm:{x:120,y:80,z:35},volume_mm3:45072,geometry_status:'validated',checks:[],warnings:[],mesh:{vertices:[],faces:[]}},
   latest_slice:null,user_outcome:null,
 });
+const studioInspection = (id='a'.repeat(32), overrides={}) => ({schema_version:1,source_id:id,archive_url:`/api/studio-projects/${id}/archive`,source:{filename:'Studio 원본.3mf',bytes:3,sha256:'c'.repeat(64)},producer:{application:'BambuStudio-02.09.01.70',format_version:'1',settings_version:'02.09.01.70'},settings_sha256:'d'.repeat(64),summary:{printer_model:'Fixture Printer',printer_preset:'Fixture Printer 0.4',process_preset:'Fixture process',nozzle_diameter:'0.4',plate_type:'Textured PEI Plate',filament_name:'Fixture filament',filament_type:'PLA',nozzle_temperature:'215',nozzle_temperature_initial_layer:'220',bed_temperature:'55',bed_temperature_initial_layer:'55',filament_flow_ratio:'0.98',filament_max_volumetric_speed:'12'},supported:true,issues:[],warnings:['프로젝트의 기록이며 실제 장착 상태는 확인하지 않았습니다.'],...overrides});
+const studioInput = (name='Studio 원본.3mf') => ({files:[{name,size:3,arrayBuffer:async()=>new Uint8Array([80,75,3]).buffer}],value:name});
+function studioApplied(c, inspection=studioInspection()) {
+  c.state.studioApplied=inspection;c.state.studioAppliedEpoch=c.state.connectionEpoch;c.state.studioAppliedStorage=c.state.storage?.path || null;
+}
 (async()=>{
   let failed=0,passed=0;
   async function check(name,test) {
-    try { await test(); passed++; console.log('PASS',name); }
+    let deadline;
+    try { await Promise.race([Promise.resolve().then(test),new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error('Controller check timed out')),5000);})]); passed++; console.log('PASS',name); }
     catch(error) { failed++; console.log('FAIL',name,error.message); }
+    finally { clearTimeout(deadline); }
   }
+  await check('Studio import stages a candidate without replacing manual JSON or unfinished material text',async()=>{
+    const c=profileFixture();c.$('slicer-json').value=' { "manual": "unchanged" }\n';c.$('profile-json').value='{ unfinished  ';
+    let request;c.api=async(path,body)=>{request={path,body};return studioInspection();};
+    await c.importStudioProject(studioInput());
+    assert.equal(request.path,'/api/studio-projects/import');assert.deepEqual(plain(request.body),{filename:'Studio 원본.3mf',content_base64:'UEsD'});
+    assert.equal(c.state.studioApplied,null);assert.equal(c.state.studioCandidate.source_id,'a'.repeat(32));
+    assert.equal(c.$('slicer-json').value,' { "manual": "unchanged" }\n');assert.equal(c.$('profile-json').value,'{ unfinished  ');
+    assert.equal(c.$('studio-project-candidate').hidden,false);assert.match(c.$('studio-project-candidate').textContent,/Fixture Printer/);
+    assert.equal(c.hasPendingWork(),true);c.cancelStudioCandidate();assert.equal(c.state.studioCandidate,null);assert.equal(c.$('slicer-json').value,' { "manual": "unchanged" }\n');
+  });
+  await check('Explicit Studio apply changes only the selected setup and detaches previous preparation downloads',async()=>{
+    const c=profileFixture();c.state.job=job();c.state.job.artifacts.prepared_three_mf='/api/jobs/job-a/files/prepared_three_mf';
+    c.$('slicer-json').value='  {"keep":"manual"}\n';c.$('profile-json').value='{ unfinished  ';c.state.slicePrepared=true;
+    c.api=async()=>studioInspection();await c.importStudioProject(studioInput());c.applyStudioCandidate();
+    assert.equal(c.state.studioApplied.source_id,'a'.repeat(32));assert.equal(c.state.job.id,'job-a');assert.equal(c.state.slicePrepared,false);assert.equal(c.state.studioSlicePrepared,false);
+    assert.equal(c.state.job.artifacts.prepared_three_mf,undefined);assert.equal(c.state.job.artifacts.sliced_three_mf,undefined);
+    assert.equal(c.$('slicer-json').value,'  {"keep":"manual"}\n');assert.equal(c.$('profile-json').value,'{ unfinished  ');
+  });
+  await check('Unsupported Studio candidates cannot replace a supported applied source',async()=>{
+    const c=fixture();studioApplied(c);const original=c.state.studioApplied;
+    c.api=async()=>studioInspection('b'.repeat(32),{supported:false,issues:[{code:'unsupported_version',message:'지원 버전 확인 필요'}]});
+    await c.importStudioProject(studioInput('new.3mf'));c.applyStudioCandidate();
+    assert.equal(c.state.studioApplied,original);assert.equal(c.$('studio-project-apply').disabled,true);assert.match(c.$('studio-project-candidate').textContent,/지원 버전/);
+    c.cancelStudioCandidate();assert.equal(c.state.studioApplied,original);assert.equal(c.state.studioCandidate,null);
+  });
+  await check('A newer Studio selection suppresses both old import successes and old errors',async()=>{
+    for(const staleError of [false,true]){
+      const c=fixture();let settleOld,entered;let calls=0;const began=new Promise(resolve=>{entered=resolve;});
+      c.api=async()=>++calls===1?new Promise((resolve,reject)=>{settleOld=staleError?reject:resolve;entered();}):studioInspection('b'.repeat(32),{source:{filename:'current.3mf',bytes:3,sha256:'e'.repeat(64)}});
+      const old=c.importStudioProject(studioInput('old.3mf'));await began;
+      await c.importStudioProject(studioInput('current.3mf'));settleOld(staleError?new Error('Obsolete import failure'):studioInspection());await old;
+      assert.equal(c.state.studioCandidate.source.filename,'current.3mf');assert.doesNotMatch(c.$('studio-project-feedback').textContent,/Obsolete/);assert.equal(c.state.studioPending,false);
+    }
+  });
+  await check('Cancellation model replacement and reconnect suppress late Studio import responses',async()=>{
+    const changes=[c=>c.cancelStudioCandidate(),c=>{c.state.job={...job(),id:'job-new'};},c=>{c.state.connectionEpoch++;}];
+    for(const change of changes)for(const fail of [false,true]){
+      const c=fixture();let reply,entered;const began=new Promise(resolve=>{entered=resolve;});c.api=()=>new Promise((resolve,reject)=>{reply=fail?reject:resolve;entered();});
+      const pending=c.importStudioProject(studioInput());await began;change(c);
+      reply(fail?new Error('Late import failure'):studioInspection());await pending;
+      assert.equal(c.state.studioCandidate,null);assert.doesNotMatch(c.$('studio-project-feedback').textContent,/Late import failure/);
+    }
+  });
+  await check('Studio size limits reject before reading and malformed imports retain the applied source',async()=>{
+    const c=fixture();studioApplied(c);let reads=0,calls=0;
+    c.api=async()=>{calls++;throw new Error('Invalid project');};
+    await c.importStudioProject({files:[{name:'large.3mf',size:16*1024*1024+1,arrayBuffer:async()=>{reads++;return new ArrayBuffer(0);}}],value:'large.3mf'});
+    assert.equal(reads,0);assert.equal(calls,0);assert.equal(c.state.studioApplied.source_id,'a'.repeat(32));
+    await c.importStudioProject(studioInput());assert.equal(calls,1);assert.equal(c.state.studioApplied.source_id,'a'.repeat(32));assert.match(c.$('studio-project-feedback').textContent,/Invalid project/);
+  });
+  await check('Supported Studio project composition works without an installed native executable',async()=>{
+    const c=fixture();c.state.environment={available:false};c.state.job=job();studioApplied(c);let request;
+    c.api=async(path,body)=>{if(path==='/api/slice'){request=plain(body);return {plan:{kind:'studio_project',project_prepared:true,ready:false,project_source:studioInspection(),project_sha256:'f'.repeat(64),diagnostics:['Studio 없음']},execution:null};}return {...job(),artifacts:{prepared_three_mf:'/api/jobs/job-a/files/prepared_three_mf'}};};
+    c.renderStudioProject();assert.equal(c.$('prepare-studio-project').disabled,false);assert.equal(c.$('execute-studio-project').disabled,true);
+    await c.runStudioSlice(false);assert.deepEqual(request,{job_id:'job-a',studio_project_id:'a'.repeat(32),execute:false});
+    assert.match(c.$('download-links').textContent,/설정 포함 3MF/);assert.doesNotMatch(c.$('download-links').textContent,/슬라이스 3MF/);
+    assert.equal(c.state.studioSlicePrepared,false);assert.match(c.$('slice-feedback').textContent,/설정.*3MF/);
+  });
+  await check('Project and manual preparation never enable each other execution controls',async()=>{
+    const c=fixture();c.state.job=job();studioApplied(c);c.$('slicer-json').value='{}';
+    c.api=async(path,body)=>path==='/api/slice'?{plan:{kind:body.studio_project_id?'studio_project':undefined,project_prepared:Boolean(body.studio_project_id),ready:true,project_source:studioInspection(),diagnostics:[]}}:job();
+    await c.runStudioSlice(false);assert.equal(c.$('execute-studio-project').disabled,false);assert.equal(c.$('execute-slice').disabled,true);
+    await c.runSlice(false);assert.equal(c.$('execute-slice').disabled,false);assert.equal(c.$('execute-studio-project').disabled,true);
+  });
+  await check('Late project preparation cannot render into a different source model or connection',async()=>{
+    for(const change of [c=>{c.state.job={...job(),id:'new-job'};},c=>{studioApplied(c,studioInspection('b'.repeat(32)));},c=>{c.state.connectionEpoch++;}])for(const fail of [false,true]){
+      const c=fixture();c.state.job=job();studioApplied(c);let settle;c.api=()=>new Promise((resolve,reject)=>{settle=fail?reject:resolve;});
+      const pending=c.runStudioSlice(false);change(c);c.$('slice-feedback').textContent='Current feedback';
+      settle(fail?new Error('Old preparation failed'):{plan:{kind:'studio_project',ready:true,project_prepared:true,diagnostics:['Old plan']}});await pending;
+      assert.equal(c.state.studioSlicePrepared,false);assert.equal(c.$('slice-feedback').textContent,'Current feedback');
+    }
+  });
+  await check('Reconnection requires explicit identity-checked Studio source revalidation',async()=>{
+    const c=fixture();c.state.storage={path:'/old'};c.state.job=job();studioApplied(c);c.state.connectionEpoch++;
+    c.renderStudioProject();assert.equal(c.$('prepare-studio-project').disabled,true);assert.equal(c.$('studio-project-revalidate').disabled,false);
+    let requested;c.api=async path=>{requested=path;return studioInspection();};await c.revalidateStudioProject();
+    assert.equal(requested,'/api/studio-projects/'+'a'.repeat(32));assert.equal(c.$('prepare-studio-project').disabled,false);
+    c.state.connectionEpoch++;c.api=async()=>studioInspection('a'.repeat(32),{source:{filename:'foreign.3mf',bytes:3,sha256:'e'.repeat(64)}});
+    await c.revalidateStudioProject();assert.equal(c.$('prepare-studio-project').disabled,true);assert.equal(c.state.studioApplied.source.filename,'Studio 원본.3mf');assert.match(c.$('studio-project-feedback').textContent,/一致|일치|달라/);
+  });
+  await check('History displays a recorded Studio source without adopting it or enabling execution',async()=>{
+    const c=fixture();const recorded={...job(),latest_slice:{phase:'complete',plan:{kind:'studio_project',ready:true,project_prepared:true,project_source:studioInspection(),diagnostics:[]},execution:null}};
+    c.renderJob(recorded);assert.equal(c.state.studioApplied,null);assert.equal(c.state.studioRecorded.source_id,'a'.repeat(32));assert.equal(c.$('execute-studio-project').disabled,true);assert.equal(c.$('studio-project-recorded').hidden,false);
+    c.api=async()=>studioInspection();await c.revalidateStudioProject(true);assert.equal(c.state.studioApplied,null);assert.equal(c.state.studioCandidate.source_id,'a'.repeat(32));
+    c.applyStudioCandidate();assert.equal(c.$('execute-studio-project').disabled,true);
+  });
+  await check('Studio source identity rejects foreign archive links and changed-storage handles',()=>{
+    const c=fixture();c.state.storage={path:'/original'};studioApplied(c);c.state.storage={path:'/restored'};c.renderStudioProject();
+    assert.equal(c.studioSourceCurrent(),false);assert.equal(c.$('prepare-studio-project').disabled,true);
+    c.renderStudioSource(c.$('studio-project-applied'),studioInspection('a'.repeat(32),{archive_url:'https://evil.example/archive'}),'Recorded');
+    assert.equal(findElement(c.$('studio-project-applied'),element=>element.href==='https://evil.example/archive'),undefined);
+  });
+  await check('Interrupted and running project records cannot expose a stale prepared download',()=>{
+    const c=fixture();studioApplied(c);
+    for(const phase of ['complete','running','interrupted']) {
+      c.state.job={...job(),artifacts:{prepared_three_mf:'/api/jobs/job-a/files/prepared_three_mf'},latest_slice:{phase,plan:{kind:'studio_project',project_prepared:true,project_source:studioInspection()}}};
+      c.renderStudioProject();c.renderDownloads(c.state.job);
+      assert.equal(c.$('studio-project-prepared-download').hidden,phase!=='complete');
+      if(phase!=='complete')assert.doesNotMatch(c.$('download-links').textContent,/설정 포함 3MF/);
+    }
+  });
+  await check('Late manual preparation cannot replace a changed project source model draft or connection',async()=>{
+    const changes=[c=>{c.state.job={...job(),id:'new-job'};},c=>{studioApplied(c,studioInspection('b'.repeat(32)));},c=>{c.state.connectionEpoch++;},c=>{c.$('slicer-json').value=' { "newer": true }\n';}];
+    for(const change of changes)for(const fail of [false,true]) {
+      const c=fixture();c.state.job=job();studioApplied(c);c.$('slicer-json').value=' { "submitted": true }\n';let settle;
+      c.api=path=>path==='/api/slice'?new Promise((resolve,reject)=>{settle=fail?reject:resolve;}):Promise.resolve(job());
+      const pending=c.runSlice(false);change(c);c.$('slice-feedback').textContent='Current feedback';
+      settle(fail?new Error('Obsolete manual preparation'):{plan:{ready:true,diagnostics:['Obsolete plan']}});await pending;
+      assert.equal(c.state.slicePrepared,false);assert.equal(c.$('slice-feedback').textContent,'Current feedback');assert.equal(c.state.slicerSavedText,'');
+    }
+  });
+  await check('Replacing CAD clears its recorded source while retaining the selected Studio input',()=>{
+    const c=fixture();studioApplied(c);c.state.job=job();c.state.studioRecorded=studioInspection('b'.repeat(32));c.state.studioSavedIdentity=c.studioSourceIdentity(c.state.studioRecorded);
+    c.invalidateCurrentJob('New CAD required');
+    assert.equal(c.state.studioRecorded,null);assert.equal(c.state.studioSavedIdentity,null);assert.equal(c.state.studioApplied.source_id,'a'.repeat(32));assert.equal(c.$('studio-project-recorded').hidden,true);assert.equal(c.$('studio-project-history-source').hidden,true);
+  });
   await check('Empty default purchase rows do not protect exit, but nonempty and invalid drafts do',()=>{
     const c=offersFixture();assert.equal(c.exitIsProtected(),false);
     c.editOffer('offer-1-name','  ');assert.equal(c.exitIsProtected(),true);

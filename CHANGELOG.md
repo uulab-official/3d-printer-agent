@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-11-14
+
+- Import a single supported Bambu Studio project, show its recorded printer/nozzle/material/plate/process, and explicitly apply its global settings to the current app-generated CAD.
+- Bound and verify the complete source archive, preserve exact settings bytes and original-source receipts, and generate a deterministic derivative with separate source/modifier/model provenance.
+- Provide a verified prepared-project download without requiring Studio. Keep preparation, actual native slicing and physical printing separate in the API, job artifacts and UI.
+- Add an independently staged direct-project native path, exact runtime/version checks, source/CAD/receipt/argv revalidation and full-setting roundtrip differences alongside core readback.
+- Preserve candidate/applied/manual inputs through failed imports, cancellation, stale responses, reconnects and history. Require source revalidation and fresh preparation before replaying a recorded job.
+- Extend installed-wheel qualification through project import/preparation/download/history and exact source/prepared backup restoration on each desktop OS; retain the existing native smoke cases and add a separate actual project-source case.
+- Route explicit material and purchase requests to the existing workflows in both template and LLM modes without a provider call.
+
 ## 0.3.0 — 2026-11-14
 
 - Add offline `backup`, `backup-info` and `restore` commands for complete saved CAD and filament workspaces, including original records, private receipts, exact unfinished drafts and partial files.

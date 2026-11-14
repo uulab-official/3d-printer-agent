@@ -26,7 +26,8 @@ from .schemas import GeometryRequest
 
 
 _GENERATED_FILES = {'stl': 'model.stl', 'step': 'model.step', 'three_mf': 'model.3mf', 'source': 'model.py'}
-_ALLOWED_FILES = {*_GENERATED_FILES, 'manifest', 'sliced_three_mf'}
+_SLICE_FILES = {'sliced_three_mf', 'prepared_three_mf'}
+_ALLOWED_FILES = {*_GENERATED_FILES, 'manifest', *_SLICE_FILES}
 _JOB_STATUSES = {'generating', 'geometry_validated', 'failed', 'interrupted'}
 _MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 _MAX_RECORD_BYTES = 64 * 1024 * 1024
@@ -35,6 +36,7 @@ _UNREADABLE_MESSAGE = '작업 기록 파일을 읽을 수 없습니다. 원본 �
 _INTEGRITY_MESSAGE = '저장한 파일의 크기 또는 SHA-256이 원래 기록과 다르거나 파일을 읽을 수 없습니다. 원본 파일을 복구하거나 모델을 다시 생성하세요.'
 _SCHEMA = 'CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, title TEXT NOT NULL, template TEXT, status TEXT NOT NULL, user_outcome TEXT)'
 _LOGGER = logging.getLogger(__name__)
+_ABSENT_HASH = object()
 
 
 class ArtifactIntegrityError(ValueError):
@@ -254,11 +256,13 @@ class JobStore:
 
     @staticmethod
     def _clear_slice(job):
-        job['_files'].pop('sliced_three_mf', None)
-        job['artifacts'].pop('sliced_three_mf', None)
-        if isinstance(job.get('_artifact_receipts'), dict):
-            job['_artifact_receipts'].pop('sliced_three_mf', None)
+        for kind in _SLICE_FILES:
+            job['_files'].pop(kind, None)
+            job['artifacts'].pop(kind, None)
+            if isinstance(job.get('_artifact_receipts'), dict):
+                job['_artifact_receipts'].pop(kind, None)
         job.pop('_slice_artifact_receipt', None)
+        job.pop('_prepared_artifact_receipt', None)
 
     def reserve(self, *, request=None, design_source=None):
         normalized = GeometryRequest.model_validate(request).model_dump(mode='json') if request is not None else None
@@ -346,6 +350,7 @@ class JobStore:
                                artifacts={}, _files={}, bundle_url=None, latest_slice=None)
                     job.pop('_artifact_receipts', None)
                     job.pop('_slice_artifact_receipt', None)
+                    job.pop('_prepared_artifact_receipt', None)
                     job['events'].append({'at': now_iso(), 'type': 'generation_interrupted',
                                           'message': '이전 실행에서 모델 생성이 완료되지 않았습니다. 입력과 부분 파일은 보존했으며 검증된 다운로드는 없습니다.'})
                     counts['interrupted'] += 1
@@ -501,7 +506,7 @@ class JobStore:
         try:
             # Older Windows jobs used Path.__str__ for slice paths. Interpret
             # that separator while retaining the original recorded filename.
-            normalized = filename.replace('\\', '/') if kind == 'sliced_three_mf' else filename
+            normalized = filename.replace('\\', '/') if kind in _SLICE_FILES else filename
             relative = PurePosixPath(normalized)
             if ('\\' in normalized or relative.is_absolute() or not relative.parts
                     or any(part in ('', '.', '..') for part in relative.parts)
@@ -511,8 +516,10 @@ class JobStore:
                 raise ValueError('Unexpected generated filename')
             if kind == 'manifest' and filename != 'manifest.json':
                 raise ValueError('Unexpected manifest filename')
-            if kind == 'sliced_three_mf' and relative.suffix.lower() != '.3mf':
+            if kind in _SLICE_FILES and relative.suffix.lower() != '.3mf':
                 raise ValueError('Unexpected sliced filename')
+            if kind == 'prepared_three_mf' and relative.name != 'prepared-project.3mf':
+                raise ValueError('Unexpected prepared project filename')
             folder = self.directory(job['id'])
             path = folder.joinpath(*relative.parts)
             current = path
@@ -554,7 +561,7 @@ class JobStore:
                     or any(not _same_json(manifest.get(key), value) for key, value in expected.items())
                     or not isinstance(manifest['app_version'], str) or not isinstance(manifest['artifacts'], dict)):
                 raise ValueError('Manifest does not describe saved job')
-            originals = set(job['_files']) - {'manifest', 'sliced_three_mf'}
+            originals = set(job['_files']) - {'manifest', *_SLICE_FILES}
             if set(manifest['artifacts']) != originals:
                 raise ValueError('Manifest member list differs')
             for kind in originals:
@@ -576,11 +583,16 @@ class JobStore:
         requested = set(kinds)
         # A legacy manifest has no independent byte receipt: its model receipts
         # and canonical saved metadata must agree before the manifest is offered.
-        verify = (set(receipts) | requested) - {'manifest', 'sliced_three_mf'} if 'manifest' in requested else requested - {'sliced_three_mf'}
+        verify = (set(receipts) | requested) - {'manifest', *_SLICE_FILES} if 'manifest' in requested else requested - _SLICE_FILES
         for kind in verify:
             snapshots[kind] = self._verify_bytes(job, kind, receipts.get(kind))
         if 'manifest' in requested:
             snapshots['manifest'] = manifest_path, manifest_bytes
+        if 'prepared_three_mf' in requested:
+            # This artifact kind did not exist before versioned byte receipts.
+            # A new preparation of a legacy job gets its own explicit receipt.
+            snapshots['prepared_three_mf'] = self._verify_bytes(
+                job, 'prepared_three_mf', job.get('_prepared_artifact_receipt'))
         if 'sliced_three_mf' in requested:
             receipt = job.get('_slice_artifact_receipt')
             if receipt is not None:
@@ -653,35 +665,49 @@ class JobStore:
             job['latest_slice'] = {'recorded_at': now_iso(), 'phase': 'finished',
                                    'plan': copy.deepcopy(plan), 'execution': copy.deepcopy(execution)}
             integrity_error = None
-            if execution and execution['status'] in ('sliced', 'needs_review'):
-                try:
-                    if not execution.get('output_path'):
-                        raise ValueError('Missing sliced output')
-                    path = Path(execution['output_path'])
-                    folder = self.directory(job_id)
-                    relative = path.absolute().relative_to(folder).as_posix()
-                    job['_files']['sliced_three_mf'] = relative
-                    self._artifact_location(job, 'sliced_three_mf')
-                    content = _read_regular(path, _MAX_ARTIFACT_BYTES)
-                    if not content:
-                        raise ValueError('Empty slice')
-                    receipt = _receipt(relative, content)
-                    if 'output_sha256' in execution and execution['output_sha256'] != receipt['sha256']:
-                        raise ValueError('Slice changed after execution read-back')
-                    if '_artifact_receipts' in job:
-                        job['_artifact_receipts']['sliced_three_mf'] = receipt
-                    else:
-                        job['_slice_artifact_receipt'] = receipt
-                    job['artifacts']['sliced_three_mf'] = f'/api/jobs/{job_id}/files/sliced_three_mf'
-                except (OSError, ValueError, TypeError):
-                    integrity_error = ArtifactIntegrityError(_INTEGRITY_MESSAGE)
-                    self._clear_slice(job)
-                    execution = {'status': 'failed', 'output_path': None, 'print_status': 'not_started',
-                                 'checks': [{'name': 'stored_artifact', 'passed': False, 'detail': _INTEGRITY_MESSAGE}]}
-                    job['latest_slice']['execution'] = execution
-            status = execution['status'] if execution else ('prepared' if plan['ready'] else 'blocked')
+            try:
+                if plan.get('kind') == 'studio_project' and plan.get('project_prepared') is True:
+                    derivative = plan.get('project_receipt')
+                    expected_hash = plan.get('project_sha256')
+                    if (not isinstance(derivative, dict) or not isinstance(expected_hash, str)
+                            or re.fullmatch(r'[a-f0-9]{64}', expected_hash) is None
+                            or derivative.get('project_sha256') != expected_hash
+                            or type(derivative.get('project_bytes')) is not int):
+                        raise ValueError('Missing prepared project receipt')
+                    self._record_slice_artifact(job, 'prepared_three_mf', plan.get('project_path'),
+                                                expected_hash, derivative['project_bytes'])
+                if execution and execution['status'] in ('sliced', 'needs_review'):
+                    self._record_slice_artifact(job, 'sliced_three_mf', execution.get('output_path'),
+                                                execution.get('output_sha256', _ABSENT_HASH))
+            except (OSError, ValueError, TypeError):
+                integrity_error = ArtifactIntegrityError(_INTEGRITY_MESSAGE)
+                self._clear_slice(job)
+                execution = {'status': 'failed', 'output_path': None, 'print_status': 'not_started',
+                             'checks': [{'name': 'stored_artifact', 'passed': False, 'detail': _INTEGRITY_MESSAGE}]}
+                job['latest_slice']['execution'] = execution
+            status = execution['status'] if execution else ('prepared' if plan.get('ready') or plan.get('project_prepared') else 'blocked')
             job['events'].append({'at': now_iso(), 'type': 'slicer_' + status, 'message': '프린터 실행은 수행하지 않았습니다.'})
             self._write(job)
             if integrity_error is not None:
                 raise integrity_error
             return self._public(job)
+
+    def _record_slice_artifact(self, job, kind, filename, expected_hash=_ABSENT_HASH, expected_bytes=None):
+        if not filename:
+            raise ValueError('Missing prepared or sliced output')
+        path = Path(filename)
+        relative = path.absolute().relative_to(self.directory(job['id'])).as_posix()
+        job['_files'][kind] = relative
+        self._artifact_location(job, kind)
+        content = _read_regular(path, _MAX_ARTIFACT_BYTES, expected_size=expected_bytes)
+        if not content:
+            raise ValueError('Empty prepared or sliced output')
+        receipt = _receipt(relative, content)
+        if expected_hash is not _ABSENT_HASH and expected_hash != receipt['sha256']:
+            raise ValueError('Artifact changed after preparation or execution read-back')
+        if '_artifact_receipts' in job:
+            job['_artifact_receipts'][kind] = receipt
+        else:
+            key = '_prepared_artifact_receipt' if kind == 'prepared_three_mf' else '_slice_artifact_receipt'
+            job[key] = receipt
+        job['artifacts'][kind] = f"/api/jobs/{job['id']}/files/{kind}"

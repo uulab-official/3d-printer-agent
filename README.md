@@ -6,9 +6,11 @@
 
 **An open-source local workspace for parameterized CAD, filament profile review, and Bambu Studio preparation.**
 
-한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **로컬 작업 공간 v0.3**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
+한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **로컬 작업 공간 v0.4**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
 
 이 버전은 `수납함`, `열린 케이블 받침`, `원형 인셋 프레임` 세 가지 파라메트릭 모델을 실제 CAD로 생성합니다. 일반적인 자유형 모델링, MakerWorld 검색·리믹스, 실시간 쇼핑 수집, 프린터 직접 제어는 후속 개발 범위입니다. [현재 개발 상태](docs/STATUS.md), [로컬 검증 기록](docs/VERIFICATION.md), [기여 안내](CONTRIBUTING.md)를 함께 확인하세요.
+
+**Studio 프로젝트 하나로 출력 설정을 가져올 수 있습니다.** 기록된 프린터·노즐·재료·플레이트를 확인하고, 현재 생성한 CAD에 적용한 3MF를 준비합니다. Studio가 없어도 준비 파일을 내려받을 수 있으며 실제 슬라이싱은 별도 실행합니다. 지원 버전과 범위는 [Studio 프로젝트 설정 가져오기](docs/STUDIO_PROJECTS.md)를 확인하세요.
 
 ![실제 생성한 세 CAD 모델](examples/model-preview.png)
 

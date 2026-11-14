@@ -14,6 +14,12 @@ Ordinary `doctor` and page bootstrap only discover files. The explicit check inv
 
 `POST /api/slicer/probe` accepts only `{}` under the existing session-token/origin boundary and returns the environment object directly. Fields include `available`, `cli_supported`, `path`, `version`, `capabilities`, `diagnostics`, and `printer_status: "not_checked"`.
 
+## Bring settings from a Studio project
+
+The primary model-page flow imports one supported `.3mf`, shows its recorded setup, and prepares the current generated CAD with its exact global settings. Composition/download works without an installed slicer. Native execution requires the qualified version and a separate explicit action. [STUDIO_PROJECTS.md](STUDIO_PROJECTS.md) describes the one-filament/nozzle/extruder scope, provenance, excluded object/plate data, original storage and full-setting comparison.
+
+The sections below describe the retained advanced machine/process/filament JSON path. Its role configuration rules do not apply by relabeling project JSON.
+
 ## Assemble the supplied configuration files
 
 1. Generate a model and open its full configuration panel.

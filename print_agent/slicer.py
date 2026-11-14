@@ -9,10 +9,13 @@ plate selection and read-back expectations are bound to the staged configuration
 The lineage-free path requires a system root machine and a process with that exact
 machine name in compatible_printers; user machine lineage is not resolved here.
 Unresolved inheritance, nonfinite numbers and host post-processing are rejected.
-Only those core settings are compared with the generated project. Native
-qualification is version/fixture-specific; other settings and physical printing
-remain unqualified. No numeric print presets are supplied here. Statistics
-remain null until a versioned parser is validated.
+The role-bundle path compares those core settings. A separate Studio-project
+path copies exact recorded snapshot bytes into current generated CAD and reports
+every native roundtrip difference. Only observed arrange-coordinate changes and
+an added empty compatibility list are accepted normalization; other differences
+require review. Native qualification is version/fixture-specific, and physical
+printing remains unqualified. No numeric print presets are supplied here.
+Statistics remain null until a versioned parser is validated.
 
 CLI reference: https://github.com/bambulab/BambuStudio/wiki/Command-Line-Usage
 """
@@ -32,10 +35,16 @@ import subprocess
 import threading
 import time
 import uuid
+import xml.etree.ElementTree as ET
 import zipfile
+
+from . import studio_project
 
 
 _REQUIRED_OPTIONS = ("--load-settings", "--load-filaments", "--slice", "--outputdir", "--export-3mf")
+_PROJECT_REQUIRED_OPTIONS = ("--arrange", "--slice", "--export-3mf")
+_CORE_3MF = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
+_PRODUCTION_3MF = "http://schemas.microsoft.com/3dmanufacturing/production/2015/06"
 _MACHINE_FIELDS = (
     "printer_model", "printer_technology", "nozzle_diameter", "printable_area",
     "printable_height", "machine_start_gcode", "machine_end_gcode",
@@ -145,8 +154,10 @@ def _text(value) -> str:
     return value if len(value) <= _MAX_LOG_CHARS else value[:_MAX_LOG_CHARS] + "\n[log truncated]"
 
 
-def _probe_cli(path: Path, timeout_seconds: float) -> dict:
+def _probe_cli(path: Path, timeout_seconds: float, required_options: tuple = _REQUIRED_OPTIONS) -> dict:
     key = _fingerprint(path)
+    if required_options != _REQUIRED_OPTIONS:
+        key += (required_options,)
     # Serialize the short, first probe; subsequent jobs and UI reads reuse it.
     with _PROBE_LOCK:
         cached = _PROBE_CACHE.get(key)
@@ -160,10 +171,11 @@ def _probe_cli(path: Path, timeout_seconds: float) -> dict:
                 timeout=min(3, timeout_seconds), check=False,
             )
             output = _text(completed.stdout) + "\n" + _text(completed.stderr)
-            result["capabilities"] = [option for option in _REQUIRED_OPTIONS if option in output]
+            result["capabilities"] = [option for option in required_options
+                                      if re.search(r"(?<![\w-])" + re.escape(option) + r"(?![\w-])", output)]
             match = re.search(r"Bambu\s*Studio(?:\s+version)?[\s:\-]*(\d+\.\d+\.\d+(?:\.\d+)?)", output, re.I)
             result["version"] = match.group(1) if match else None
-            result["supported"] = completed.returncode == 0 and len(result["capabilities"]) == len(_REQUIRED_OPTIONS)
+            result["supported"] = completed.returncode == 0 and len(result["capabilities"]) == len(required_options)
             if not result["supported"]:
                 result["diagnostics"].append("--help 응답에서 필요한 Bambu CLI 기능을 확인하지 못했습니다.")
             if completed.returncode != 0:
@@ -500,6 +512,431 @@ def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executab
         return plan
 
 
+def _project_argv(executable: str, project: Path, output: Path) -> list[str]:
+    return [executable, "--arrange", "1", "--slice", "0", "--export-3mf", output.name, str(project)]
+
+
+def _project_public_source(snapshot: dict, source_id: str | None) -> dict:
+    public = studio_project.public_snapshot(snapshot)
+    if source_id is not None:
+        if not isinstance(source_id, str) or not re.fullmatch(r"[0-9a-f]{32}", source_id):
+            raise ValueError("서버가 저장한 Studio 원본 ID가 필요합니다.")
+        public.update(source_id=source_id, archive_url=f"/api/studio-projects/{source_id}/archive")
+    return public
+
+
+def _project_read_file(path: Path, maximum: int) -> bytes:
+    if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= maximum:
+        raise ValueError("준비 파일이 없거나 링크·빈 파일·허용 크기 밖의 파일입니다.")
+    with path.open("rb") as handle:
+        content = handle.read(maximum + 1)
+    if not 0 < len(content) <= maximum:
+        raise ValueError("준비 파일의 실제 바이트가 허용 크기를 벗어났습니다.")
+    return content
+
+
+def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str, source_content: bytes, *,
+                          source_id: str | None = None, executable_path: str | None = None) -> dict:
+    """Compose current generated CAD with an immutable recorded Studio snapshot.
+
+    Composition requires no executable. The separate ready flag only permits a
+    later native attempt; the exact runtime/options are checked at execution.
+    Source bytes are inspected here, never accepted as a client-derived snapshot.
+    """
+    plan = {"kind": "studio_project", "ready": False, "project_prepared": False,
+            "project_path": None, "project_sha256": None, "project_receipt": None,
+            "project_source": None, "argv": [], "output_path": None,
+            "job_dir": str(job_dir), "expected_settings": {}, "diagnostics": []}
+    created_project = None
+    try:
+        snapshot = studio_project.inspect_studio_project(source_filename, source_content)
+        public_source = _project_public_source(snapshot, source_id)
+        plan["project_source"] = public_source
+        if not snapshot["supported"]:
+            plan["diagnostics"].extend(issue["message"] for issue in snapshot["issues"])
+            return plan
+        original_model = Path(input_path).expanduser()
+        if original_model.is_symlink() or original_model.suffix.lower() != ".3mf":
+            raise ValueError("앱에서 생성한 원본 3MF 파일이 필요합니다.")
+        model = original_model.resolve(strict=True)
+        model_bytes = _project_read_file(model, studio_project.MAX_ARCHIVE_BYTES)
+        derived, receipt = studio_project.build_project_3mf(model_bytes, snapshot)
+        requested_job = Path(job_dir).expanduser()
+        if requested_job.is_symlink():
+            raise ValueError("준비 작업 폴더는 링크일 수 없습니다.")
+        job_dir = requested_job.resolve()
+        plan["job_dir"] = str(job_dir)
+        # A caller supplies a new server-owned attempt directory. Existing
+        # destinations are never reused, even if a previous attempt was partial.
+        job_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
+        input_dir = job_dir / "input"
+        input_dir.mkdir(mode=0o700)
+        staged_source, staged_model = input_dir / "source.3mf", input_dir / "model.3mf"
+        project = job_dir / "prepared-project.3mf"
+        receipt_path, preparation_path = job_dir / "preparation-receipt.json", job_dir / "preparation.json"
+        output = job_dir / f"sliced-{uuid.uuid4().hex}.gcode.3mf"
+        environment = detect_environment() if executable_path is None else None
+        supplied = executable_path if executable_path is not None else environment["path"]
+        executable = Path(supplied).expanduser().resolve() if supplied else None
+        executable_available = executable is not None and _executable(executable)
+        preparation = {"schema_version": 1, "kind": "studio_project", "source_filename": source_filename,
+                       "source_id": source_id, "source_sha256": snapshot["source"]["sha256"],
+                       "model_sha256": receipt["model_sha256"], "project_sha256": receipt["project_sha256"],
+                       "output_name": output.name, "native_version": studio_project.QUALIFIED_VERSION,
+                       "executable_path": str(executable) if executable_available else None,
+                       "executable_sha256": _hash(executable) if executable_available else None}
+        payload = {staged_source: source_content, staged_model: model_bytes,
+                   receipt_path: (json.dumps(receipt, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n").encode(),
+                   preparation_path: (json.dumps(preparation, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n").encode()}
+        fingerprints = {}
+        for path, content in payload.items():
+            with path.open("xb") as handle:
+                handle.write(content)
+            fingerprints[str(path)] = _hash(path)
+        # Publish the complete project only after its source/receipt records.
+        # An interrupted write is not returned as a prepared artifact.
+        with project.open("xb") as handle:
+            created_project = project
+            handle.write(derived)
+        if _hash(project) != receipt["project_sha256"] or project.stat().st_size != receipt["project_bytes"]:
+            raise ValueError("준비 프로젝트의 기록과 저장 바이트가 다릅니다.")
+        fingerprints[str(project)] = receipt["project_sha256"]
+        plan.update(project_prepared=True, project_path=str(project), project_sha256=receipt["project_sha256"],
+                    project_receipt=receipt, expected_settings=snapshot["expected_settings"], file_hashes=fingerprints,
+                    input_path=str(staged_model), source_path=str(staged_source), output_path=str(output),
+                    plate_type=snapshot["summary"]["plate_type"], filament_count=1)
+        plan["diagnostics"].extend(snapshot["warnings"])
+        if executable_available:
+            plan.update(ready=True, executable_path=str(executable), argv=_project_argv(str(executable), project, output))
+            plan["diagnostics"].append(f"프로젝트 파일을 준비했습니다. 실행 시 Studio {studio_project.QUALIFIED_VERSION}과 CLI 기능을 확인합니다.")
+        else:
+            plan["diagnostics"].extend(environment["diagnostics"] if environment is not None else ["Bambu Studio 실행 파일이 없거나 실행 권한이 없습니다."])
+            plan["diagnostics"].append("준비한 프로젝트는 다운로드할 수 있습니다. native 슬라이싱은 실행하지 않았습니다.")
+        return plan
+    except (OSError, ValueError, TypeError, KeyError, RecursionError, RuntimeError, zipfile.BadZipFile) as exc:
+        if created_project is not None and not plan["project_prepared"]:
+            try:
+                created_project.unlink()
+            except OSError:
+                pass
+        plan["diagnostics"].append(str(exc))
+        return plan
+
+
+def _validate_project_plan(plan: dict) -> tuple[Path, Path, Path, dict, list[str], dict]:
+    if plan.get("kind") != "studio_project" or plan.get("project_prepared") is not True or plan.get("ready") is not True:
+        raise ValueError("완전히 준비한 Studio 프로젝트 실행 계획이 필요합니다.")
+    job_dir = Path(plan["job_dir"])
+    if not job_dir.is_absolute() or job_dir.is_symlink() or job_dir.resolve(strict=True) != job_dir:
+        raise ValueError("준비 작업 폴더의 경로가 변경되었습니다.")
+    project = job_dir / "prepared-project.3mf"
+    source, model = job_dir / "input/source.3mf", job_dir / "input/model.3mf"
+    receipt_path, preparation_path = job_dir / "preparation-receipt.json", job_dir / "preparation.json"
+    paths = (source, model, receipt_path, preparation_path, project)
+    if (Path(plan["project_path"]) != project or Path(plan["source_path"]) != source or Path(plan["input_path"]) != model
+            or (job_dir / "input").is_symlink() or not isinstance(plan.get("file_hashes"), dict)
+            or set(plan["file_hashes"]) != {str(path) for path in paths}):
+        raise ValueError("준비 파일 목록이나 경로가 변경되었습니다.")
+    payload = {}
+    for path in paths:
+        if path.resolve(strict=True) != path:
+            raise ValueError("준비 파일 경로에 링크가 있습니다.")
+        limit = studio_project.MAX_ARCHIVE_BYTES if path.suffix == ".3mf" else studio_project.MAX_SETTINGS_BYTES
+        payload[path] = _project_read_file(path, limit)
+        if hashlib.sha256(payload[path]).hexdigest() != plan["file_hashes"][str(path)]:
+            raise ValueError("준비 후 입력 또는 프로젝트 파일이 변경되었습니다. 다시 준비하세요.")
+    preparation = json.loads(payload[preparation_path])
+    if (not isinstance(preparation, dict) or preparation.get("schema_version") != 1
+            or preparation.get("kind") != "studio_project" or preparation.get("native_version") != studio_project.QUALIFIED_VERSION):
+        raise ValueError("원본 준비 기록이 유효하지 않습니다.")
+    snapshot = studio_project.inspect_studio_project(preparation["source_filename"], payload[source])
+    if not snapshot["supported"]:
+        raise ValueError("준비된 원본 프로젝트가 현재 지원 범위와 다릅니다.")
+    derived, receipt = studio_project.build_project_3mf(payload[model], snapshot)
+    if (payload[project] != derived or json.loads(payload[receipt_path]) != receipt or plan["project_receipt"] != receipt
+            or plan["project_sha256"] != receipt["project_sha256"]
+            or plan["expected_settings"] != snapshot["expected_settings"]
+            or plan["project_source"] != _project_public_source(snapshot, preparation["source_id"])
+            or preparation["source_sha256"] != snapshot["source"]["sha256"]
+            or preparation["model_sha256"] != receipt["model_sha256"]
+            or preparation["project_sha256"] != receipt["project_sha256"]
+            or plan.get("plate_type") != snapshot["summary"]["plate_type"] or plan.get("filament_count") != 1):
+        raise ValueError("원본·현재 CAD·설정·파생 프로젝트 기록이 실행 계획과 다릅니다. 다시 준비하세요.")
+    executable = Path(plan["executable_path"])
+    if (not executable.is_absolute() or executable.resolve(strict=True) != executable or not _executable(executable)
+            or str(executable) != preparation["executable_path"] or _hash(executable) != preparation["executable_sha256"]):
+        raise ValueError("준비한 Bambu Studio 실행 파일이 변경되었습니다.")
+    output = Path(plan["output_path"])
+    if (not re.fullmatch(r"sliced-[0-9a-f]{32}\.gcode\.3mf", preparation["output_name"])
+            or output != job_dir / preparation["output_name"] or output.exists() or output.is_symlink()):
+        raise ValueError("출력 파일은 준비한 작업 디렉터리의 새 파일이어야 합니다.")
+    argv = _project_argv(str(executable), project, output)
+    if plan["argv"] != argv:
+        raise ValueError("실행 계획의 CLI 인자가 변경되었습니다. 다시 준비하세요.")
+    return job_dir, executable, output, snapshot["expected_settings"], argv, snapshot
+
+
+def _snapshot_readback(before_text: str, after: dict, after_bytes: bytes) -> dict:
+    before = json.loads(before_text)
+    added, removed = sorted(after.keys() - before.keys()), sorted(before.keys() - after.keys())
+    changed = sorted(key for key in before.keys() & after.keys() if before[key] != after[key])
+
+    def preview(value):
+        text = json.dumps(value, ensure_ascii=False)
+        return {"type": type(value).__name__, "json": text[:512], "truncated": len(text) > 512}
+
+    differences = []
+    for kind, keys in (("added", added), ("removed", removed), ("changed", changed)):
+        for key in keys:
+            qualified = kind == "added" and key == "upward_compatible_machine" and after[key] == []
+            if kind == "changed" and key in ("wipe_tower_x", "wipe_tower_y"):
+                old, new = before[key], after[key]
+                qualified = (isinstance(old, list) and isinstance(new, list) and len(old) == len(new) == 1
+                             and all(isinstance(item, str) for item in old + new))
+                if qualified:
+                    try:
+                        qualified = all(math.isfinite(float(item)) for item in old + new)
+                    except (ValueError, OverflowError):
+                        qualified = False
+            differences.append({"key": key, "kind": kind, "qualified_native_normalization": qualified,
+                                "before": preview(before[key]) if key in before else None,
+                                "after": preview(after[key]) if key in after else None})
+    qualified_count = sum(item["qualified_native_normalization"] for item in differences)
+    return {"before_key_count": len(before), "after_key_count": len(after),
+            "unchanged_key_count": len(before.keys() & after.keys()) - len(changed),
+            "added_key_count": len(added), "removed_key_count": len(removed), "changed_key_count": len(changed),
+            "all_values_equal": before == after, "exact_bytes_equal": before_text.encode("utf-8") == after_bytes,
+            "before_sha256": hashlib.sha256(before_text.encode("utf-8")).hexdigest(),
+            "after_sha256": hashlib.sha256(after_bytes).hexdigest(), "difference_count": len(differences),
+            "qualified_normalization_count": qualified_count, "unqualified_difference_count": len(differences) - qualified_count,
+            "differences": differences[:100], "differences_truncated": len(differences) > 100}
+
+
+def _project_output_settings(output: Path) -> tuple[dict | None, bytes | None]:
+    """Require real movement and unambiguous finite JSON for this native path."""
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("출력 설정 JSON에 중복 키가 있습니다.")
+            result[key] = value
+        return result
+
+    def constant(value):
+        raise ValueError("출력 설정 JSON의 비유한 숫자를 허용하지 않습니다.")
+
+    with zipfile.ZipFile(output) as archive:
+        for info in archive.infolist():
+            if re.fullmatch(r"Metadata/plate_[1-9][0-9]*\.gcode", info.filename):
+                motion, tail, first_chunk = False, b"", True
+                with archive.open(info) as stream:
+                    while chunk := stream.read(65536):
+                        # A retained tail can begin in the middle of a comment.
+                        # Only the real file start or a newline starts a command.
+                        sample = (b"" if first_chunk else b"x") + tail + chunk
+                        motion = motion or re.search(rb"(?m)^\s*G[0123](?:\s|$)", sample) is not None
+                        tail = sample[-64:]
+                        first_chunk = False
+                if not motion:
+                    raise ValueError("출력 G-code에서 실제 이동 명령을 확인하지 못했습니다.")
+        name = "Metadata/project_settings.config"
+        if name not in archive.namelist():
+            return None, None
+        with archive.open(name) as stream:
+            raw = stream.read(studio_project.MAX_SETTINGS_BYTES + 1)
+        if len(raw) > studio_project.MAX_SETTINGS_BYTES:
+            raise ValueError("출력 프로젝트 설정이 허용 크기를 초과했습니다.")
+        try:
+            settings = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs, parse_constant=constant)
+            if not isinstance(settings, dict):
+                return None, raw
+            _validate_settings_depth(settings)
+            return settings, raw
+        except (ValueError, UnicodeError, RecursionError):
+            return None, raw
+
+
+def _project_mesh(path: Path) -> tuple[list, list, list]:
+    """Read one active mesh through bounded inline/native component references.
+
+    The generated input has an inline wrapper; native exports put the part in
+    another model member. Validate that the sole build instance reaches the sole
+    mesh, rather than accepting an unused matching mesh elsewhere in the ZIP.
+    Native arrange may translate and rotate the build on the XY plate, but it
+    must not scale, shear, mirror, or tilt the geometry.
+    """
+    q = lambda name: f"{{{_CORE_3MF}}}{name}"
+    documents, objects, mesh_keys = {}, {}, []
+    with zipfile.ZipFile(path) as archive:
+        members = [entry for entry in archive.infolist() if entry.filename.endswith(".model")]
+        if not 1 <= len(members) <= 8:
+            raise ValueError("출력 형상 검토는 제한된 단일 메시 프로젝트만 지원합니다.")
+        for entry in members:
+            if entry.file_size > studio_project.MAX_MODEL_XML_BYTES:
+                raise ValueError("형상 XML 크기가 검토 한도를 초과했습니다.")
+            with archive.open(entry) as stream:
+                raw = stream.read(studio_project.MAX_MODEL_XML_BYTES + 1)
+            if len(raw) > studio_project.MAX_MODEL_XML_BYTES:
+                raise ValueError("형상 XML의 실제 바이트가 검토 한도를 초과했습니다.")
+            text = raw.decode("utf-8")
+            if re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", text, re.I):
+                raise ValueError("형상 XML의 DTD·entity 선언은 지원하지 않습니다.")
+            root = ET.fromstring(text)
+            if root.tag != q("model") or root.get("unit", "millimeter") != "millimeter" or entry.filename in documents:
+                raise ValueError("중복되지 않은 mm 단위 3MF 형상 XML이 필요합니다.")
+            documents[entry.filename] = root
+            for item in root.findall(q("resources") + "/" + q("object")):
+                key = entry.filename, item.get("id")
+                if not key[1] or key in objects or item.get("type", "model") != "model":
+                    raise ValueError("형상 객체 식별자 또는 종류가 유효하지 않습니다.")
+                objects[key] = item
+                meshes = item.findall(q("mesh"))
+                if len(meshes) > 1:
+                    raise ValueError("출력에 여러 메시가 있어 현재 CAD 형상을 확인할 수 없습니다.")
+                if meshes:
+                    mesh_keys.append(key)
+    if len(mesh_keys) != 1 or "3D/3dmodel.model" not in documents:
+        raise ValueError("출력에서 정확히 하나의 현재 CAD 메시를 확인해야 합니다.")
+    root = documents["3D/3dmodel.model"]
+    builds = root.findall(q("build"))
+    instances = builds[0].findall(q("item")) if len(builds) == 1 else []
+    if len(instances) != 1 or instances[0].get("printable", "1") != "1":
+        raise ValueError("출력에 출력 가능한 단일 build instance가 필요합니다.")
+    placements = []
+
+    def placement(element, *, build=False):
+        values = [float(value) for value in element.get("transform", "1 0 0 0 1 0 0 0 1 0 0 0").split()]
+        if len(values) != 12 or not all(math.isfinite(value) for value in values):
+            raise ValueError("형상 배치 변환을 읽을 수 없습니다.")
+        if build:
+            a, b, c, d, e, f, g, h, i = values[:9]
+            valid = (all(abs(value) <= 1e-6 for value in (c, f, g, h)) and abs(i - 1) <= 1e-6
+                     and abs(a * a + b * b - 1) <= 1e-6 and abs(d * d + e * e - 1) <= 1e-6
+                     and abs(a * d + b * e) <= 1e-6 and abs(a * e - b * d - 1) <= 1e-6)
+        else:
+            valid = all(abs(value - expected) <= 1e-6 for value, expected in zip(values[:9], (1, 0, 0, 0, 1, 0, 0, 0, 1)))
+        if not valid:
+            raise ValueError("형상 배치에 크기 변경·기울임·반전 또는 지원하지 않는 part 회전이 있습니다.")
+        placements.append({"kind": "build" if build else "component", "transform": values})
+
+    placement(instances[0], build=True)
+    current = "3D/3dmodel.model", instances[0].get("objectid")
+    visited = set()
+    while True:
+        if current not in objects or current in visited or len(visited) >= 8:
+            raise ValueError("build instance의 형상 참조가 없거나 순환합니다.")
+        visited.add(current)
+        item = objects[current]
+        mesh = item.find(q("mesh"))
+        components = item.findall(q("components") + "/" + q("component"))
+        if mesh is not None:
+            if components or current != mesh_keys[0]:
+                raise ValueError("출력의 실제 build 형상이 단일 현재 CAD 메시와 다릅니다.")
+            break
+        if len(components) != 1:
+            raise ValueError("출력은 하나의 part를 가리키는 형상이어야 합니다.")
+        component = components[0]
+        placement(component)
+        target = component.get(f"{{{_PRODUCTION_3MF}}}path")
+        member = current[0] if not target else (target[1:] if target.startswith("/") else str(PurePosixPath(current[0]).parent / target))
+        current = member, component.get("objectid")
+    points = [tuple(float(vertex.attrib[key]) for key in ("x", "y", "z"))
+              for vertex in mesh.findall(q("vertices") + "/" + q("vertex"))]
+    faces = [tuple(int(face.attrib[key]) for key in ("v1", "v2", "v3"))
+             for face in mesh.findall(q("triangles") + "/" + q("triangle"))]
+    if (not points or not faces or any(not math.isfinite(value) for point in points for value in point)
+            or any(index < 0 or index >= len(points) for face in faces for index in face)):
+        raise ValueError("형상 메시의 꼭짓점 또는 삼각형 연결 정보가 유효하지 않습니다.")
+    return points, faces, placements
+
+
+def _project_geometry_readback(model: Path, output: Path) -> dict:
+    expected_points, expected_faces, _ = _project_mesh(model)
+    actual_points, actual_faces, placements = _project_mesh(output)
+    expected_bounds = [[min(point[axis] for point in expected_points), max(point[axis] for point in expected_points)] for axis in range(3)]
+    actual_bounds = [[min(point[axis] for point in actual_points), max(point[axis] for point in actual_points)] for axis in range(3)]
+    same_counts = len(expected_points) == len(actual_points) and len(expected_faces) == len(actual_faces)
+    maximum_error = max(abs((expected[axis] - expected_bounds[axis][0]) - (actual[axis] - actual_bounds[axis][0]))
+                        for expected, actual in zip(expected_points, actual_points) for axis in range(3)) if same_counts else None
+    topology = sorted(tuple(sorted(face)) for face in expected_faces) == sorted(tuple(sorted(face)) for face in actual_faces)
+    return {"passed": same_counts and topology and maximum_error is not None and maximum_error <= 0.0001,
+            "expected_vertices": len(expected_points), "actual_vertices": len(actual_points),
+            "expected_triangles": len(expected_faces), "actual_triangles": len(actual_faces),
+            "expected_dimensions_mm": [hi - lo for lo, hi in expected_bounds],
+            "actual_dimensions_mm": [hi - lo for lo, hi in actual_bounds],
+            "maximum_translated_vertex_error_mm": maximum_error, "triangle_connectivity_matches": topology,
+            "placement_policy": "single active mesh; part translations; rigid XY plate rotation and translation",
+            "placements": placements}
+
+
+def _execute_project_slice(plan: dict, timeout_seconds: int) -> dict:
+    try:
+        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("timeout_seconds는 0보다 큰 유한 숫자여야 합니다.")
+        job_dir, executable, output, expected, argv, snapshot = _validate_project_plan(plan)
+        probe = _probe_cli(executable, timeout_seconds, _PROJECT_REQUIRED_OPTIONS)
+        if not probe["supported"]:
+            return _result(bambu_version=probe["version"], checks=[_check("cli_capabilities", False, "; ".join(probe["diagnostics"]))])
+        if probe["version"] != studio_project.QUALIFIED_VERSION:
+            return _result(bambu_version=probe["version"], checks=[_check("qualified_version", False,
+                f"이 프로젝트 경로는 Studio {studio_project.QUALIFIED_VERSION}에서 검증했습니다. 설치 버전: {probe['version'] or '확인 불가'}")])
+        # A first help probe can take time; re-check the staged files and binary
+        # before launching the actual slice rather than trusting an earlier hash.
+        job_dir, executable, output, expected, argv, snapshot = _validate_project_plan(plan)
+    except (OSError, ValueError, TypeError, KeyError, RecursionError, RuntimeError, zipfile.BadZipFile) as exc:
+        return _result(checks=[_check("prepared", False, str(exc))])
+    try:
+        completed = subprocess.run(argv, cwd=str(job_dir), shell=False, stdin=subprocess.DEVNULL,
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                   timeout=timeout_seconds, check=False)
+    except subprocess.TimeoutExpired as exc:
+        return _result("timed_out", bambu_version=probe["version"], stdout=_text(exc.stdout), stderr=_text(exc.stderr),
+                       checks=[_check("process", False, "슬라이싱 제한시간을 초과했습니다. 출력은 검증되지 않았습니다.")])
+    except OSError as exc:
+        return _result("failed", bambu_version=probe["version"], stderr=str(exc), checks=[_check("process", False, str(exc))])
+    result = _result("failed", bambu_version=probe["version"], exit_code=completed.returncode,
+                     stdout=_text(completed.stdout), stderr=_text(completed.stderr))
+    result["checks"].append(_check("process", completed.returncode == 0, f"CLI exit code: {completed.returncode}"))
+    if completed.returncode != 0:
+        return result
+    try:
+        for filename, digest in plan["file_hashes"].items():
+            path = Path(filename)
+            limit = studio_project.MAX_ARCHIVE_BYTES if path.suffix == ".3mf" else studio_project.MAX_SETTINGS_BYTES
+            if (path.is_symlink() or path.resolve(strict=True) != path
+                    or hashlib.sha256(_project_read_file(path, limit)).hexdigest() != digest):
+                raise ValueError("native 실행 중 준비한 원본 또는 프로젝트가 변경되었습니다. 결과를 검증된 출력으로 사용할 수 없습니다.")
+        if output.is_symlink() or not output.is_file() or not 0 < output.stat().st_size <= _MAX_ARCHIVE_BYTES:
+            raise ValueError("이번 작업의 비어 있지 않은 출력 3MF를 확인하지 못했습니다.")
+        _, plate_count = _inspect_archive(output, require_gcode=True)
+        settings, settings_bytes = _project_output_settings(output)
+        result["checks"].append(_check("sliced_archive", True, f"ZIP 무결성과 {plate_count}개 G-code 이동 명령을 확인했습니다."))
+        result.update(output_path=str(output), output_sha256=_hash(output))
+    except (OSError, ValueError, RuntimeError, zipfile.BadZipFile, NotImplementedError) as exc:
+        result["checks"].append(_check("sliced_archive", False, str(exc)))
+        return result
+    try:
+        geometry = _project_geometry_readback(Path(plan["input_path"]), output)
+        result["geometry_readback"] = geometry
+        result["checks"].append(_check("geometry", geometry["passed"],
+            "현재 CAD의 전체 꼭짓점·삼각형과 단일 build 배치를 확인했습니다." if geometry["passed"] else "출력 형상이 현재 CAD 메시와 다릅니다."))
+    except (OSError, ValueError, TypeError, KeyError, OverflowError, RuntimeError, zipfile.BadZipFile, NotImplementedError, ET.ParseError) as exc:
+        result["geometry_readback"] = {"passed": False, "error": str(exc)}
+        result["checks"].append(_check("geometry", False, str(exc)))
+    if settings is None:
+        result["checks"].append(_check("project_settings", False, "출력 프로젝트 설정을 다시 읽을 수 없어 검토가 필요합니다."))
+    else:
+        for key, value in expected.items():
+            matches = key in settings and _equivalent(value, settings[key])
+            result["checks"].append(_check(f"setting:{key}", matches, "기록한 설정과 일치합니다." if matches else "출력 설정이 누락되었거나 기록과 다릅니다."))
+        readback = _snapshot_readback(snapshot["settings_text"], settings, settings_bytes)
+        result["project_settings_readback"] = readback
+        result["checks"].append(_check("project_settings_snapshot", readback["unqualified_difference_count"] == 0,
+            f"전체 설정 비교: 동일 {readback['unchanged_key_count']}개, 확인한 native 정규화 {readback['qualified_normalization_count']}개, 추가 검토 {readback['unqualified_difference_count']}개."))
+    result["status"] = "sliced" if all(check["passed"] for check in result["checks"]) else "needs_review"
+    return result
+
+
 def _check(name: str, passed: bool, detail: str) -> dict:
     return {"name": name, "passed": passed, "detail": detail}
 
@@ -572,6 +1009,8 @@ def execute_slice(plan: dict, timeout_seconds: int = 180) -> dict:
     if not isinstance(plan, dict) or not plan.get("ready"):
         detail = "; ".join(str(item) for item in plan.get("diagnostics", [])) if isinstance(plan, dict) else "잘못된 실행 계획입니다."
         return _result(checks=[_check("prepared", False, detail or "준비된 실행 계획이 없습니다.")])
+    if plan.get("kind") == "studio_project":
+        return _execute_project_slice(plan, timeout_seconds)
     try:
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("timeout_seconds는 0보다 큰 유한 숫자여야 합니다.")

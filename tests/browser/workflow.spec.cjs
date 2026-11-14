@@ -1,8 +1,12 @@
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
+const path = require('node:path');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { test, expect } = require('@playwright/test');
 const { filamentArchive, printerArchive } = require('./archive-fixture.cjs');
 const { isolatedRuntime } = require('./runtime-server.cjs');
+const runFile = promisify(execFile);
 
 // Servers and CAD are real. Recovery scenarios explicitly label delayed real
 // responses and synthetic HTTP 503 failures. Runtime scenarios restart a real
@@ -19,6 +23,77 @@ async function noHorizontalOverflow(page) {
   await expect.poll(() => page.evaluate(() =>
     document.documentElement.scrollWidth <= window.innerWidth + 1
   )).toBe(true);
+}
+
+// A synthetic 7 mm cube plus retained synthetic CI settings, not a GUI export,
+// manufacturer recommendation, installed Studio or successful physical print.
+async function studioProjectUpload(name, application = 'BambuStudio-02.09.01.70') {
+  const script = String.raw`
+import base64, sys
+from xml.sax.saxutils import escape
+from tests.studio_project_fixtures import CORE, project_bytes
+vertices = [(0,0,0),(7,0,0),(7,7,0),(0,7,0),(0,0,7),(7,0,7),(7,7,7),(0,7,7)]
+triangles = [(0,2,1),(0,3,2),(4,5,6),(4,6,7),(0,1,5),(0,5,4),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,0,4),(3,4,7)]
+points = ''.join(f'<vertex x="{x}" y="{y}" z="{z}"/>' for x,y,z in vertices)
+faces = ''.join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a,b,c in triangles)
+root = (f'<model xmlns="{CORE}" unit="millimeter"><metadata name="Application">{escape(sys.argv[1])}</metadata>'
+        '<metadata name="BambuStudio:3mfVersion">1</metadata>'
+        f'<resources><object id="1" type="model"><mesh><vertices>{points}</vertices><triangles>{faces}</triangles></mesh></object></resources>'
+        '<build><item objectid="1"/></build></model>').encode()
+content = project_bytes(root_xml=root, extra_members={
+    'Metadata/model_settings.config': b'<config><object id="1"><metadata key="layer_height" value="0.9"/></object></config>',
+    'Metadata/plate_1.gcode': b'; synthetic source G-code must not transfer\nG1 X0 Y0\n',
+})
+print(base64.b64encode(content).decode())
+`;
+  const result = await runFile('python', ['-c', script, application], {
+    cwd: path.resolve(__dirname, '../..'), timeout: 30000, maxBuffer: 2 * 1024 * 1024,
+  });
+  return { name, mimeType: 'model/3mf', buffer: Buffer.from(result.stdout.trim(), 'base64') };
+}
+
+// Independent stdlib inspection of the actual browser downloads. This does not
+// call the production parser/composer and does not launch a native slicer.
+async function inspectPreparedDownload(sourceFile, modelFile, preparedFile) {
+  const script = String.raw`
+import hashlib, io, json, sys, zipfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
+core = '{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}'
+def unpack(filename):
+    content = Path(filename).read_bytes()
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    root = ET.fromstring(members['3D/3dmodel.model'])
+    assert root.get('unit') == 'millimeter'
+    vertices = [tuple(float(v.get(axis)) for axis in ('x','y','z')) for v in root.iter(core+'vertex')]
+    triangles = [tuple(int(t.get(axis)) for axis in ('v1','v2','v3')) for t in root.iter(core+'triangle')]
+    dimensions = [max(p[i] for p in vertices)-min(p[i] for p in vertices) for i in range(3)]
+    metadata = {m.get('name'): m.text for m in root.findall(core+'metadata')}
+    return content, members, vertices, triangles, dimensions, metadata
+source, source_members, _, _, source_dimensions, source_metadata = unpack(sys.argv[1])
+model, _, vertices, triangles, dimensions, _ = unpack(sys.argv[2])
+prepared, members, prepared_vertices, prepared_triangles, prepared_dimensions, metadata = unpack(sys.argv[3])
+assert prepared_vertices == vertices and prepared_triangles == triangles
+assert prepared_dimensions == dimensions and source_dimensions == [7,7,7] and dimensions != source_dimensions
+assert members['Metadata/project_settings.config'] == source_members['Metadata/project_settings.config']
+assert members['Metadata/model_settings.config'] != source_members['Metadata/model_settings.config']
+assert not any(name.lower().endswith('.gcode') for name in members)
+assert metadata['Application'] == source_metadata['Application']
+assert metadata['3DPrinterAgent:ModifiedBy'].startswith('3D Printer Agent ')
+digest = lambda content: hashlib.sha256(content).hexdigest()
+assert metadata['3DPrinterAgent:SourceProjectSHA256'] == digest(source)
+assert metadata['3DPrinterAgent:ModelSHA256'] == digest(model)
+print(json.dumps({'source_sha256':digest(source),'model_sha256':digest(model),'project_sha256':digest(prepared),
+    'settings_sha256':digest(members['Metadata/project_settings.config']),'source_dimensions_mm':source_dimensions,
+    'current_dimensions_mm':dimensions,'vertices':len(vertices),'triangles':len(triangles),'members':sorted(members),
+    'settings_bytes_preserved':True,'generated_mesh_preserved':True,'source_geometry_copied':False,
+    'source_overrides_copied':False,'source_gcode_copied':False,'modifier':metadata['3DPrinterAgent:ModifiedBy']}))
+`;
+  const result = await runFile('python', ['-c', script, sourceFile, modelFile, preparedFile], {
+    cwd: path.resolve(__dirname, '../..'), timeout: 30000, maxBuffer: 100000,
+  });
+  return JSON.parse(result.stdout);
 }
 
 async function openProfileEvidence(page, testInfo) {
@@ -70,6 +145,262 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(async ({ page }) => {
   expect(page.__errors).toEqual([]);
+});
+
+test('a recorded Studio project reaches current CAD, verified prepared download and deliberate history reuse without native Studio', async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  const upload = await studioProjectUpload('synthetic-studio-source.3mf');
+  const sliceRequests = [];
+  page.on('request', request => {
+    if (request.url().endsWith('/api/slice') && request.method() === 'POST') sliceRequests.push(request.postDataJSON());
+  });
+  const importedResponse = page.waitForResponse(response => response.url().endsWith('/api/studio-projects/import'));
+  await page.locator('#studio-project-file').setInputFiles(upload);
+  const imported = await importedResponse;
+  expect(imported.status()).toBe(201);
+  const source = await imported.json();
+  expect(source.supported).toBe(true);
+  expect(source.source.sha256).toBe(crypto.createHash('sha256').update(upload.buffer).digest('hex'));
+  expect(source.summary).toMatchObject({ printer_model: 'PPA Synthetic FFF CI Only',
+    printer_preset: 'PPA Synthetic Machine CI Only', process_preset: 'PPA Synthetic Process CI Only',
+    nozzle_diameter: '0.4', plate_type: 'High Temp Plate', filament_name: 'PPA Synthetic PLA CI Only',
+    filament_type: 'PLA', nozzle_temperature: '200', nozzle_temperature_initial_layer: '205',
+    bed_temperature: '50', bed_temperature_initial_layer: '55' });
+  await expect(page.locator('#studio-project-candidate')).toBeVisible();
+  for (const key of ['printer_model', 'printer_preset', 'process_preset', 'nozzle_diameter', 'plate_type', 'filament_name']) {
+    await expect(page.locator('#studio-project-candidate .studio-source-summary')).toContainText(source.summary[key]);
+  }
+  await expect(page.locator('#studio-project-candidate')).toContainText('프로젝트에 기록된 값');
+  await expect(page.locator('#studio-project-applied')).toBeHidden();
+  await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+  await expect(page.locator('#execute-studio-project')).toBeDisabled();
+  await noHorizontalOverflow(page);
+  await page.locator('.studio-project-import').screenshot({ path: testInfo.outputPath('studio-source-candidate.png'), scale: 'css' });
+  await page.locator('#studio-project-apply').click();
+  await expect(page.locator('#studio-project-candidate')).toBeHidden();
+  await expect(page.locator('#studio-project-applied')).toContainText(upload.name);
+  await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+  expect(sliceRequests).toEqual([]);
+
+  // The uploaded source cube is 7 mm. This real CAD is intentionally different.
+  await page.locator('#parameter-width').fill('123');
+  const generatedResponse = page.waitForResponse(response => response.url().endsWith('/api/models') && response.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const generated = await generatedResponse;
+  expect(generated.status()).toBe(200);
+  const job = await generated.json();
+  expect(job.result.geometry_status).toBe('validated');
+  expect(job.result.dimensions_mm.x).toBe(123);
+  await expect(page.locator('#prepare-studio-project')).toBeEnabled();
+  const preparedResponse = page.waitForResponse(response => response.url().endsWith('/api/slice'));
+  const refreshedResponse = page.waitForResponse(response => response.url().endsWith('/api/jobs/' + job.id));
+  await page.locator('#prepare-studio-project').click();
+  const prepared = await preparedResponse;
+  expect(prepared.status()).toBe(200);
+  const preparation = await prepared.json();
+  expect(prepared.request().postDataJSON()).toEqual({ job_id: job.id, studio_project_id: source.source_id, execute: false });
+  expect(preparation.plan).toMatchObject({ kind: 'studio_project', project_prepared: true, ready: false,
+    project_source: { source_id: source.source_id, source: source.source, summary: source.summary } });
+  expect(preparation.execution).toBeNull();
+  const refreshed = await (await refreshedResponse).json();
+  expect(refreshed.artifacts.prepared_three_mf).toBeTruthy();
+  expect(refreshed.artifacts.sliced_three_mf).toBeUndefined();
+  await expect(page.locator('#studio-project-prepared-download')).toBeVisible();
+  await expect(page.locator('#slice-feedback')).toBeVisible();
+  await expect(page.locator('#slice-feedback')).toContainText('설정 포함 3MF를 준비했습니다');
+  await expect(page.locator('#execute-studio-project')).toBeDisabled();
+  await expect(page.locator('#download-links')).not.toContainText('슬라이스 3MF');
+  await expect(page.locator('#slicer-details')).not.toHaveJSProperty('open', true);
+
+  const sourceDownloadPromise = page.waitForEvent('download');
+  await page.locator('#studio-project-applied a[download]').click();
+  const sourceFile = testInfo.outputPath('studio-original.3mf');
+  await (await sourceDownloadPromise).saveAs(sourceFile);
+  expect((await fs.readFile(sourceFile)).equals(upload.buffer)).toBe(true);
+  const preparedDownloadPromise = page.waitForEvent('download');
+  await page.locator('#studio-project-prepared-download').click();
+  const preparedFile = testInfo.outputPath('studio-prepared.3mf');
+  await (await preparedDownloadPromise).saveAs(preparedFile);
+  const modelFile = testInfo.outputPath('studio-current-cad.3mf');
+  const modelResponse = await page.request.get(job.artifacts.three_mf);
+  expect(modelResponse.status()).toBe(200);
+  await fs.writeFile(modelFile, await modelResponse.body());
+  const evidence = await inspectPreparedDownload(sourceFile, modelFile, preparedFile);
+  expect(evidence.project_sha256).toBe(preparation.plan.project_sha256);
+  expect(evidence.settings_sha256).toBe(source.settings_sha256);
+  expect(evidence.current_dimensions_mm).toEqual(['x', 'y', 'z'].map(axis => job.result.dimensions_mm[axis]));
+  expect(preparation.plan.project_receipt).toMatchObject({ source_sha256: evidence.source_sha256,
+    model_sha256: evidence.model_sha256, project_sha256: evidence.project_sha256, settings_sha256: evidence.settings_sha256 });
+  await fs.writeFile(testInfo.outputPath('studio-download-inspection.json'), JSON.stringify(evidence, null, 2));
+  await fs.writeFile(testInfo.outputPath('studio-source-inspection.json'), JSON.stringify(source, null, 2));
+  await fs.writeFile(testInfo.outputPath('studio-preparation.json'), JSON.stringify(preparation, null, 2));
+  await noHorizontalOverflow(page);
+  await page.locator('.slicer-card').screenshot({ path: testInfo.outputPath('studio-prepared-without-native.png'), scale: 'css' });
+
+  // A new page session restores historical evidence, not the previous selection
+  // or permission to execute. Source reuse requires GET, apply and fresh prepare.
+  await page.reload();
+  await expect(page.locator('#generate-button')).toBeEnabled();
+  await openView(page, 'history');
+  await page.locator('.history-item').filter({ hasText: job.title }).first().getByRole('button', { name: '열기' }).click();
+  await expect(page.locator('#studio-project-recorded')).toBeVisible();
+  await expect(page.locator('#studio-project-recorded')).toContainText(upload.name);
+  await expect(page.locator('#studio-project-applied')).toBeHidden();
+  await expect(page.locator('#studio-project-candidate')).toBeHidden();
+  await expect(page.locator('#execute-studio-project')).toBeDisabled();
+  await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+  await expect(page.locator('#download-links')).toContainText('설정 포함 3MF');
+  await expect(page.locator('#studio-project-prepared-download')).toBeHidden();
+  await page.locator('.studio-project-import').screenshot({ path: testInfo.outputPath('studio-history-record.png'), scale: 'css' });
+  const sourceRecheck = page.waitForResponse(response => response.url().endsWith('/api/studio-projects/' + source.source_id));
+  await page.locator('#studio-project-history-source').click();
+  expect((await (await sourceRecheck).json()).source.sha256).toBe(source.source.sha256);
+  await expect(page.locator('#studio-project-candidate')).toBeVisible();
+  await expect(page.locator('#studio-project-applied')).toBeHidden();
+  await page.locator('#studio-project-apply').click();
+  await expect(page.locator('#prepare-studio-project')).toBeEnabled();
+  await expect(page.locator('#studio-project-prepared-download')).toBeHidden();
+  const preparedAgainResponse = page.waitForResponse(response => response.url().endsWith('/api/slice'));
+  await page.locator('#prepare-studio-project').click();
+  const preparedAgain = await (await preparedAgainResponse).json();
+  expect(preparedAgain.plan.project_sha256).toBe(preparation.plan.project_sha256);
+  await expect(page.locator('#studio-project-prepared-download')).toBeVisible();
+  expect(sliceRequests).toEqual([
+    { job_id: job.id, studio_project_id: source.source_id, execute: false },
+    { job_id: job.id, studio_project_id: source.source_id, execute: false },
+  ]);
+  await noHorizontalOverflow(page);
+});
+
+test('Studio candidates preserve exact drafts through unsupported and late imports and a real reconnect', async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  const runtime = await isolatedRuntime(testInfo);
+  const releases = [];
+  try {
+    await runtime.start();
+    await page.goto(runtime.url);
+    await expect(page.locator('#generate-button')).toBeEnabled();
+    const original = await studioProjectUpload('retained-studio-source.3mf');
+    const unsupported = await studioProjectUpload('unsupported-studio-source.3mf', 'BambuStudio-01.00.00.00');
+    const exactManual = '  { "unfinished_manual": "keep exact bytes",\n';
+    const exactMaterial = '{ "unfinished_material": "preserve separate editor",  ';
+    await page.locator('#slicer-details > summary').click();
+    await page.locator('#slicer-json').fill(exactManual);
+    await openView(page, 'profiles');
+    await page.locator('#profile-json').fill(exactMaterial);
+    await openView(page, 'models');
+    const originalResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/studio-projects/import');
+    await page.locator('#studio-project-file').setInputFiles(original);
+    const source = await (await originalResponse).json();
+    expect(source.supported).toBe(true);
+    await page.locator('#studio-project-apply').click();
+    await page.locator('#parameter-width').fill('131');
+    const generatedResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/models');
+    await page.locator('#generate-button').click();
+    const job = await (await generatedResponse).json();
+    expect(job.result.geometry_status).toBe('validated');
+    await expect(page.locator('#prepare-studio-project')).toBeEnabled();
+
+    const unsupportedResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/studio-projects/import');
+    await page.locator('#studio-project-file').setInputFiles(unsupported);
+    const unsupportedResult = await (await unsupportedResponse).json();
+    expect(unsupportedResult.supported).toBe(false);
+    expect(unsupportedResult.issues.some(issue => issue.code === 'unsupported_version')).toBe(true);
+    await expect(page.locator('#studio-project-candidate')).toContainText(unsupported.name);
+    await expect(page.locator('#studio-project-apply')).toBeDisabled();
+    await expect(page.locator('#studio-project-applied')).toContainText(original.name);
+    await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+    await expect(page.locator('#slicer-json')).toHaveValue(exactManual);
+    await expect(page.locator('#profile-json')).toHaveValue(exactMaterial);
+    await noHorizontalOverflow(page);
+    await page.locator('.studio-project-import').screenshot({ path: testInfo.outputPath('studio-unsupported-candidate.png'), scale: 'css' });
+    await page.locator('#studio-project-cancel').click();
+    await expect(page.locator('#prepare-studio-project')).toBeEnabled();
+
+    const malformed = { name: 'malformed-studio.3mf', mimeType: 'model/3mf', buffer: Buffer.from('not a ZIP project') };
+    page.__expectedHttpFailures.push({ path: '/api/studio-projects/import', status: 422 });
+    const malformedResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/studio-projects/import');
+    await page.locator('#studio-project-file').setInputFiles(malformed);
+    expect((await malformedResponse).status()).toBe(422);
+    await expect(page.locator('#studio-project-feedback')).toContainText(malformed.name);
+    await expect(page.locator('#studio-project-applied')).toContainText(original.name);
+    await expect(page.locator('#prepare-studio-project')).toBeEnabled();
+
+    // Delay two actual API replies, one supported import and one malformed 422.
+    // Cancellation and a newer real import must suppress old success AND error.
+    for (const fails of [false, true]) {
+      const oldUpload = { ...(fails ? malformed : original), name: fails ? 'late-malformed.3mf' : 'late-supported.3mf' };
+      let release, entered;
+      const held = new Promise(resolve => { release = resolve; });
+      const fetched = new Promise(resolve => { entered = resolve; });
+      releases.push(release);
+      await page.route(runtime.url + '/api/studio-projects/import', async route => {
+        const actual = await route.fetch();
+        expect(actual.status()).toBe(fails ? 422 : 201);
+        entered();
+        await held;
+        await route.fulfill({ response: actual });
+      }, { times: 1 });
+      const lateResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/studio-projects/import' && response.request().postDataJSON().filename === oldUpload.name);
+      await page.locator('#studio-project-file').setInputFiles(oldUpload);
+      await fetched;
+      await expect(page.locator('#studio-project-status')).toContainText('확인 중');
+      await page.locator('#studio-project-cancel').click();
+      const currentUpload = { ...original, name: fails ? 'current-after-error.3mf' : 'current-after-success.3mf' };
+      const currentResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/studio-projects/import' && response.request().postDataJSON().filename === currentUpload.name);
+      await page.locator('#studio-project-file').setInputFiles(currentUpload);
+      expect((await currentResponse).status()).toBe(201);
+      await expect(page.locator('#studio-project-candidate')).toContainText(currentUpload.name);
+      release();
+      await (await lateResponse).finished();
+      await expect(page.locator('#studio-project-candidate')).toContainText(currentUpload.name);
+      await expect(page.locator('#studio-project-feedback')).not.toContainText(oldUpload.name);
+      await expect(page.locator('#studio-project-applied')).toContainText(original.name);
+      await page.locator('#studio-project-cancel').click();
+      await expect(page.locator('#slicer-json')).toHaveValue(exactManual);
+      await expect(page.locator('#profile-json')).toHaveValue(exactMaterial);
+    }
+
+    await runtime.stop();
+    const restarted = await runtime.start();
+    page.__expectedHttpFailures.push({ path: '/api/discovery', status: 403 });
+    expect((await findProjects(page)).status()).toBe(403);
+    await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+    await expect(page.locator('#studio-project-applied')).toContainText(original.name);
+    const writes = [];
+    const countWrites = request => { if (!['GET', 'HEAD'].includes(request.method())) writes.push(request.url()); };
+    page.on('request', countWrites);
+    const reconnectedResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/bootstrap');
+    await page.locator('#reconnect-button').click();
+    expect((await (await reconnectedResponse).json()).session_token).toBe(restarted.session_token);
+    await expect(page.locator('#studio-project-revalidate')).toBeEnabled();
+    await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+    await expect(page.locator('#execute-studio-project')).toBeDisabled();
+    await expect(page.locator('#slicer-json')).toHaveValue(exactManual);
+    await expect(page.locator('#profile-json')).toHaveValue(exactMaterial);
+    expect(writes).toEqual([]);
+    page.off('request', countWrites);
+    const checkedResponse = page.waitForResponse(response => response.url() === runtime.url + '/api/studio-projects/' + source.source_id);
+    await page.locator('#studio-project-revalidate').click();
+    const rechecked = await (await checkedResponse).json();
+    expect(rechecked.source.sha256).toBe(source.source.sha256);
+    expect(rechecked.settings_sha256).toBe(source.settings_sha256);
+    await expect(page.locator('#prepare-studio-project')).toBeEnabled();
+    await expect(page.locator('#execute-studio-project')).toBeDisabled();
+    await expect(page.locator('#studio-project-applied')).toContainText(original.name);
+    await expect(page.locator('#parameter-width')).toHaveValue('131');
+    const retainedJob = await (await page.request.get(runtime.url + '/api/jobs/' + job.id)).json();
+    expect(retainedJob.latest_slice).toBeNull();
+    await fs.writeFile(testInfo.outputPath('studio-reconnect-inspection.json'), JSON.stringify({
+      original: source, rechecked, unsupported: unsupportedResult, automatically_replayed_writes: writes,
+      retained_job_id: retainedJob.id, native_execution: 'not attempted',
+    }, null, 2));
+    await noHorizontalOverflow(page);
+    await page.locator('.studio-project-import').screenshot({ path: testInfo.outputPath('studio-reconnected-source.png'), scale: 'css' });
+  } finally {
+    releases.forEach(release => release());
+    await runtime.stop();
+  }
 });
 
 test('real server restart reconnects without replay and preserves unfinished work before confirmed history restore', async ({ page }, testInfo) => {

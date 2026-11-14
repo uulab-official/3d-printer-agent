@@ -6,6 +6,7 @@ All fault injection targets a fresh synthetic directory created by this script.
 No browser, native slicer, provider, account, or physical printer is used.
 """
 import argparse
+import base64
 from datetime import datetime, timezone
 from email.parser import BytesParser
 import hashlib
@@ -231,6 +232,72 @@ def qualify(args, report):
                            'mesh_vertices': len(vertices), 'artifacts': manifest['artifacts'],
                            'source': job.get('design_source')})
         report['models'] = models
+
+        # This is a labeled synthetic source container, not an authenticated
+        # user's GUI export. Its complete settings came from the separately
+        # retained native CI fixture. The installed app supplies all behavior.
+        settings_path = source / 'tests/fixtures/studio_project_synthetic_settings.json'
+        settings_bytes = settings_path.read_bytes()
+        core = 'http://schemas.microsoft.com/3dmanufacturing/core/2015/02'
+        fixture_xml = (f'<model xmlns="{core}" unit="millimeter">'
+                       '<metadata name="Application">BambuStudio-02.09.01.70</metadata>'
+                       '<metadata name="BambuStudio:3mfVersion">1</metadata>'
+                       '<resources/><build/></model>').encode('utf-8')
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w', compression=zipfile.ZIP_DEFLATED) as fixture:
+            fixture.writestr('Metadata/project_settings.config', settings_bytes)
+            fixture.writestr('3D/3dmodel.model', fixture_xml)
+        source_bytes = stream.getvalue()
+        (downloads / 'synthetic-source-project.3mf').write_bytes(source_bytes)
+        imported = get_json(server, '/api/studio-projects/import', method='POST', token=token, expected=201,
+                            payload={'filename': '합성 설정 원본.3mf',
+                                     'content_base64': base64.b64encode(source_bytes).decode('ascii')})
+        check('studio_source_identity_and_public_scope', imported['supported'] is True
+              and imported['source']['sha256'] == sha256(source_bytes)
+              and imported['settings_sha256'] == sha256(settings_bytes)
+              and 'settings_text' not in imported and 'expected_settings' not in imported)
+        inspected = get_json(server, '/api/studio-projects/' + imported['source_id'])
+        check('studio_source_reinspection_matches', inspected == imported)
+        code, original, _ = request(server.base, imported['archive_url'])
+        check('studio_original_download_exact', code == 200 and original == source_bytes)
+        prepared = get_json(server, '/api/slice', method='POST', token=token,
+                            payload={'job_id': models[1]['id'], 'studio_project_id': imported['source_id'],
+                                     'execute': False})
+        plan = prepared['plan']
+        check('studio_preparation_without_native', plan['kind'] == 'studio_project'
+              and plan['project_prepared'] is True and plan['ready'] is False and prepared['execution'] is None
+              and plan['project_source']['source_id'] == imported['source_id'])
+        prepared_job = get_json(server, '/api/jobs/' + models[1]['id'])
+        check('studio_history_has_distinct_prepared_download', 'prepared_three_mf' in prepared_job['artifacts']
+              and 'sliced_three_mf' not in prepared_job['artifacts']
+              and prepared_job['latest_slice']['plan'] == plan)
+        prepared_url = prepared_job['artifacts']['prepared_three_mf']
+        code, prepared_bytes, _ = request(server.base, prepared_url)
+        check('studio_prepared_download_receipt', code == 200 and sha256(prepared_bytes) == plan['project_sha256']
+              and len(prepared_bytes) == plan['project_receipt']['project_bytes'])
+        (downloads / 'prepared-project.3mf').write_bytes(prepared_bytes)
+        with zipfile.ZipFile(io.BytesIO(prepared_bytes)) as derivative, zipfile.ZipFile(downloads / 'cable_comb-model.3mf') as cad:
+            check('studio_prepared_crc_and_exact_settings', derivative.testzip() is None
+                  and derivative.read('Metadata/project_settings.config') == settings_bytes)
+            current_mesh = ET.fromstring(cad.read('3D/3dmodel.model')).find('.//{*}mesh')
+            prepared_mesh = ET.fromstring(derivative.read('3D/3dmodel.model')).find('.//{*}mesh')
+            def mesh_values(mesh):
+                return ([tuple(float(vertex.attrib[key]) for key in 'xyz') for vertex in mesh.findall('{*}vertices/{*}vertex')],
+                        [tuple(int(face.attrib[key]) for key in ('v1', 'v2', 'v3')) for face in mesh.findall('{*}triangles/{*}triangle')])
+            check('studio_prepared_current_cad_vertices_and_topology', current_mesh is not None and prepared_mesh is not None
+                  and mesh_values(current_mesh) == mesh_values(prepared_mesh))
+        code, bundle_bytes, _ = request(server.base, prepared_job['bundle_url'])
+        with zipfile.ZipFile(io.BytesIO(bundle_bytes)) as bundle:
+            check('studio_prepared_bundle_distinguishes_original_cad', code == 200
+                  and bundle.read('prepared-project.3mf') == prepared_bytes
+                  and bundle.read('model.3mf') == (downloads / 'cable_comb-model.3mf').read_bytes())
+        report['studio_project'] = {'source': imported, 'preparation': prepared,
+                                    'fixture_settings_sha256': sha256(settings_bytes),
+                                    'fixture_provenance': 'synthetic container and synthetic CI native settings; no user GUI-export claim',
+                                    'job_id': models[1]['id'], 'prepared_sha256': sha256(prepared_bytes),
+                                    'prepared_bytes': len(prepared_bytes)}
+        write_json(downloads / 'studio-source-inspection.json', imported)
+        write_json(downloads / 'studio-preparation.json', prepared)
         source_record = models[0]['source']
         check('customized_original_is_recorded', source_record['recipe']['parameters']['width'] == 90
               and source_record['changed_parameters'] == ['width'] and source_record['customized'] is True)
@@ -292,6 +359,11 @@ def qualify(args, report):
         get_json(restarted, '/api/discovery', method='POST', payload={}, token=refreshed['session_token'])
         restored = get_json(restarted, '/api/profile-workspaces/' + workspace['id'])
         check('workspace_survives_real_restart', restored == workspace and restored['snapshot'] == snapshot)
+        source_reopened = get_json(restarted, '/api/studio-projects/' + imported['source_id'])
+        project_reopened = get_json(restarted, '/api/jobs/' + models[1]['id'])
+        code, reopened_bytes, _ = request(restarted.base, prepared_url)
+        check('studio_source_and_prepared_download_survive_restart', source_reopened == imported
+              and project_reopened == prepared_job and code == 200 and reopened_bytes == prepared_bytes)
         retained_job = get_json(restarted, '/api/jobs/' + models[0]['id'])
         check('generation_source_survives_restart', retained_job['design_source'] == source_record
               and retained_job['result']['parameters']['width'] == 92)
@@ -368,6 +440,13 @@ def qualify(args, report):
             code, content, _ = request(restored_server.base, restored_model['artifacts']['three_mf'])
             verified_downloads.append(code == 200 and sha256(content) == model['artifacts']['three_mf']['sha256'])
         check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == 3)
+        restored_source = get_json(restored_server, '/api/studio-projects/' + imported['source_id'])
+        restored_project = get_json(restored_server, '/api/jobs/' + models[1]['id'])
+        source_code, restored_source_bytes, _ = request(restored_server.base, imported['archive_url'])
+        prepared_code, restored_prepared_bytes, _ = request(restored_server.base, prepared_url)
+        check('studio_source_and_preparation_survive_backup_restore', restored_source == imported
+              and restored_project == prepared_job and source_code == prepared_code == 200
+              and restored_source_bytes == source_bytes and restored_prepared_bytes == prepared_bytes)
         check('backup_source_bytes_unchanged', original_bytes == data_hashes())
         report['backup'] = {'created': created_backup, 'inspected': inspected_backup, 'restored': restored_backup,
                             'source_files': original_bytes, 'restored_before_start_files': restored_bytes,

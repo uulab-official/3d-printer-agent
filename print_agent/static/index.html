@@ -164,9 +164,25 @@
           <p id="slicer-description" class="muted">이 컴퓨터의 Bambu Studio 설치와 명령줄 기능을 확인합니다.</p>
           <button id="probe-slicer" class="button button-secondary" type="button" disabled>설치된 슬라이서 확인</button>
           <div id="slicer-probe-feedback" class="notice slicer-probe-feedback" role="status" hidden></div>
-          <div class="notice notice-info compact-notice"><p>이 단계는 슬라이스 파일을 준비합니다. 프린터 연결이나 실제 출력 시작은 수행하지 않습니다.</p></div>
+          <div class="notice notice-info compact-notice"><p>먼저 모델에 출력 설정을 담고, 필요하면 별도로 슬라이싱합니다. 프린터 연결이나 실제 출력 시작은 수행하지 않습니다.</p></div>
+          <section class="studio-project-import" aria-labelledby="studio-project-heading">
+            <div class="studio-project-heading"><div><span class="step-label">Studio에서 쓰던 설정</span><h3 id="studio-project-heading">프로젝트 하나로 출력 설정 준비</h3></div><label class="file-button">프로젝트 .3mf 가져오기<input id="studio-project-file" type="file" accept=".3mf" disabled></label></div>
+            <p class="field-help">Studio에서 저장한 프로젝트의 전역 설정을 현재 만든 CAD에 담습니다. 원본 모델·개별 물체 설정·페인팅·기존 G-code는 옮기지 않습니다. 원본 파일은 그대로 보관합니다.</p>
+            <p class="field-help">최대 16 MiB. 현재 지원 범위는 Studio 02.09.01.70의 단일 필라멘트·노즐·활성 압출기입니다. 모델 생성이나 Studio 설치 전에도 기록된 설정을 확인할 수 있습니다.</p>
+            <p id="studio-project-status" class="studio-project-status" role="status">사용하던 Studio 프로젝트를 선택하세요.</p>
+            <div id="studio-project-feedback" class="notice" role="status" hidden></div>
+            <div id="studio-project-candidate" class="studio-source studio-source-candidate" hidden></div>
+            <div id="studio-project-candidate-actions" class="button-row" hidden><button id="studio-project-apply" class="button button-secondary" type="button" disabled>이 프로젝트 설정 선택</button><button id="studio-project-cancel" class="text-button" type="button" disabled>후보 취소 · 기존 입력 유지</button></div>
+            <div id="studio-project-applied" class="studio-source" hidden></div>
+            <div class="button-row"><button id="studio-project-revalidate" class="text-button" type="button" hidden disabled>선택한 원본 다시 확인</button></div>
+            <p id="studio-project-next" class="field-help">프로젝트를 확인한 뒤 사용할 설정을 직접 선택합니다. 수동 JSON과 재료 편집 내용은 유지됩니다.</p>
+            <div class="button-row studio-project-actions"><button id="prepare-studio-project" class="button button-primary" type="button" disabled>현재 CAD에 설정 담기</button><button id="execute-studio-project" class="button button-secondary" type="button" disabled>이 프로젝트로 슬라이싱</button><a id="studio-project-prepared-download" class="button button-secondary" download hidden>설정 포함 3MF 다운로드 <span aria-hidden="true">↓</span></a></div>
+            <p class="field-help">설정 포함 3MF는 Studio가 없어도 만들 수 있습니다. 실제 슬라이싱은 지원되는 설치 버전 확인과 별도 실행이 필요합니다.</p>
+            <div id="studio-project-recorded" class="studio-source studio-source-recorded" hidden></div>
+            <button id="studio-project-history-source" class="text-button" type="button" hidden disabled>이 기록의 원본 다시 확인</button>
+          </section>
           <details id="slicer-details" class="settings-details">
-            <summary>전체 슬라이서 설정으로 준비하기</summary>
+            <summary>고급 · 전체 설정 JSON으로 직접 준비하기</summary>
             <section class="slicer-file-helper" aria-labelledby="slicer-files-heading">
               <h3 id="slicer-files-heading">설정 파일을 골라 묶음 만들기</h3>
               <p class="field-help">Bambu Studio CLI용 전체 machine·process·filament JSON을 선택하세요. 재료 검토 보고서나 상속이 남은 부분 프리셋은 전체 설정을 대신하지 않습니다. 파일의 상속 필드나 값을 지우거나 채우지 않습니다.</p>
@@ -187,9 +203,9 @@
                 <p class="field-help">묶음을 직접 입력하거나 JSON 파일로 열 수도 있습니다. 위의 파일 선택을 편집 중이라면 먼저 묶음을 만들거나 편집을 취소하세요. 완성한 전체 설정은 실행 계획에서 다시 검토합니다.</p>
                 <div class="button-row"><button id="prepare-slice" class="button button-secondary" type="button" disabled>설정과 실행 계획 검토</button><button id="execute-slice" class="button button-primary" type="button" disabled>슬라이싱 실행</button></div>
               </div>
-              <div><div id="slice-feedback" class="notice notice-info" role="status"><p>모델을 생성하고 전체 설정을 제공하면 실행 계획을 확인할 수 있습니다.</p></div><div id="slice-result"></div></div>
             </div>
           </details>
+          <div class="slicer-run-result"><div id="slice-feedback" class="notice notice-info" role="status"><p>프로젝트 설정을 선택하고 CAD를 만들면 설정 포함 3MF를 준비할 수 있습니다. 전체 설정 JSON을 직접 제공하는 방법도 사용할 수 있습니다.</p></div><div id="slice-result"></div></div>
         </section>
 
         <section id="outcome-card" class="card" aria-labelledby="outcome-heading" hidden>

@@ -34,14 +34,23 @@ def _mm(value, unit):
     return float(value) * (10 if unit and unit.lower() in ('cm','센티미터','센티') else 1)
 
 
-def plan_from_text(text: str) -> dict:
-    if not isinstance(text,str) or not text.strip() or len(text)>4000:
-        return _question('만들 물건과 치수를 4,000자 이내로 알려주세요.')
+def _route_existing_workflow(text: str) -> dict | None:
+    """Explicit non-CAD requests navigate the same way in either planning mode."""
     lowered=text.lower()
     if any(word in lowered for word in ('필라멘트','온도','유량','profile','filament')):
         return _question('필라멘트 설정 파일과 프린터·노즐 정보를 재료 설정 화면에 넣으면, 근거와 호환 조건을 검토할 수 있습니다.',action='open_profiles')
     if any(word in lowered for word in ('가격','구매','저렴','price','buy')):
         return _question('구매 비교 화면에 상품 가격·중량·배송비를 넣어 배송비 포함 단가를 비교하세요. 실시간 가격 수집은 아직 연결되지 않았습니다.',action='open_offers')
+    return None
+
+
+def plan_from_text(text: str) -> dict:
+    if not isinstance(text,str) or not text.strip() or len(text)>4000:
+        return _question('만들 물건과 치수를 4,000자 이내로 알려주세요.')
+    routed = _route_existing_workflow(text)
+    if routed is not None:
+        return routed
+    lowered=text.lower()
     if any(word in lowered for word in ('뚜껑','경첩','방수','피규어','dragon','hinge','lid','손잡이','handle','나사','screw','곡면','둥근 모서리','rounded corner','구멍')):
         return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임을 지원합니다. 지원 템플릿으로 바꿀까요?')
     if any(word in lowered for word in ('프레임','마그넷','magnet','frame')):
@@ -180,6 +189,9 @@ def provider_config() -> dict:
 async def plan_with_llm(text: str) -> dict:
     if not isinstance(text,str) or not text.strip() or len(text)>4000:
         raise ValueError('요청은 4,000자 이내여야 합니다.')
+    routed = _route_existing_workflow(text)
+    if routed is not None:
+        return routed
     config=provider_config()
     if not config['configured']:
         raise ValueError('LLM 연결이 설정되지 않았습니다. 템플릿 모드를 이용하거나 PPA_LLM_BASE_URL과 PPA_LLM_MODEL을 설정하세요.')

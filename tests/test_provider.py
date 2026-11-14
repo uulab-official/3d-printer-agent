@@ -5,10 +5,21 @@ import unittest
 from unittest.mock import patch
 
 import httpx
-from print_agent.planner import plan_with_llm, provider_config
+from print_agent.planner import plan_from_text, plan_with_llm, provider_config
 
 
 class ProviderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_existing_material_and_purchase_actions_do_not_call_provider_in_llm_mode(self):
+        for environment in ({}, {'PPA_LLM_BASE_URL': 'https://provider.example/v1', 'PPA_LLM_MODEL': 'model'}):
+            with self.subTest(environment=bool(environment)), patch.dict('os.environ', environment, clear=True), \
+                    patch('print_agent.planner.httpx.AsyncClient') as client:
+                for text, action in (('PLA 필라멘트 온도 설정', 'open_profiles'), ('저렴한 상품 구매 비교', 'open_offers')):
+                    result = await plan_with_llm(text)
+                    self.assertEqual(result, plan_from_text(text))
+                    self.assertEqual(result['action'], action)
+                    self.assertNotIn('parameters', result)
+                client.assert_not_called()
+
     async def test_http_client_invalid_url_is_an_explainable_error(self):
         def handler(request):
             raise httpx.InvalidURL('synthetic invalid URL')

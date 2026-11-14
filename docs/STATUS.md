@@ -2,9 +2,11 @@
 
 Date: 2026-11-14 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.3 is a local single-user application; the exact desktop, browser and native qualification is recorded below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.4 is a local single-user application; the exact desktop, browser and native qualification is recorded below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.4 adds a single-file Studio-project settings source, immutable verified originals, separate prepared-project downloads without Studio, and a version-specific native path. Candidate/application state, current CAD identity and recorded history stay distinct. See [STUDIO_PROJECTS.md](STUDIO_PROJECTS.md) for supported scope. Final application, package and native qualification for this version is pending until the observed evidence entry is added below.
 
 Version 0.3 adds a complete saved-workspace archive with streamed integrity checks and restoration to a new directory, plus read-only SQLite compatibility checks before startup writes either store. Purchase drafts receive page-exit protection and defensive late-response guards while the existing pending-form lock stays unchanged. Installed-package qualification includes backup, restore and restored-server operation. The exact qualified wheel is now published in [v0.3.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.3.0), after all three gates passed for the same main commit. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md), [RELEASES.md](RELEASES.md) and the observed verification entries.
 

@@ -7,6 +7,8 @@ explicitly synthetic minimum config, an original cube and an original example
 or a physical print qualification. No job is sent to a printer. Downloads require
 network access; native execution is local, not network-isolated. Only the standard
 library is required. Evidence excludes the large downloaded runtime image.
+The project adapter check applies a newly native-produced synthetic cube's exact
+settings snapshot to different generated CAD through the public production path.
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import platform
@@ -25,6 +28,7 @@ import sys
 import threading
 import time
 import urllib.request
+import xml.etree.ElementTree as ET
 import zipfile
 
 
@@ -49,6 +53,7 @@ MAX_LOG_BYTES = 2 * 1024 * 1024
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_UNPACKED_BYTES = 256 * 1024 * 1024
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CORE_3MF = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 
 
 def sha256(path):
@@ -365,6 +370,179 @@ def adapter_smoke(executable, cube, evidence, env, report):
         raise RuntimeError("Application adapter native smoke did not pass both original input cases; inspect plan/result/native evidence.")
 
 
+def native_mesh(archive_path):
+    """Independent one-mesh evidence reader for these original CI fixtures."""
+    meshes = []
+    with zipfile.ZipFile(archive_path) as archive:
+        for name in archive.namelist():
+            if name.endswith(".model"):
+                root = ET.fromstring(archive.read(name))
+                if root.get("unit", "millimeter") != "millimeter":
+                    raise ValueError("Native geometry evidence must use millimeters.")
+                for mesh in root.findall(f".//{{{CORE_3MF}}}mesh"):
+                    points = [tuple(float(vertex.attrib[key]) for key in ("x", "y", "z"))
+                              for vertex in mesh.findall(f"{{{CORE_3MF}}}vertices/{{{CORE_3MF}}}vertex")]
+                    triangles = [tuple(int(face.attrib[key]) for key in ("v1", "v2", "v3"))
+                                 for face in mesh.findall(f"{{{CORE_3MF}}}triangles/{{{CORE_3MF}}}triangle")]
+                    if (not points or not triangles or any(not math.isfinite(n) for point in points for n in point)
+                            or any(index < 0 or index >= len(points) for face in triangles for index in face)):
+                        raise ValueError("Native geometry evidence contains invalid vertices or triangles.")
+                    meshes.append((points, triangles))
+    if len(meshes) != 1:
+        raise ValueError("Native geometry evidence must contain exactly one mesh.")
+    return meshes[0]
+
+
+def compare_native_geometry(expected_path, actual_path):
+    expected_points, expected_faces = native_mesh(expected_path)
+    actual_points, actual_faces = native_mesh(actual_path)
+    expected_bounds = [[min(point[axis] for point in expected_points), max(point[axis] for point in expected_points)] for axis in range(3)]
+    actual_bounds = [[min(point[axis] for point in actual_points), max(point[axis] for point in actual_points)] for axis in range(3)]
+    same_counts = len(expected_points) == len(actual_points) and len(expected_faces) == len(actual_faces)
+    delta = max(abs((expected[axis] - expected_bounds[axis][0]) - (actual[axis] - actual_bounds[axis][0]))
+                for expected, actual in zip(expected_points, actual_points) for axis in range(3)) if same_counts else None
+    topology = sorted(tuple(sorted(face)) for face in expected_faces) == sorted(tuple(sorted(face)) for face in actual_faces)
+    return {"passed": same_counts and topology and delta is not None and delta <= 0.0001,
+            "comparison": "all indexed vertices within 0.0001 mm after translation; all triangle connectivity ignoring winding/order",
+            "expected_vertices": len(expected_points), "actual_vertices": len(actual_points),
+            "expected_triangles": len(expected_faces), "actual_triangles": len(actual_faces),
+            "expected_bounds_mm": expected_bounds, "actual_bounds_mm": actual_bounds,
+            "expected_dimensions_mm": [hi - lo for lo, hi in expected_bounds],
+            "actual_dimensions_mm": [hi - lo for lo, hi in actual_bounds],
+            "maximum_translated_vertex_error_mm": delta, "triangle_connectivity_matches": topology}
+
+
+def project_adapter_smoke(executable, evidence, env, adapter_report, report):
+    """Qualify the production project path separately from the earlier spike."""
+    from print_agent.slicer import execute_slice, prepare_project_slice
+
+    report.update(status="running", source="native_export_of_handwritten_synthetic_ci_fixture",
+                  manufacturer_preset=False, hardware_qualified=False, uses_native_defaults=True,
+                  source_geometry="original 10 x 10 x 2 mm cube", current_geometry="committed cable comb 80 x 18 x 12 mm")
+    folder = evidence / "project-adapter"
+    folder.mkdir()
+    old_xdg = {key: os.environ.get(key) for key in ("XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME")}
+    os.environ.update({key: env[key] for key in old_xdg})
+    try:
+        cube_case = next(case for case in adapter_report["cases"] if case["name"] == "original-cube-stl" and case["status"] == "passed")
+        source = Path(cube_case["independent_output_inspection"]["archive"]["path"])
+        model = REPO_ROOT / "examples/cable_comb/model.3mf"
+        source_hash, model_hash = sha256(source), sha256(model)
+        if model_hash != adapter_report["example_source"]["sha256"]:
+            raise ValueError("Original generated CAD changed after adapter smoke.")
+        original_bytes = source.read_bytes()
+        (folder / "original-native-synthetic-project.3mf").write_bytes(original_bytes)
+        with zipfile.ZipFile(source) as archive:
+            before_bytes = archive.read("Metadata/project_settings.config")
+        before = json.loads(before_bytes)
+        (folder / "source-project-settings.json").write_bytes(before_bytes)
+        _, expected = synthetic_fixture()
+        (folder / "independent-core-expectations.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
+        plan = prepare_project_slice(model, folder / "job", "native-synthetic-cube.3mf", original_bytes,
+                                     executable_path=str(executable))
+        (folder / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        report.update(source_archive_sha256=source_hash, current_model_sha256=model_hash,
+                      source_settings_sha256=hashlib.sha256(before_bytes).hexdigest(),
+                      source_settings_key_count=len(before), adapter_source_sha256=sha256(REPO_ROOT / "print_agent/slicer.py"),
+                      project_composer_source_sha256=sha256(REPO_ROOT / "print_agent/studio_project.py"),
+                      project_source=plan.get("project_source"), project_receipt=plan.get("project_receipt"), argv=plan.get("argv"))
+        if not plan.get("ready") or not plan.get("project_prepared"):
+            report["diagnostics"] = plan.get("diagnostics")
+            raise RuntimeError("Production project adapter did not prepare a native-ready project.")
+        derived = Path(plan["project_path"])
+        with zipfile.ZipFile(derived) as archive:
+            derived_settings = archive.read("Metadata/project_settings.config")
+        report["derived_geometry"] = compare_native_geometry(model, derived)
+        report["source_vs_current_geometry"] = compare_native_geometry(source, model)
+        started = time.monotonic()
+        result = execute_slice(plan, timeout_seconds=180)
+        report["duration_seconds"] = round(time.monotonic() - started, 3)
+        (folder / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        for stream in ("stdout", "stderr"):
+            (folder / f"adapter.{stream}.log").write_text(result.get(stream, ""), encoding="utf-8")
+        report.update(adapter_status=result.get("status"), bambu_version=result.get("bambu_version"),
+                      exit_code=result.get("exit_code"), adapter_checks=result.get("checks", []),
+                      runtime_geometry_readback=result.get("geometry_readback"))
+        output = Path(plan["output_path"])
+        inspection = inspect_output(output, expected_settings=expected)
+        report["independent_output_inspection"] = inspection
+        report["native_geometry"] = compare_native_geometry(model, output)
+        with zipfile.ZipFile(output) as archive:
+            after_bytes = archive.read("Metadata/project_settings.config")
+            root = ET.fromstring(archive.read("3D/3dmodel.model"))
+        after = json.loads(after_bytes)
+        (folder / "roundtrip-project-settings.json").write_bytes(after_bytes)
+        metadata = {item.attrib["name"]: item.text or "" for item in root.findall(f"{{{CORE_3MF}}}metadata")}
+        report["native_model_metadata"] = metadata
+        added = sorted(after.keys() - before.keys())
+        removed = sorted(before.keys() - after.keys())
+        changed = sorted(key for key in before.keys() & after.keys() if before[key] != after[key])
+        def preview(value):
+            text = json.dumps(value, ensure_ascii=False)
+            return {"type": type(value).__name__, "json": text[:2048], "truncated": len(text) > 2048}
+        differences = [{"key": key, "kind": kind,
+                        "before": preview(before[key]) if key in before else None,
+                        "after": preview(after[key]) if key in after else None}
+                       for kind, keys in (("added", added), ("removed", removed), ("changed", changed)) for key in keys]
+        # A separate literal contract from the actual isolated spike: only the
+        # two arrange coordinates and addition of empty upward compatibility.
+        qualified_differences = not removed and all(key == "upward_compatible_machine" and after[key] == [] for key in added)
+        for key in changed:
+            qualified_differences = qualified_differences and key in ("wipe_tower_x", "wipe_tower_y")
+            if key in ("wipe_tower_x", "wipe_tower_y"):
+                old, new = before[key], after[key]
+                qualified_differences = qualified_differences and isinstance(old, list) and isinstance(new, list) and len(old) == len(new) == 1
+                if qualified_differences:
+                    qualified_differences = all(isinstance(value, str) and math.isfinite(float(value)) for value in old + new)
+        report["independent_snapshot_readback"] = {
+            "before_key_count": len(before), "after_key_count": len(after),
+            "unchanged_key_count": len(before.keys() & after.keys()) - len(changed),
+            "added_key_count": len(added), "removed_key_count": len(removed), "changed_key_count": len(changed),
+            "all_values_equal": before == after, "exact_bytes_equal": before_bytes == after_bytes,
+            "after_sha256": hashlib.sha256(after_bytes).hexdigest(), "difference_count": len(differences),
+            "differences": differences[:100], "differences_truncated": len(differences) > 100,
+            "only_qualified_native_normalization": qualified_differences,
+        }
+        readback = result.get("project_settings_readback", {})
+        report["qualification_checks"] = {
+            "project_adapter_reports_sliced": result.get("status") == "sliced",
+            "exact_native_version": result.get("bambu_version") == VERSION,
+            "zero_exit_code": result.get("exit_code") == 0,
+            "all_adapter_checks_pass": bool(result.get("checks")) and all(check.get("passed") is True for check in result["checks"]),
+            "independent_30_core_settings_match": len(inspection["independent_core_checks"]) == 30 and all(check["passed"] for check in inspection["independent_core_checks"]),
+            "exact_snapshot_bytes_prepared": derived_settings == before_bytes,
+            "current_cad_preserved_in_project": report["derived_geometry"]["passed"],
+            "source_and_current_geometry_differ": report["source_vs_current_geometry"]["passed"] is False,
+            "native_output_contains_current_cad": report["native_geometry"]["passed"],
+            "runtime_geometry_matches_independent_readback": result.get("geometry_readback", {}).get("passed") is True
+                and all(result["geometry_readback"].get(key) == report["native_geometry"][key]
+                        for key in ("actual_vertices", "actual_triangles", "actual_dimensions_mm", "triangle_connectivity_matches")),
+            "whole_snapshot_differences_qualified": qualified_differences,
+            "whole_snapshot_counts_agree": all(readback.get(key) == report["independent_snapshot_readback"][key]
+                                                for key in ("before_key_count", "after_key_count", "unchanged_key_count", "added_key_count", "removed_key_count", "changed_key_count", "difference_count")),
+            "native_modifier_and_origins_retained": metadata.get("3DPrinterAgent:ModifiedBy") == plan["project_receipt"]["modifier"]
+                and metadata.get("3DPrinterAgent:SourceProjectSHA256") == source_hash and metadata.get("3DPrinterAgent:ModelSHA256") == model_hash,
+            "correct_output_digest": result.get("output_sha256") == inspection["archive"]["sha256"],
+            "original_inputs_unchanged": sha256(source) == source_hash and sha256(model) == model_hash,
+            "derived_project_unchanged": sha256(derived) == plan["project_sha256"],
+            "printer_not_checked": result.get("printer_status") == "not_checked",
+            "print_not_started": result.get("print_status") == "not_started",
+        }
+        report["status"] = "passed" if all(report["qualification_checks"].values()) else "failed"
+    except Exception as exc:
+        report.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+    finally:
+        for key, previous in old_xdg.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+        (folder / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"Production Studio project adapter: {report['status']} (native status {report.get('adapter_status')}).", flush=True)
+    if report["status"] != "passed":
+        raise RuntimeError("Production Studio project adapter native qualification failed; inspect retained source, plan, result and readback evidence.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work-dir", type=Path, default=Path("qa-output/native-bambu"))
@@ -378,9 +556,9 @@ def main():
         folder.mkdir(parents=True, exist_ok=True)
     manifest = {
         "schema_version": 2, "started_at": datetime.now(timezone.utc).isoformat(),
-        "scope": "native_bootstrap_and_synthetic_adapter_smoke", "status": "running",
+        "scope": "native_bootstrap_synthetic_adapter_and_project_adapter_smoke", "status": "running",
         "native_bootstrap": {"status": "not_run"}, "native_adapter_smoke": {"status": "not_run"},
-        "adapter_qualified": False,
+        "native_project_smoke": {"status": "not_run"}, "adapter_qualified": False, "project_adapter_qualified": False,
         "raw_preset_resolution_qualified": False, "printer_connected": False, "physical_print_verified": False,
         "declared_release_version": VERSION, "release_commit": RELEASE_COMMIT, "reported_version": None,
         "platform": platform.platform(), "python": platform.python_version(),
@@ -442,12 +620,17 @@ def main():
         adapter_smoke(executable, model, evidence, env, manifest["native_adapter_smoke"])
         manifest["adapter_qualified"] = True
         manifest["adapter_qualification_scope"] = "Pinned native version; synthetic single-filament core settings; original STL and 3MF only. Unspecified native defaults and physical printing remain unqualified."
+        print("Existing native adapter passed. Running the separate production Studio-project path.", flush=True)
+        project_adapter_smoke(executable, evidence, env, manifest["native_adapter_smoke"], manifest["native_project_smoke"])
+        manifest["project_adapter_qualified"] = True
+        manifest["project_qualification_scope"] = "Pinned version; native synthetic cube snapshot transferred through the public project adapter to original generated cable-comb CAD. Exact prepared snapshot bytes, 30 native core settings, complete settings differences, mesh topology and G-code verified; manufacturer presets and physical printing remain unqualified."
         manifest["status"] = "passed"
-        print("Native bootstrap and both application adapter smoke cases passed. No manufacturer preset or physical printing was qualified.", flush=True)
+        print("Native bootstrap, both original adapter cases and the production project adapter passed. No manufacturer preset or physical printing was qualified.", flush=True)
     except Exception as exc:
         manifest["status"] = "failed"
-        manifest["adapter_qualified"] = False
-        for stage in ("native_bootstrap", "native_adapter_smoke"):
+        manifest["adapter_qualified"] = manifest["native_adapter_smoke"]["status"] == "passed"
+        manifest["project_adapter_qualified"] = manifest["native_project_smoke"]["status"] == "passed"
+        for stage in ("native_bootstrap", "native_adapter_smoke", "native_project_smoke"):
             if manifest[stage]["status"] == "running":
                 manifest[stage]["status"] = "failed"
         for case in manifest["native_adapter_smoke"].get("cases", []):
