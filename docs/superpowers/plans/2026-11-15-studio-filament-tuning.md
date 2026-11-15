@@ -33,10 +33,10 @@
 
 **Interfaces:** implement `settings_editor`, `derive_settings`, `make_revision`, `verify_revision` and the keyword extension to `build_project_3mf` exactly as specified in the spec. Publish precise resulting dictionary shapes to the root before downstream integration. Keep the existing inspector/public original shape unchanged. Set composer modifier to `3D Printer Agent 0.5.0` and adjust its version expectation tests.
 
-- [ ] Write/run failing behavioral cases: six fields with literal changes; each selected-plate mapping; unknown/identity/G-code/process keys refused; integer/decimal/type/length/baseline bounds; whole-proposal atomicity; numeric no-op original bytes; all untouched values preserved.
-- [ ] Implement pure derivation, editor/review and exact immutable recipe validation. Use documented canonical identity hashing and deterministic serialization.
-- [ ] Extend composition with original snapshot plus optional verified revision; embed original/effective/revision metadata and truthful receipts without changing the source or mesh.
-- [ ] Verify focused tests and no-revision regression, retain red/green evidence, self-review and request independent task review.
+- [x] Write/run failing behavioral cases: six fields with literal changes; each selected-plate mapping; unknown/identity/G-code/process keys refused; integer/decimal/type/length/baseline bounds; whole-proposal atomicity; numeric no-op original bytes; all untouched values preserved.
+- [x] Implement pure derivation, editor/review and exact immutable recipe validation. Use documented canonical identity hashing and deterministic serialization.
+- [x] Extend composition with original snapshot plus optional verified revision; embed original/effective/revision metadata and truthful receipts without changing the source or mesh.
+- [x] Verify focused tests and no-revision regression, retain red/green evidence, self-review and request independent task review.
 
 ## Task 2: Native plan and real qualification
 
@@ -44,10 +44,10 @@
 
 **Interfaces:** `prepare_project_slice(input_path, job_dir, source_filename, source_content, *, source_id=None, executable_path=None, settings_revision=None)` consumes Task 1. New plan fields `settings_revision`, `settings_review`; exact optional staged record `settings-revision.json`.
 
-- [ ] Write/run failing cases for edited preparation without Studio, effective expectations, original/current/recipe/receipt/argv/hash tampering before and after probe, wrong native values and unchanged old source path.
-- [ ] Stage and rederive the optional revision at every existing validation boundary. Preserve original `project_source`; native snapshot/readback uses effective settings. Complete setting and geometry checks stay strict.
-- [ ] Add fourth actual production native case, keeping the three existing cases unchanged in meaning: six different synthetic values, current CAD different from source, independent prepared and native all-setting/mesh comparison, unchanged original and recipe, retained evidence.
-- [ ] Run focused tests, self-review and request independent task review. Actual native execution follows the main publication in CI.
+- [x] Write/run failing cases for edited preparation without Studio, effective expectations, original/current/recipe/receipt/argv/hash tampering before and after probe, wrong native values and unchanged old source path.
+- [x] Stage and rederive the optional revision at every existing validation boundary. Preserve original `project_source`; native snapshot/readback uses effective settings. Complete setting and geometry checks stay strict.
+- [x] Add fourth actual production native case, keeping the three existing cases unchanged in meaning: six different synthetic values, current CAD different from source, independent prepared and native all-setting/mesh comparison, unchanged original and recipe, retained evidence.
+- [x] Run focused tests, self-review and request independent task review. Actual native execution follows the main publication in CI.
 
 ## Task 3: Immutable revision store and API
 
@@ -55,10 +55,10 @@
 
 **Interfaces:** `StudioSettingsRevisionStore(root, sources)` with `create`, `read`, `get` and public envelope specified in the design. Four settings/revision endpoints; `/api/slice` chooses exactly one of three sources.
 
-- [ ] Write/run real temporary-file and HTTP failures for missing feature, atomic invalid proposal, source/review mismatch, publication failure/collision, symlink/tamper, missing source/revision and request/session validation.
-- [ ] Implement complete validation before exclusive publication, atomic bounded revision record, every-read source+recipe verification, backwards-compatible app startup and clear 404/409/422 behavior.
-- [ ] Pass only server-read original/recipe to Task 2; verify new/failed/interrupted requests invalidate old artifacts and preserve independent originals. Test read/reprepare after restart and backup/restore to a new directory.
-- [ ] Run focused integration tests and independent integrity review.
+- [x] Write/run real temporary-file and HTTP failures for missing feature, atomic invalid proposal, source/review mismatch, publication failure/collision, symlink/tamper, missing source/revision and request/session validation.
+- [x] Implement complete validation before exclusive publication, atomic bounded revision record, every-read source+recipe verification, backwards-compatible app startup and clear 404/409/422 behavior.
+- [x] Pass only server-read original/recipe to Task 2; verify new/failed/interrupted requests invalidate old artifacts and preserve independent originals. Test read/reprepare after restart and backup/restore to a new directory.
+- [x] Run focused integration tests and independent integrity review.
 
 ## Task 4: Guided editor and browser workflows
 
@@ -66,20 +66,20 @@
 
 **Interfaces:** consume Task 3 endpoints, exact proposal/review/envelope and Task 2 plans from the design. Coordinate shapes with Task 1; do not accept or send full settings snapshots. Existing `studioRevision` is a numeric UI revision; use distinct names for settings records.
 
-- [ ] Write/run failing controllers for six-field editor, exact invalid strings and no partial apply, review→apply, cancel/reset, explicit source replacement, source/model/revision/epoch stale responses, exit protection, old/new history and reconnect without replay.
-- [ ] Implement the guided Studio editor with source/effective differences and user-selected labeling. Keep manual JSON and separate filament drafts intact; input changes detach stale prepared/native results.
-- [ ] Add actual desktop/mobile success/recovery workflows: import, edit all six, review/apply, actual CAD preparation, inspect downloads, reselect edited history, invalid/stale edits and actual restart. Retain first and reopened/reprepared JSON bodies and exact draft readbacks where practical, plus focused screenshots.
-- [ ] Run controllers/syntax and independent workflow review; actual Chromium evidence is observed in CI.
+- [x] Write/run failing controllers for six-field editor, exact invalid strings and no partial apply, review→apply, cancel/reset, explicit source replacement, source/model/revision/epoch stale responses, exit protection, old/new history and reconnect without replay.
+- [x] Implement the guided Studio editor with source/effective differences and user-selected labeling. Keep manual JSON and separate filament drafts intact; input changes detach stale prepared/native results.
+- [x] Add actual desktop/mobile success/recovery workflows: import, edit all six, review/apply, actual CAD preparation, inspect downloads, reselect edited history, invalid/stale edits and actual restart. Retain first and reopened/reprepared JSON bodies and exact draft readbacks where practical, plus focused screenshots.
+- [x] Run controllers/syntax and independent workflow review; actual Chromium evidence is observed in CI.
 
 ## Task 5: Installed evidence, release and user documentation
 
 **Files/owner:** root; `scripts/qualify_install.py`, version metadata, README, CHANGELOG, user/status/verification docs and workflow paths if needed.
 
-- [ ] Extend actual installed-wheel qualification to create/review/apply all six edits; verify changed-only settings and current CAD; retain source/revision/prepared responses; reopen after restart.
-- [ ] Include original+revision+prepared bytes in backup/restore, then freshly prepare from the same revision ID on the restored server. Preserve all previous CAD, ownership, draft and recovery checks.
-- [ ] Set 0.5.0, document actual supported fields, source/edited semantics, reset/history/recovery and qualified bounds. Mark pending CI honestly until it completes.
-- [ ] Run full required Python/controller/syntax/diff and wheel/source/installed checks. Independent whole-change review; resolve reproduced consequential findings.
-- [ ] Publish reviewed source with expected-head protection; inspect actual application/package/native gates and downloaded evidence, verify v0.5.0 public assets, then commit a docs-only observed-evidence follow-up.
+- [x] Extend actual installed-wheel qualification to create/review/apply all six edits; verify changed-only settings and current CAD; retain source/revision/prepared responses; reopen after restart.
+- [x] Include original+revision+prepared bytes in backup/restore, then freshly prepare from the same revision ID on the restored server. Preserve all previous CAD, ownership, draft and recovery checks.
+- [x] Set 0.5.0, document actual supported fields, source/edited semantics, reset/history/recovery and qualified bounds. Mark pending CI honestly until it completes.
+- [x] Run full required Python/controller/syntax/diff and wheel/source/installed checks. Independent whole-change review; resolve reproduced consequential findings.
+- [x] Publish reviewed source with expected-head protection; inspect actual application/package/native gates and downloaded evidence, verify v0.5.0 public assets, then commit a docs-only observed-evidence follow-up.
 
 ## Ledger
 
@@ -90,3 +90,12 @@
 - Ruling: disjoint engine/native/UI files may be developed in parallel against the frozen contract; root owns storage/API/qualification/docs and publication. Shared-index commits by workers are forbidden.
 - Ruling: continued implementation and main/push/release were explicitly authorized earlier; routine design/worktree/release permission is not requested again.
 - Isolated worktree: `/workspace/scratch/d9925436ef0d/3d-printer-agent-filament-tuning`, branch `feature/studio-filament-tuning`. Baseline/full runtime evidence follows below.
+
+
+## Observed completion — 2026-11-15
+
+Implemented and independently reviewed as `c88b4eec5c35c3a44274388ec9d16846a3acb3b2`.
+Same-source application CI `43660589695`, package CI `43660589594`, and native CI
+`43660589608` passed on attempt 1. Promotion `43660942959` published v0.5.0; public
+readback verified all seven assets against the qualified bytes. Follow-up documentation
+records actual outcomes in `docs/VERIFICATION.md` without moving the release tag.
