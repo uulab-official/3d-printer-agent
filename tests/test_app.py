@@ -77,7 +77,7 @@ class APITests(unittest.TestCase):
         bundle = {'large_native_field': 'x' * (2 * 1024 * 1024)}
         plan = {'ready': False, 'diagnostics': ['Synthetic API boundary fixture']}
         with patch.object(store, 'get', return_value={'status': 'geometry_validated'}), \
-             patch.object(store, 'artifact_path', return_value=Path(self.temp.name) / 'model.3mf'), \
+             patch.object(store, 'read_artifact', return_value=(Path(self.temp.name) / 'model.3mf', b'synthetic verified input')), \
              patch.object(store, 'directory', return_value=Path(self.temp.name)), \
              patch.object(store, 'begin_slice'), \
              patch.object(store, 'record_slice'), \
@@ -88,6 +88,7 @@ class APITests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, response.text)
             self.assertEqual(response.json(), {'plan': plan, 'execution': None})
             self.assertEqual(prepare.call_args.args[2], bundle)
+            self.assertEqual(prepare.call_args.kwargs['input_bytes'], b'synthetic verified input')
             execute.assert_not_called()
             response = self.client.post('/api/slice', content=b'x' * (8 * 1024 * 1024 + 1),
                 headers={**self.headers, 'Content-Type': 'application/json'})

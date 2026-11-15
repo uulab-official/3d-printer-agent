@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -140,6 +140,7 @@
       if (current()) connectionFailed(message);
       throw new Error(message);
     }
+    if (response.status === 204 && response.ok) { requireCurrentConnection(); return null; }
     let data;
     try { data = await response.json(); }
     catch { requireCurrentConnection(); throw new Error(`서버 응답을 읽지 못했습니다. (HTTP ${response.status})`); }
@@ -830,6 +831,195 @@
     updateWorkflowControls();
   }
 
+  // Workspace persistence has its own scope: typing may outlive a save, while
+  // candidate selection, connection and storage changes invalidate its binding.
+  function studioLibraryScope() {
+    return JSON.stringify([state.connectionEpoch, state.storage?.path || null, state.studioWorkspaceEpoch || 0, studioSourceIdentity(state.studioApplied), studioSettingsIdentity(state.studioSettingsApplied), $("studio-library-kind").value, $("studio-library-list").value]);
+  }
+
+  function studioWorkspaceSnapshot() {
+    if (!state.studioApplied?.supported || !studioSourceIdentity(state.studioApplied) || (state.studioSettingsApplied && (!studioSettingsIdentity(state.studioSettingsApplied) || state.studioSettingsApplied.revision?.source_id !== state.studioApplied.source_id))) throw new Error("사용할 원본과 설정을 먼저 선택해 주세요.");
+    const source = state.studioApplied, revision = state.studioSettingsApplied?.revision;
+    const draft = state.studioSettingsDraft == null ? null : { ...state.studioSettingsDraft };
+    const keys = ["nozzle_temperature", "nozzle_temperature_initial_layer", "filament_flow_ratio", "filament_max_volumetric_speed", "bed_temperature", "bed_temperature_initial_layer"];
+    if (draft && (Object.keys(draft).length !== 6 || keys.some(key => typeof draft[key] !== "string" || Array.from(draft[key]).length > 512))) throw new Error("초안은 여섯 항목의 정확한 문자열이며 항목마다 최대 512자까지 저장할 수 있습니다. 입력은 유지했습니다.");
+    const snapshot = { schema_version: 1, source_id: source.source_id, settings_revision_id: revision?.revision_id || null, source_sha256: source.source.sha256, settings_sha256: source.settings_sha256, effective_settings_sha256: revision?.effective_settings_sha256 || source.settings_sha256, draft_values: draft };
+    if (new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > 16 * 1024) throw new Error("Studio 초안은 합계 16 KiB 이하여야 합니다. 입력은 유지했습니다.");
+    return snapshot;
+  }
+
+  function studioWorkspaceSignature(snapshot = studioWorkspaceSnapshot(), title = $("studio-workspace-title").value.trim()) {
+    // Canonical field order keeps exact values independent from JSON key order.
+    const values = snapshot.draft_values;
+    return JSON.stringify([title, snapshot.schema_version, snapshot.source_id, snapshot.settings_revision_id, snapshot.source_sha256, snapshot.settings_sha256, snapshot.effective_settings_sha256, values == null ? null : ["nozzle_temperature", "nozzle_temperature_initial_layer", "filament_flow_ratio", "filament_max_volumetric_speed", "bed_temperature", "bed_temperature_initial_layer"].map(key => values[key])]);
+  }
+
+  function studioWorkspaceDirty() {
+    if (!state.studioApplied) return Boolean($("studio-workspace-title").value.trim());
+    try { return studioWorkspaceSignature() !== state.studioWorkspaceSavedSignature; }
+    catch { return true; }
+  }
+
+  function renderStudioLibrary() {
+    const busy = Boolean(state.workflowBusy || state.bootstrapPending || state.studioWorkspaceBusy);
+    const dirty = studioWorkspaceDirty();
+    $("studio-workspace-status").textContent = state.studioWorkspaceId ? `저장 버전 ${state.studioWorkspaceRevision} · ${dirty ? "저장하지 않은 변경" : "저장됨"}` : "이름을 정해 CAD 없이도 저장할 수 있습니다.";
+    for (const id of ["studio-workspace-save", "studio-workspace-copy"]) $(id).disabled = busy || !studioSourceCurrent() || Boolean(state.studioCandidate) || state.studioPending || state.studioSettingsPending;
+    $("studio-workspace-delete").disabled = busy || !state.studioWorkspaceId || !studioSourceCurrent();
+    $("studio-library-open").disabled = busy || !state.token || !$("studio-library-list").value || state.studioPending;
+    $("studio-library-refresh").disabled = busy || !state.token || state.studioLibraryPending;
+    $("studio-library-more").hidden = !state.studioLibraryCursor;
+    $("studio-library-more").disabled = busy || state.studioLibraryPending;
+    $("studio-library-kind").disabled = busy;
+    $("studio-library-list").disabled = busy;
+    const candidateArea = $("studio-workspace-candidate");
+    const named = state.studioWorkspaceCandidate;
+    candidateArea.replaceChildren();
+    candidateArea.hidden = !named;
+    if (named) {
+      candidateArea.append(node("h4", "", `${named.record.title} · 저장 버전 ${named.record.revision} · 선택 전`), node("p", "field-help", named.record.snapshot.draft_values === null ? "저장한 별도 초안이 없습니다. 후보 선택 후 선택한 원본·편집 기록의 값으로 편집을 시작합니다." : "보관한 초안입니다. 미완성 입력도 그대로 복원하며 검토·적용 전에는 현재 CAD에 사용할 수 없습니다."));
+      if (named.record.snapshot.draft_values !== null) candidateArea.append(node("pre", "", JSON.stringify(named.record.snapshot.draft_values, null, 2)));
+    }
+    const selected = (state.studioLibraryItems || []).find(item => item.id === $("studio-library-list").value);
+    $("studio-library-detail").textContent = selected ? `${selected.summary || "기록된 입력"}${selected.detail ? ` · ${selected.detail}` : ""}${selected.metadata_status === "unreadable" ? " · 열어서 무결성을 확인해야 합니다." : ""}` : "목록은 보관된 입력의 설명입니다. 열 때 원본과 편집 기록을 다시 확인하며, 현재 입력은 후보 선택 전까지 유지합니다.";
+  }
+
+  async function loadStudioLibrary(more = false) {
+    if (!state.token) return;
+    const kind = $("studio-library-kind").value || "workspaces";
+    if (!["workspaces", "sources", "revisions"].includes(kind)) return;
+    const request = state.studioLibraryRequest = (state.studioLibraryRequest || 0) + 1;
+    const scope = studioLibraryScope(), before = more ? state.studioLibraryCursor : null;
+    const current = () => request === state.studioLibraryRequest && scope === studioLibraryScope();
+    state.studioLibraryPending = true;
+    renderStudioLibrary();
+    try {
+      const result = await api(`/api/studio-library?kind=${kind}&limit=25${before ? `&before=${encodeURIComponent(before)}` : ""}`, undefined, undefined, { current });
+      if (!current()) return;
+      if (!Array.isArray(result.items) || (result.next_cursor != null && !/^[a-f0-9]{32}$/.test(result.next_cursor))) throw new Error("보관함 목록 응답을 읽지 못했습니다.");
+      state.studioLibraryItems = more ? [...(state.studioLibraryItems || []), ...result.items.filter(item => !(state.studioLibraryItems || []).some(old => old.id === item.id))] : result.items;
+      state.studioLibraryCursor = result.next_cursor;
+      const select = $("studio-library-list"), previous = select.value;
+      const placeholder = node("option", "", state.studioLibraryItems.length ? "보관된 설정을 선택하세요" : "보관된 설정이 없습니다");
+      placeholder.value = "";
+      select.replaceChildren(placeholder, ...state.studioLibraryItems.map(item => {
+        const option = node("option", "", `${item.title || "읽을 수 없는 기록"} · ${item.updated_at ? dateTime(item.updated_at) : "날짜 없음"} · ${(item.id || "").slice(0, 8)}${item.has_draft ? " · 초안 포함" : ""}${item.metadata_status === "unreadable" ? " · 확인 필요" : ""}`);
+        option.value = item.id;
+        return option;
+      }));
+      select.value = state.studioLibraryItems.some(item => item.id === previous) ? previous : "";
+    } catch (error) { if (current()) showNotice("studio-library-feedback", `${error.message} 현재 입력은 유지했습니다.`, "error"); }
+    finally { if (request === state.studioLibraryRequest) state.studioLibraryPending = false; renderStudioLibrary(); }
+  }
+
+  function validateStudioWorkspace(result) {
+    const record = result?.workspace, source = result?.source, revision = result?.settings_revision, descriptor = result?.editor;
+    const fail = () => { throw new Error("저장된 Studio 작업의 형식이나 원본 식별 정보가 일치하지 않습니다."); };
+    const object = value => value && typeof value === "object" && !Array.isArray(value);
+    const exact = (value, keys) => object(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+    if (!exact(record, ["id", "title", "revision", "created_at", "updated_at", "snapshot"]) || !/^[a-f0-9]{32}$/.test(record.id) || typeof record.title !== "string" || record.title !== record.title.trim() || Array.from(record.title).length < 1 || Array.from(record.title).length > 120 || !Number.isSafeInteger(record.revision) || record.revision < 1 || record.revision >= Number.MAX_SAFE_INTEGER || [record.created_at, record.updated_at].some(value => typeof value !== "string" || !Number.isFinite(Date.parse(value)))) fail();
+    const snapshot = record.snapshot;
+    if (!exact(snapshot, ["schema_version", "source_id", "settings_revision_id", "source_sha256", "settings_sha256", "effective_settings_sha256", "draft_values"]) || snapshot.schema_version !== 1 || source?.supported !== true || !studioSourceIdentity(source) || snapshot.source_id !== source.source_id || snapshot.source_sha256 !== source.source.sha256 || snapshot.settings_sha256 !== source.settings_sha256) fail();
+    if (snapshot.settings_revision_id === null ? revision !== null || snapshot.effective_settings_sha256 !== source.settings_sha256 : !studioSettingsIdentity(revision) || revision.revision?.revision_id !== snapshot.settings_revision_id || revision.revision.source_id !== source.source_id || revision.revision.effective_settings_sha256 !== snapshot.effective_settings_sha256 || studioSourceIdentity(revision.source) !== studioSourceIdentity(source)) fail();
+    const keys = ["nozzle_temperature", "nozzle_temperature_initial_layer", "filament_flow_ratio", "filament_max_volumetric_speed", "bed_temperature", "bed_temperature_initial_layer"];
+    if (!descriptor || descriptor.source_id !== source.source_id || descriptor.source_sha256 !== source.source.sha256 || descriptor.settings_sha256 !== source.settings_sha256 || !Array.isArray(descriptor.fields) || descriptor.fields.length !== 6 || !keys.every(key => descriptor.fields.filter(field => field.key === key && typeof field.value === "string").length === 1)) fail();
+    if (snapshot.draft_values !== null && (!exact(snapshot.draft_values, keys) || keys.some(key => typeof snapshot.draft_values[key] !== "string" || Array.from(snapshot.draft_values[key]).length > 512))) fail();
+    if (new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > 16 * 1024) fail();
+    const draft = snapshot.draft_values === null ? Object.fromEntries(descriptor.fields.map(field => [field.key, revision?.revision?.proposal?.values?.[field.key] ?? field.value])) : { ...snapshot.draft_values };
+    if (keys.some(key => typeof draft[key] !== "string")) fail();
+    return { record, source, revision, descriptor, draft, signature: studioWorkspaceSignature(snapshot, record.title) };
+  }
+
+  function studioLibrarySelectionChanged(kindChanged = false) {
+    state.studioWorkspaceEpoch = (state.studioWorkspaceEpoch || 0) + 1;
+    state.studioLibraryRequest = (state.studioLibraryRequest || 0) + 1;
+    state.studioLibraryPending = false;
+    if (kindChanged) {
+      state.studioLibraryItems = [];
+      state.studioLibraryCursor = null;
+      $("studio-library-list").replaceChildren();
+      $("studio-library-list").value = "";
+      loadStudioLibrary();
+    }
+    renderStudioLibrary();
+  }
+
+  async function openStudioLibrary() {
+    const id = $("studio-library-list").value, kind = $("studio-library-kind").value || "workspaces";
+    if (!/^[a-f0-9]{32}$/.test(id) || !state.token || state.workflowBusy || state.studioWorkspaceBusy) return;
+    invalidateStudioRequests();
+    const context = studioContext(), scope = studioLibraryScope(), request = state.studioRequest;
+    const current = () => scope === studioLibraryScope() && studioContextCurrent(context);
+    state.studioPending = true;
+    state.studioPendingName = "보관한 설정";
+    renderStudioProject();
+    try {
+      const path = kind === "workspaces" ? `/api/studio-workspaces/${id}` : kind === "revisions" ? `/api/studio-settings-revisions/${id}` : `/api/studio-projects/${id}`;
+      const result = await api(path, undefined, undefined, { current });
+      if (!current()) return;
+      const named = kind === "workspaces" ? validateStudioWorkspace(result) : null;
+      const source = named ? named.source : kind === "revisions" ? result.source : result;
+      const revision = named ? named.revision : kind === "revisions" ? result : null;
+      if (!studioSourceIdentity(source) || typeof source.supported !== "boolean" || (revision && (!studioSettingsIdentity(revision) || revision.revision.source_id !== source.source_id || studioSourceIdentity(revision.source) !== studioSourceIdentity(source)))) throw new Error("보관한 원본 또는 편집 기록을 확인하지 못했습니다.");
+      state.studioCandidate = source;
+      state.studioSettingsCandidate = revision;
+      state.studioWorkspaceCandidate = named;
+      state.studioCandidateEpoch = state.connectionEpoch;
+      state.studioCandidateStorage = state.storage?.path || null;
+      showNotice("studio-library-feedback", named ? `‘${named.record.title}’을 후보로 확인했습니다. 후보를 직접 선택하면 보관한 초안도 함께 열립니다.` : "보관한 설정을 후보로 확인했습니다. 사용할 후보를 직접 선택해 주세요.");
+    } catch (error) { if (current()) showNotice("studio-library-feedback", `${error.message} 현재 선택과 편집 내용은 유지했습니다.`, "error"); }
+    // Selection scope gates applying results; request ownership gates releasing
+    // pending controls, including when this completed open became stale.
+    finally { if (request === state.studioRequest) { state.studioPending = false; state.studioPendingName = ""; } renderStudioProject(); }
+  }
+
+  async function saveStudioWorkspace(copy = false) {
+    if (state.studioWorkspaceBusy || state.studioCandidate || state.studioPending || state.studioSettingsPending || state.workflowBusy || !studioSourceCurrent()) return;
+    const scope = studioLibraryScope();
+    const request = state.studioWorkspaceRequest = (state.studioWorkspaceRequest || 0) + 1;
+    const current = () => request === state.studioWorkspaceRequest && scope === studioLibraryScope();
+    try {
+      const title = $("studio-workspace-title").value.trim();
+      if (!title || Array.from(title).length > 120) throw new Error("Studio 작업 이름은 1자 이상 120자 이하로 입력해 주세요.");
+      const snapshot = studioWorkspaceSnapshot(), signature = studioWorkspaceSignature(snapshot, title);
+      const id = copy ? null : state.studioWorkspaceId;
+      const payload = { title, snapshot, ...(id ? { expected_revision: state.studioWorkspaceRevision } : {}) };
+      state.studioWorkspaceBusy = true;
+      renderStudioLibrary();
+      const descriptor = state.studioSettingsDescriptor || await api(`/api/studio-projects/${state.studioApplied.source_id}/settings`, undefined, undefined, { current });
+      if (!current()) return;
+      const record = await api(id ? `/api/studio-workspaces/${id}` : "/api/studio-workspaces", payload, id ? "PUT" : "POST", { current });
+      if (!current()) return;
+      // Validate the acknowledgement against submitted inputs, never current typing.
+      const checked = validateStudioWorkspace({ workspace: record, source: state.studioApplied, settings_revision: state.studioSettingsApplied, editor: descriptor });
+      if (checked.signature !== signature || (id && record.id !== id)) throw new Error("저장 응답이 요청한 입력과 일치하지 않습니다. 현재 입력은 유지했습니다.");
+      state.studioWorkspaceId = record.id;
+      state.studioWorkspaceRevision = record.revision;
+      state.studioWorkspaceSavedSignature = signature;
+      showNotice("studio-library-feedback", studioWorkspaceDirty() ? "요청한 초안을 저장했습니다. 저장 중 바뀐 입력은 한 번 더 저장해 주세요." : "Studio 원본 참조, 선택한 설정과 정확한 초안을 저장했습니다. CAD 없이 다시 열 수 있습니다.", "success");
+    } catch (error) { if (current()) showNotice("studio-library-feedback", error.status === 409 && error.code !== "studio_workspace_integrity" ? "다른 탭에서 저장본을 변경했습니다. 현재 입력은 유지했습니다. 복사 저장하거나 목록에서 최신 저장본을 다시 열어 주세요." : `${error.message} 현재 입력은 유지했습니다.`, "error"); }
+    finally { if (request === state.studioWorkspaceRequest) state.studioWorkspaceBusy = false; renderStudioLibrary(); }
+  }
+
+  async function deleteStudioWorkspace() {
+    if (state.studioWorkspaceBusy || !state.studioWorkspaceId || !studioSourceCurrent()) return;
+    if (!window.confirm("이 이름의 Studio 저장본을 삭제하시겠습니까? 보관한 원본, 편집 기록과 현재 입력은 남습니다.")) return;
+    const id = state.studioWorkspaceId, scope = studioLibraryScope();
+    const request = state.studioWorkspaceRequest = (state.studioWorkspaceRequest || 0) + 1;
+    const current = () => request === state.studioWorkspaceRequest && scope === studioLibraryScope();
+    state.studioWorkspaceBusy = true;
+    renderStudioLibrary();
+    try {
+      await api(`/api/studio-workspaces/${id}`, { expected_revision: state.studioWorkspaceRevision }, "DELETE", { current });
+      if (!current()) return;
+      state.studioWorkspaceId = null;
+      state.studioWorkspaceRevision = null;
+      state.studioWorkspaceSavedSignature = null;
+      showNotice("studio-library-feedback", "이름의 저장본을 삭제했습니다. 현재 입력과 원본·편집 기록은 유지했습니다.");
+    } catch (error) { if (current()) showNotice("studio-library-feedback", `${error.message} 현재 입력은 유지했습니다. 최신 저장본을 다시 열거나 복사 저장해 주세요.`, "error"); }
+    finally { if (request === state.studioWorkspaceRequest) state.studioWorkspaceBusy = false; renderStudioLibrary(); }
+  }
+
   function studioSourceIdentity(inspection) {
     if (!inspection || !/^[a-f0-9]{32}$/.test(inspection.source_id || "") || !/^[a-f0-9]{64}$/.test(inspection.source?.sha256 || "") || !/^[a-f0-9]{64}$/.test(inspection.settings_sha256 || "")) return "";
     return JSON.stringify([inspection.source_id, inspection.source.sha256, inspection.settings_sha256]);
@@ -852,7 +1042,7 @@
   }
 
   function studioHasUnsavedChanges() {
-    return Boolean(state.studioPending || state.studioSettingsPending || studioSettingsDirty() || state.studioSettingsReview || state.studioCandidate || (state.studioApplied && JSON.stringify([studioSourceIdentity(state.studioApplied), studioSettingsIdentity(state.studioSettingsApplied)]) !== state.studioSavedIdentity));
+    return Boolean(state.studioPending || state.studioSettingsPending || state.studioWorkspaceBusy || state.studioSettingsReview || state.studioCandidate || (state.studioWorkspaceSavedSignature ? studioWorkspaceDirty() : studioSettingsDirty() || $("studio-workspace-title").value.trim() || (state.studioApplied && JSON.stringify([studioSourceIdentity(state.studioApplied), studioSettingsIdentity(state.studioSettingsApplied)]) !== state.studioSavedIdentity)));
   }
 
   function invalidateStudioRequests() {
@@ -1080,6 +1270,7 @@
     download.hidden = !href;
     if (href) download.href = href; else download.removeAttribute("href");
     renderStudioSettings();
+    renderStudioLibrary();
   }
 
   async function importStudioProject(input) {
@@ -1088,6 +1279,7 @@
     input.value = "";
     invalidateStudioRequests();
     state.studioCandidate = null;
+    state.studioWorkspaceCandidate = null;
     state.studioSettingsCandidate = null;
     state.studioSettingsReplace = false;
     state.studioCandidateEpoch = null;
@@ -1121,6 +1313,8 @@
   }
 
   function cancelStudioCandidate() {
+    state.studioWorkspaceEpoch = (state.studioWorkspaceEpoch || 0) + 1;
+    state.studioWorkspaceCandidate = null;
     invalidateStudioRequests();
     state.studioCandidate = null;
     state.studioSettingsCandidate = null;
@@ -1137,13 +1331,24 @@
     if (state.workflowBusy || state.studioPending || !state.token || candidate?.supported !== true || !studioSourceIdentity(candidate) || state.studioCandidateEpoch !== state.connectionEpoch || state.studioCandidateStorage !== (state.storage?.path || null)) return;
     if (!replaceDraft && (studioSettingsDirty() || state.studioSettingsReview || state.studioSettingsPending)) { state.studioSettingsReplace = true; renderStudioProject(); return; }
     const settingsCandidate = state.studioSettingsCandidate;
+    const workspaceCandidate = state.studioWorkspaceCandidate;
     if (settingsCandidate != null && (!studioSettingsIdentity(settingsCandidate) || settingsCandidate.revision?.source_id !== candidate.source_id)) {
       invalidateStudioRequests();
       showNotice("studio-project-feedback", "후보의 편집 설정 기록을 확인하지 못했습니다. 원본 설정으로 바꾸지 않았습니다. 이 기록의 설정을 다시 확인해 주세요.", "error");
       renderStudioProject();
       return;
     }
-    cancelStudioSettings();
+    let restored = null;
+    if (workspaceCandidate) {
+      try { restored = validateStudioWorkspace({ workspace: workspaceCandidate.record, source: candidate, settings_revision: settingsCandidate, editor: workspaceCandidate.descriptor }); }
+      catch (error) { showNotice("studio-library-feedback", error.message, "error"); return; }
+    }
+    // Install the complete validated input state before rendering anything.
+    invalidateStudioRequests();
+    state.studioSettingsOpen = false;
+    state.studioSettingsDraft = null;
+    hideNotice("studio-settings-feedback");
+    state.studioWorkspaceEpoch = (state.studioWorkspaceEpoch || 0) + 1;
     state.studioSettingsApplied = settingsCandidate || null;
     state.studioSettingsCandidate = null;
     state.studioSettingsDescriptor = null;
@@ -1157,6 +1362,19 @@
     state.studioCandidateEpoch = null;
     state.studioCandidateStorage = null;
     state.studioSavedIdentity = null;
+    state.studioWorkspaceId = workspaceCandidate?.record.id || null;
+    state.studioWorkspaceRevision = workspaceCandidate?.record.revision || null;
+    state.studioWorkspaceSavedSignature = null;
+    state.studioWorkspaceCandidate = null;
+    $("studio-workspace-title").value = workspaceCandidate?.record.title || "";
+    if (workspaceCandidate) {
+      state.studioSettingsDescriptor = restored.descriptor;
+      state.studioSettingsDraft = restored.draft;
+      state.studioSettingsOpen = true;
+      // A null saved draft is persisted as null, though the visible editor is
+      // initialized from the applied revision. Its equivalent baseline is clean.
+      state.studioWorkspaceSavedSignature = studioWorkspaceSignature();
+    }
     resetSlicePreparation("프로젝트 설정을 선택했습니다. 현재 CAD에 설정을 담아 새로 준비해 주세요. 수동 JSON과 재료 편집 내용은 유지했습니다.");
     showNotice("studio-project-feedback", settingsCandidate ? "검토했던 사용자 선택값을 포함한 설정을 선택했습니다. 현재 CAD에 설정을 담아 새로 준비해 주세요." : "선택한 원본의 전역 설정을 사용합니다. 아직 설정 포함 3MF 생성이나 슬라이싱을 실행하지 않았습니다.", "info");
     renderStudioProject();
@@ -1193,6 +1411,7 @@
         state.studioAppliedEpoch = state.connectionEpoch;
         state.studioAppliedStorage = state.storage?.path || null;
       } else {
+        if (mode === "recorded") state.studioWorkspaceCandidate = null;
         state.studioSettingsCandidate = envelope;
         state.studioCandidate = result;
         state.studioCandidateEpoch = state.connectionEpoch;
@@ -1532,6 +1751,15 @@
   });
   $("cancel-slicer-assembly").addEventListener("click", cancelSlicerAssembly);
   $("probe-slicer").addEventListener("click", probeSlicer);
+  $("studio-library-kind").addEventListener("change", () => studioLibrarySelectionChanged(true));
+  $("studio-library-list").addEventListener("change", () => studioLibrarySelectionChanged());
+  $("studio-library-refresh").addEventListener("click", () => loadStudioLibrary());
+  $("studio-library-more").addEventListener("click", () => loadStudioLibrary(true));
+  $("studio-library-open").addEventListener("click", openStudioLibrary);
+  $("studio-workspace-title").addEventListener("input", renderStudioLibrary);
+  $("studio-workspace-save").addEventListener("click", () => saveStudioWorkspace());
+  $("studio-workspace-copy").addEventListener("click", () => saveStudioWorkspace(true));
+  $("studio-workspace-delete").addEventListener("click", deleteStudioWorkspace);
   $("studio-settings-open").addEventListener("click", openStudioSettings);
   $("studio-settings-review").addEventListener("click", reviewStudioSettings);
   $("studio-settings-apply").addEventListener("click", applyStudioSettings);
@@ -1675,7 +1903,7 @@
         showNotice("workspace-feedback", changed ? "요청한 내용을 저장했습니다. 저장 중에 편집한 내용이 남아 있으니 한 번 더 저장해 주세요." : "원본, 편집본과 사용 조건을 이 PC에 저장했습니다.", changed ? "info" : "success");
       }
     } catch (error) {
-      if (epoch === state.workspaceEpoch) showNotice("workspace-feedback", error.status === 409 ? "다른 탭에서 이 작업을 변경했습니다. 현재 편집은 유지했습니다. 다른 이름으로 저장하거나 저장된 작업을 다시 열어 최신 내용을 확인하세요." : error.message, "error");
+      if (epoch === state.workspaceEpoch) showNotice("workspace-feedback", error.status === 409 && error.code !== "workspace_integrity" ? "다른 탭에서 이 작업을 변경했습니다. 현재 편집은 유지했습니다. 다른 이름으로 저장하거나 저장된 작업을 다시 열어 최신 내용을 확인하세요." : error.message, "error");
     } finally {
       state.workspaceBusy = false;
       updateWorkspaceStatus();
@@ -1683,15 +1911,40 @@
   }
 
   function restoreWorkspace(record) {
-    const snapshot = record.snapshot;
+    const snapshot = record?.snapshot;
+    const fail = () => { throw new Error("저장된 재료 작업의 형식을 확인하지 못했습니다. 현재 입력은 유지했습니다."); };
+    const object = value => value && typeof value === "object" && !Array.isArray(value);
+    const exact = (value, keys) => object(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+    const setupKeys = Object.keys(profileSetupFields());
+    if (!exact(snapshot, ["schema_version", "documents", "target_index", "profile_text", "setup"]) || snapshot.schema_version !== 1 || !Array.isArray(snapshot.documents) || snapshot.documents.length > 64 || !Number.isInteger(snapshot.target_index) || snapshot.target_index < 0 || snapshot.target_index >= Math.max(1, snapshot.documents.length) || typeof snapshot.profile_text !== "string" || (snapshot.documents.length && snapshot.profile_text !== "") || !exact(snapshot.setup, setupKeys) || setupKeys.some(key => typeof snapshot.setup[key] !== "string" || Array.from(snapshot.setup[key]).length > 512) || !["unknown", "ambiguous", "exact"].includes(snapshot.setup.material_identity_status)) fail();
+    if (!record || typeof record.title !== "string" || Array.from(record.title.trim()).length > 120 || (record.id !== null && (!/^[a-f0-9]{32}$/.test(record.id) || !record.title.trim() || !Number.isSafeInteger(record.revision) || record.revision < 1 || record.revision >= Number.MAX_SAFE_INTEGER))) fail();
+    for (const entry of snapshot.documents) {
+      if (!object(entry) || !exact(entry, Object.hasOwn(entry, "origin") ? ["filename", "profile", "draft_text", "origin"] : ["filename", "profile", "draft_text"]) || typeof entry.filename !== "string" || !entry.filename.trim() || Array.from(entry.filename).length > 240 || !object(entry.profile) || typeof entry.draft_text !== "string") fail();
+      if (Object.hasOwn(entry, "origin")) {
+        const origin = entry.origin;
+        if (!exact(origin, ["type", "archive_name", "archive_sha256", "member_path", "member_sha256"]) || origin.type !== "bambu_preset_archive" || typeof origin.archive_name !== "string" || !origin.archive_name.trim() || Array.from(origin.archive_name).length > 240 || typeof origin.member_path !== "string" || !origin.member_path.trim() || Array.from(origin.member_path).length > 240 || !/^[a-f0-9]{64}$/.test(origin.archive_sha256) || !/^[a-f0-9]{64}$/.test(origin.member_sha256)) fail();
+      }
+    }
+    const pending = [[snapshot, 0]];
+    while (pending.length) {
+      const [value, depth] = pending.pop();
+      if (depth > 64 || (typeof value === "number" && (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))))) fail();
+      if (value && typeof value === "object") pending.push(...Object.values(value).map(child => [child, depth + 1]));
+    }
+    const copied = JSON.parse(JSON.stringify(snapshot));
+    if (new TextEncoder().encode(JSON.stringify(copied)).byteLength > 8 * 1024 * 1024 || new TextEncoder().encode(JSON.stringify(copied.documents.map(entry => profileDocument(entry)))).byteLength > 2 * 1024 * 1024) fail();
+    const documents = copied.documents.map(entry => ({ ...profileDocument(entry), draftText: entry.draft_text }));
+    const text = documents.length ? documents[copied.target_index].draftText : copied.profile_text;
+    const setup = setupKeys.map(name => [profileSetupFields()[name], copied.setup[name]]);
+    // All restoration values are validated and allocated before the first mutation.
     state.workspaceEpoch += 1;
     state.workspaceEdits += 1;
     state.profileImport += 1;
     state.guidedEdits = {};
-    state.profileDocuments = snapshot.documents.map((entry) => ({ ...profileDocument(entry), draftText: entry.draft_text }));
+    state.profileDocuments = documents;
     state.profileTarget = snapshot.target_index;
-    $("profile-json").value = state.profileDocuments.length ? state.profileDocuments[state.profileTarget].draftText : snapshot.profile_text;
-    for (const [name, id] of Object.entries(profileSetupFields())) $(id).value = snapshot.setup[name];
+    $("profile-json").value = text;
+    for (const [id, value] of setup) $(id).value = value;
     $("workspace-title").value = record.title;
     state.workspaceId = record.id;
     state.workspaceRevision = record.revision;
@@ -1727,7 +1980,7 @@
     if (state.workspaceBusy) return;
     if (workspaceDirty() && !window.confirm("저장하지 않은 변경 내용이 있습니다. 현재 편집을 버리고 새 작업을 시작하시겠습니까?")) return;
     restoreWorkspace({ id: null, revision: null, title: "", snapshot: {
-      documents: [], target_index: 0, profile_text: "",
+      schema_version: 1, documents: [], target_index: 0, profile_text: "",
       setup: Object.fromEntries(Object.keys(profileSetupFields()).map((name) => [name, name === "material_identity_status" ? "unknown" : ""])),
     } });
     $("workspace-list").value = "";
@@ -2820,6 +3073,15 @@
       renderRetainedOutcomes();
     }
     const hadWorkspace = Boolean(state.workspaceId) || workspaceDirty();
+    state.studioWorkspaceEpoch = (state.studioWorkspaceEpoch || 0) + 1;
+    state.studioWorkspaceId = null;
+    state.studioWorkspaceRevision = null;
+    state.studioWorkspaceSavedSignature = null;
+    state.studioWorkspaceCandidate = null;
+    state.studioLibraryItems = [];
+    state.studioLibraryCursor = null;
+    $("studio-library-list").replaceChildren();
+    $("studio-library-list").value = "";
     cancelSlicerReads();
     state.job = null;
     state.slicePrepared = false;
@@ -2913,6 +3175,7 @@
       updateWorkflowControls();
       updateWorkspaceStatus();
       await loadWorkspaces();
+      await loadStudioLibrary();
     } catch (error) {
       if (request !== state.bootstrapRequest) return;
       $("bootstrap-error").hidden = false;

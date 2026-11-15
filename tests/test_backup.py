@@ -147,6 +147,34 @@ class BackupTests(unittest.TestCase):
     def assert_no_staging(self):
         self.assertEqual([p.name for p in self.root.iterdir() if p.name.startswith('.printer-agent-')], [])
 
+    def test_studio_only_root_round_trips_named_inputs_and_discovery(self):
+        from print_agent.studio_sources import StudioProjectStore
+        from print_agent.studio_revisions import StudioSettingsRevisionStore
+        from print_agent.studio_workspaces import StudioWorkspaceStore
+        from print_agent.studio_settings import settings_editor
+        from tests.studio_project_fixtures import project_bytes
+        sources = StudioProjectStore(self.source)
+        source = sources.import_project('Zero jobs.3mf', project_bytes())
+        revisions = StudioSettingsRevisionStore(self.source, sources)
+        store = StudioWorkspaceStore(self.source, sources, revisions)
+        original, _ = sources.read(source['source_id'])
+        drafts = {field['key']: field['value'] for field in settings_editor(original)['fields']}
+        drafts['filament_flow_ratio'] = ' 1. '
+        snapshot = {'schema_version': 1, 'source_id': source['source_id'], 'settings_revision_id': None,
+                    'source_sha256': source['source']['sha256'], 'settings_sha256': source['settings_sha256'],
+                    'effective_settings_sha256': source['settings_sha256'], 'draft_values': drafts}
+        saved = store.create('Standalone Studio setup', snapshot)
+        before = self.bytes_in(self.source)
+        self.backup.create_backup(self.source, self.archive)
+        self.backup.restore_backup(self.archive, self.destination)
+        self.assertEqual(self.bytes_in(self.destination), before)
+        reopened_sources = StudioProjectStore(self.destination)
+        reopened = StudioWorkspaceStore(self.destination, reopened_sources,
+                                        StudioSettingsRevisionStore(self.destination, reopened_sources))
+        self.assertEqual(reopened.get(saved['id'])['workspace'], saved)
+        self.assertEqual(reopened.list_entries('sources')['items'][0]['source_id'], source['source_id'])
+        self.assertFalse((self.destination / 'jobs').exists())
+
     def test_backup_inspection_and_restore_preserve_all_bytes_and_private_records(self):
         self.canonical_workspace()
         before = self.bytes_in(self.source)

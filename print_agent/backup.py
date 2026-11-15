@@ -154,7 +154,7 @@ def _register_path(value, registry, *, is_file=True):
 
 
 def _recognized(names):
-    return (any(name in names for name in ('history.sqlite3', 'profile-workspaces.sqlite3'))
+    return (any(name in names for name in ('history.sqlite3', 'profile-workspaces.sqlite3', 'studio-workspaces.sqlite3'))
             or any(re.fullmatch(r'jobs/[a-f0-9]{32}/job\.json', name) for name in names))
 
 

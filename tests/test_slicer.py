@@ -1,6 +1,7 @@
 """Adapter boundary tests. Synthetic CLI responses are not native Bambu validation."""
 
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -555,6 +556,45 @@ class SlicerTests(unittest.TestCase):
         plan = self.slicer.prepare_slice(source, self.root / "geometry-input", full_bundle(), str(self.executable))
         self.assertTrue(plan["ready"], plan["diagnostics"])
         self.assertEqual(Path(plan["input_path"]).read_bytes(), source.read_bytes())
+
+    def test_supplied_verified_cad_snapshot_is_the_only_staged_model(self):
+        self.assertIn('input_bytes', inspect.signature(slicer.prepare_slice).parameters)
+        examples = Path(__file__).resolve().parents[1] / 'examples'
+        original = (examples / 'cable_comb/model.3mf').read_bytes()
+        source = self.root / 'replaced.3mf'
+        source.write_bytes((examples / 'tray/model.3mf').read_bytes())
+        with patch.object(slicer.subprocess, 'run', side_effect=AssertionError('preparation cannot launch native code')):
+            plan = slicer.prepare_slice(source, self.root / 'verified', full_bundle(), str(self.executable), input_bytes=original)
+        self.assertTrue(plan['ready'], plan['diagnostics'])
+        self.assertEqual(Path(plan['input_path']).read_bytes(), original)
+
+    def test_path_adapter_stages_the_snapshot_it_validated_before_path_replacement(self):
+        examples = Path(__file__).resolve().parents[1] / 'examples'
+        original = (examples / 'cable_comb/model.3mf').read_bytes()
+        source = self.root / 'snapshot.3mf'
+        source.write_bytes(original)
+        inspect_archive = slicer._inspect_archive
+        def replace_after_validation(path, require_gcode):
+            result = inspect_archive(path, require_gcode)
+            source.write_bytes((examples / 'tray/model.3mf').read_bytes())
+            return result
+        with patch.object(slicer, '_inspect_archive', side_effect=replace_after_validation):
+            plan = slicer.prepare_slice(source, self.root / 'path-snapshot', full_bundle(), str(self.executable))
+        self.assertTrue(plan['ready'], plan['diagnostics'])
+        self.assertEqual(Path(plan['input_path']).read_bytes(), original)
+
+    def test_invalid_supplied_snapshot_blocks_without_staging_or_native_launch(self):
+        self.assertIn('input_bytes', inspect.signature(slicer.prepare_slice).parameters)
+        source = self.root / 'snapshot.3mf'
+        source.write_bytes(b'valid path must not override supplied content')
+        for index, content in enumerate((b'', b'not a zip', bytearray(b'mutable'), 'text', b'x' * 65)):
+            with self.subTest(index=index), patch.object(slicer, '_MAX_ARCHIVE_BYTES', 64), patch.object(
+                    slicer.subprocess, 'run', side_effect=AssertionError('invalid CAD cannot launch native code')):
+                directory = self.root / f'invalid-snapshot-{index}'
+                plan = slicer.prepare_slice(source, directory, full_bundle(), str(self.executable), input_bytes=content)
+                self.assertFalse(plan['ready'])
+                self.assertTrue(plan['diagnostics'])
+                self.assertFalse(directory.exists())
 
     def test_readable_input_project_host_scripts_remain_blocked(self):
         source = self.root / "host-script.3mf"

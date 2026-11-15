@@ -14,6 +14,7 @@ Help people discover useful things to print, customize models, prepare settings 
 - `workspaces.py`: atomic saved filament inputs, exact drafts and revision conflicts, separate from CAD jobs.
 - `slicer.py`: local Bambu Studio CLI preparation, execution and output verification.
 - `studio_project.py`, `studio_sources.py`: bounded project inspection/composition and immutable verified originals.
+- `studio_workspaces.py`: named Studio input references, exact drafts, bounded recorded-metadata catalogs and revision conflicts.
 - `studio_settings.py`, `studio_revisions.py`: six-field proposals, immutable user-selected revisions and original-based rederivation.
 - `offers.py`, `storage.py`: user-entered offer calculation and per-job artifacts/history.
 - `static/`: dependency-free Korean UI and Canvas mesh viewer.

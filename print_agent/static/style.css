@@ -611,3 +611,13 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .studio-settings-field small { font-weight: normal; line-height: 1.6; }
 .studio-settings-changes { padding-left: 22px; line-height: 1.8; }
 @media (max-width: 650px) { .studio-settings-fields { grid-template-columns: 1fr; } .studio-settings-editor, .studio-settings-differences { padding: 14px; } }
+
+/* Retained Studio inputs stay usable before a CAD job exists. */
+.studio-library { margin: 20px 0; padding: 18px; border: 1px solid var(--border, #d9dfdb); border-radius: 12px; background: var(--surface-soft, #f7f9f7); min-width: 0; }
+.studio-library h4 { margin: 0 0 10px; }
+.studio-library-catalog { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }
+.studio-library label { display: grid; gap: 7px; min-width: 0; }
+.studio-library select, .studio-library input { width: 100%; min-width: 0; }
+.studio-library .button-row { flex-wrap: wrap; margin: 12px 0; }
+#studio-workspace-candidate pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .studio-library { padding: 12px; } .studio-library-catalog { grid-template-columns: minmax(0, 1fr); } .studio-library .button { width: 100%; } }

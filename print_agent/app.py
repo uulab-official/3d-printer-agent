@@ -37,7 +37,8 @@ from .studio_project import MAX_ARCHIVE_BYTES, MAX_IMPORT_REQUEST_BYTES
 from .studio_revisions import StudioSettingsRevisionStore, StudioRevisionIntegrityError
 from .studio_settings import settings_editor, derive_settings
 from .studio_sources import StudioProjectStore, StudioSourceIntegrityError
-from .workspaces import ProfileWorkspaceStore, WorkspaceConflict
+from .studio_workspaces import StudioWorkspaceStore, StudioWorkspaceIntegrityError
+from .workspaces import ProfileWorkspaceStore, WorkspaceConflict, WorkspaceIntegrityError
 
 MAX_BODY = 2 * 1024 * 1024
 MAX_WORKSPACE_BODY = 8 * 1024 * 1024
@@ -244,10 +245,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     workspaces = ProfileWorkspaceStore(data_root) if test_mode else None
     studio_sources = StudioProjectStore(data_root) if test_mode else None
     studio_revisions = StudioSettingsRevisionStore(data_root, studio_sources) if test_mode else None
+    studio_workspaces = StudioWorkspaceStore(data_root, studio_sources, studio_revisions) if test_mode else None
 
     @asynccontextmanager
     async def lifespan(application):
-        nonlocal store, workspaces, studio_sources, studio_revisions, recovery
+        nonlocal store, workspaces, studio_sources, studio_revisions, studio_workspaces, recovery
         if test_mode:
             yield
             return
@@ -257,11 +259,13 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             workspaces = ProfileWorkspaceStore(data_root)
             studio_sources = StudioProjectStore(data_root)
             studio_revisions = StudioSettingsRevisionStore(data_root, studio_sources)
+            studio_workspaces = StudioWorkspaceStore(data_root, studio_sources, studio_revisions)
             recovery = store.recover()
             application.state.store = store
             application.state.workspaces = workspaces
             application.state.studio_sources = studio_sources
             application.state.studio_revisions = studio_revisions
+            application.state.studio_workspaces = studio_workspaces
             yield
 
     token = secrets.token_urlsafe(32)
@@ -270,6 +274,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     app.state.workspaces = workspaces
     app.state.studio_sources = studio_sources
     app.state.studio_revisions = studio_revisions
+    app.state.studio_workspaces = studio_workspaces
     app.add_middleware(LocalSessionMiddleware, token=token)
     hosts = ['localhost','127.0.0.1'] + (['testserver'] if test_mode else [])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
@@ -289,6 +294,14 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.exception_handler(StudioRevisionIntegrityError)
     async def studio_revision_integrity(_request, exception):
         return JSONResponse({'detail': str(exception), 'code': 'studio_settings_revision_integrity'}, status_code=409)
+
+    @app.exception_handler(StudioWorkspaceIntegrityError)
+    async def studio_workspace_integrity(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'studio_workspace_integrity'}, status_code=409)
+
+    @app.exception_handler(WorkspaceIntegrityError)
+    async def workspace_integrity(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'workspace_integrity'}, status_code=409)
 
     @app.exception_handler(OSError)
     @app.exception_handler(sqlite3.Error)
@@ -451,6 +464,29 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             raise ValueError('Studio 프로젝트 파일을 다시 선택해 주세요. 올바른 base64 데이터가 필요합니다.') from exc
         return studio_sources.import_project(payload.filename, content)
 
+    @app.get('/api/studio-library')
+    def studio_library(kind: Literal['workspaces', 'sources', 'revisions'] = 'workspaces',
+                       limit: int = Query(default=25, ge=1, le=100),
+                       before: str | None = Query(default=None, pattern=r'^[a-f0-9]{32}$', max_length=32)):
+        return studio_workspaces.list_entries(kind, limit=limit, before=before)
+
+    @app.post('/api/studio-workspaces', status_code=201)
+    def create_studio_workspace(payload: WorkspaceCreatePayload):
+        return studio_workspaces.create(payload.title, payload.snapshot)
+
+    @app.get('/api/studio-workspaces/{workspace_id}')
+    def get_studio_workspace(workspace_id: str):
+        return studio_workspaces.get(workspace_id)
+
+    @app.put('/api/studio-workspaces/{workspace_id}')
+    def update_studio_workspace(workspace_id: str, payload: WorkspaceUpdatePayload):
+        return studio_workspaces.update(workspace_id, payload.title, payload.snapshot, payload.expected_revision)
+
+    @app.delete('/api/studio-workspaces/{workspace_id}', status_code=204)
+    def delete_studio_workspace(workspace_id: str, payload: WorkspaceDeletePayload):
+        studio_workspaces.delete(workspace_id, payload.expected_revision)
+        return Response(status_code=204)
+
     @app.get('/api/studio-projects/{source_id}')
     def get_studio_project(source_id: str):
         return studio_sources.get(source_id)
@@ -491,18 +527,19 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         try:
             store.begin_slice(payload.job_id)
             began = True
-            input_path = store.artifact_path(payload.job_id,'three_mf')
+            input_path, input_bytes = store.read_artifact(payload.job_id, 'three_mf')
             work_dir = store.directory(payload.job_id) / 'slices' / uuid.uuid4().hex
             if payload.studio_settings_revision_id is not None:
                 snapshot, source_content, revision = studio_revisions.read(payload.studio_settings_revision_id)
                 plan = prepare_project_slice(input_path, work_dir, snapshot['source']['filename'], source_content,
-                                             source_id=revision['source_id'], settings_revision=revision)
+                                             source_id=revision['source_id'], settings_revision=revision,
+                                             input_bytes=input_bytes)
             elif payload.studio_project_id is not None:
                 snapshot, source_content = studio_sources.read(payload.studio_project_id)
                 plan = prepare_project_slice(input_path, work_dir, snapshot['source']['filename'], source_content,
-                                             source_id=payload.studio_project_id)
+                                             source_id=payload.studio_project_id, input_bytes=input_bytes)
             else:
-                plan = prepare_slice(input_path,work_dir,payload.config_bundle)
+                plan = prepare_slice(input_path, work_dir, payload.config_bundle, input_bytes=input_bytes)
             execution = execute_slice(plan) if payload.execute and plan['ready'] else None
             store.record_slice(payload.job_id,plan,execution)
             return {'plan':plan,'execution':execution}

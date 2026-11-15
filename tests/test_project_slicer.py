@@ -72,6 +72,31 @@ class ProjectSlicerTests(unittest.TestCase):
             revision_id="b" * 32, created_at="2026-11-15T00:00:00+00:00", review_sha256=review["review_sha256"])
         return revision, effective, review
 
+    def test_supplied_verified_cad_snapshot_survives_path_replacement(self):
+        self.assertIn('input_bytes', inspect.signature(slicer.prepare_project_slice).parameters)
+        original = self.model.read_bytes()
+        self.model.write_bytes((Path(__file__).resolve().parents[1] / 'examples/tray/model.3mf').read_bytes())
+        with patch.object(slicer.subprocess, 'run', side_effect=AssertionError('preparation cannot launch native code')):
+            plan = slicer.prepare_project_slice(self.model, self.root / 'verified-snapshot', self.source_name,
+                self.source, executable_path=str(self.root / 'missing'), input_bytes=original)
+        self.assertTrue(plan['project_prepared'], plan['diagnostics'])
+        self.assertEqual(Path(plan['input_path']).read_bytes(), original)
+        self.assertEqual(plan['project_receipt']['model_sha256'], hashlib.sha256(original).hexdigest())
+
+    def test_invalid_supplied_cad_snapshot_blocks_without_staging_or_native_launch(self):
+        self.assertIn('input_bytes', inspect.signature(slicer.prepare_project_slice).parameters)
+        maximum = len(self.source) + 1
+        for index, content in enumerate((b'', b'not a zip', bytearray(b'mutable'), 'text', b'x' * (maximum + 1))):
+            with self.subTest(index=index), patch.object(slicer.studio_project, 'MAX_ARCHIVE_BYTES', maximum), patch.object(
+                    slicer.subprocess, 'run', side_effect=AssertionError('invalid CAD cannot launch native code')):
+                directory = self.root / f'invalid-snapshot-{index}'
+                plan = slicer.prepare_project_slice(self.model, directory, self.source_name, self.source,
+                                                    executable_path=str(self.executable), input_bytes=content)
+                self.assertFalse(plan['project_prepared'])
+                self.assertTrue(plan['project_source']['supported'])
+                self.assertTrue(plan['diagnostics'])
+                self.assertFalse(directory.exists())
+
     def test_edited_preparation_without_studio_stages_recipe_and_entire_effective_snapshot(self):
         revision, effective, review = self.revision()
         original = self.source

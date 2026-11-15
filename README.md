@@ -6,13 +6,15 @@
 
 **An open-source local workspace for parameterized CAD, filament profile review, and Bambu Studio preparation.**
 
-한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **로컬 작업 공간 v0.5**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
+한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **로컬 작업 공간 v0.6**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
 
 이 버전은 `수납함`, `열린 케이블 받침`, `원형 인셋 프레임` 세 가지 파라메트릭 모델을 실제 CAD로 생성합니다. 일반적인 자유형 모델링, MakerWorld 검색·리믹스, 실시간 쇼핑 수집, 프린터 직접 제어는 후속 개발 범위입니다. [현재 개발 상태](docs/STATUS.md), [로컬 검증 기록](docs/VERIFICATION.md), [기여 안내](CONTRIBUTING.md)를 함께 확인하세요.
 
 **Studio 프로젝트 하나로 출력 설정을 가져올 수 있습니다.** 기록된 프린터·노즐·재료·플레이트를 확인하고, 현재 생성한 CAD에 적용한 3MF를 준비합니다. Studio가 없어도 준비 파일을 내려받을 수 있으며 실제 슬라이싱은 별도 실행합니다. 지원 버전과 범위는 [Studio 프로젝트 설정 가져오기](docs/STUDIO_PROJECTS.md)를 확인하세요.
 
 **가져온 프로젝트의 필라멘트 설정도 화면에서 바꿀 수 있습니다.** 노즐·베드의 일반/첫 레이어 온도, 유량 비율, 최대 체적 속도 여섯 항목을 편집하고 원본과 차이를 검토한 뒤 적용합니다. 원본은 보관하며 변경값과 현재 CAD를 담은 별도 3MF를 만듭니다. [필라멘트 설정 변경 안내](docs/STUDIO_SETTINGS.md)에 사용 순서, 지원 범위와 이력·복원 동작이 있습니다. 이 값은 사용자 선택값이며 장비·재료 권장값으로 표시하지 않습니다.
+
+**설정을 CAD 작업과 별도로 저장하고 다시 열 수 있습니다.** [Studio 설정 보관함](docs/STUDIO_LIBRARY.md)은 이름 붙인 설정과 정확한 미완성 입력을 보관합니다. 이전 버전의 원본·변경 기록도 목록에서 찾으며, 다시 열 때 검사하고 후보를 직접 선택합니다. 다른 탭과의 저장 충돌과 손상된 항목은 현재 초안을 보존한 채 안내합니다.
 
 ![실제 생성한 세 CAD 모델](examples/model-preview.png)
 
@@ -22,7 +24,7 @@
 
 권장 실행 경로는 **Python 3.12 가상환경**입니다. Linux·macOS·Windows의 설치 패키지 검증과 native Bambu 실행 검증은 분리합니다. 플랫폼별로 실제 통과한 커밋과 범위는 [검증 기록](docs/VERIFICATION.md)을 확인하세요. 이 앱은 자신의 PC에서 사용하는 단일 사용자 앱이며 공개 서버로 배포하는 구성은 제공하지 않습니다.
 
-패키지 설치는 [검증된 v0.5.0 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.5.0)와 [설치·릴리스 안내](docs/RELEASES.md)를 확인하세요. 같은 wheel의 Ubuntu·macOS·Windows 설치 검사는 각각 183개, 실제 데스크톱·모바일 Chromium 검사는 총 42개를 통과했습니다. 실제 Linux Studio의 네 가지 합성 슬라이싱 경로도 통과했으며, 공개 파일 7개를 내려받아 검증에 사용한 바이트와 대조했습니다. 정확한 소스와 범위는 [검증 기록](docs/VERIFICATION.md)에 남깁니다. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
+현재 공개된 패키지는 [검증된 v0.5.0 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.5.0)와 [설치·릴리스 안내](docs/RELEASES.md)를 확인하세요. 같은 wheel의 Ubuntu·macOS·Windows 설치 검사는 각각 183개, 실제 데스크톱·모바일 Chromium 검사는 총 42개를 통과했습니다. 실제 Linux Studio의 네 가지 합성 슬라이싱 경로도 통과했으며, 공개 파일 7개를 내려받아 검증에 사용한 바이트와 대조했습니다. 정확한 소스와 범위는 [검증 기록](docs/VERIFICATION.md)에 남깁니다. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
 
 저장소를 받은 다음 프로젝트 폴더로 이동합니다.
 
@@ -85,7 +87,7 @@ printer-agent restore --archive "/내/백업/workspace.ppa-backup.zip" --destina
 printer-agent --data-dir "/내/복원된-데이터"
 ```
 
-CAD 기록과 원본·부분 파일, 저장한 필라멘트 원본·미완성 초안을 함께 보관합니다. 실행 중인 데이터의 백업과 기존 폴더를 덮어쓰는 복원은 거절합니다. 모델별 ZIP 내보내기는 전체 작업 백업이 아니며, 브라우저에서 아직 저장하지 않은 입력은 포함되지 않습니다. 한도와 확인 방법은 [백업·복원 안내](docs/BACKUP_RESTORE.md)를 참고하세요.
+CAD 기록과 원본·부분 파일, 저장한 필라멘트 입력, Studio 설정 보관함·미완성 초안을 함께 보관합니다. 실행 중인 데이터의 백업과 기존 폴더를 덮어쓰는 복원은 거절합니다. 모델별 ZIP 내보내기는 전체 작업 백업이 아니며, 브라우저에서 아직 저장하지 않은 입력은 포함되지 않습니다. 한도와 확인 방법은 [백업·복원 안내](docs/BACKUP_RESTORE.md)를 참고하세요.
 
 ## 사용할 수 있는 작업
 
@@ -98,6 +100,7 @@ CAD 기록과 원본·부분 파일, 저장한 필라멘트 원본·미완성 �
 | 재료 설정 | Studio 내보내기·여러 JSON 가져오기, 상속 검토, 주요 수치·적용 범위·출처 편집, 원본·초안·사용 조건 저장 및 다시 열기 | 가져온 명시값과 입력한 근거를 검토. 변경 전후를 구분하며 Studio 전체 구성·제조사 인증은 미구현 |
 | 교정 변경 검토 | K, flow ratio, MVS 기록의 재검토 필요성 판정 | API 제공. 측정이나 프린터 저장은 하지 않음 |
 | Bambu Studio | 명시적 CLI 확인, 설정 파일 묶음 도우미, 플레이트 지정, CLI 실행과 결과 검토 | 버전별 native 검증은 [연동 안내](docs/BAMBU_STUDIO.md)와 검증 기록 참조. 실물 출력은 미검증 |
+| Studio 설정 보관함 | CAD 없이 원본·편집값·정확한 미완성 초안 저장, 기존 원본·변경 기록 찾기 | 열 때 재검증, 명시적 후보 선택, 저장 충돌·손상 처리, 전체 백업 포함 |
 | 구매 비교 | 직접 입력한 가격·중량·배송비로 kg당 단가 계산 | 실시간 가격·재고·쿠폰은 수집하지 않음 |
 | 작업 기록 | 생성 요청·파일·이벤트·사용자 출력 결과, 이전 기록 더 보기, 중단 작업 다시 준비 | 다운로드 바이트 검증과 시작 시 이력 복구. 사용자 결과는 `user_reported`로 구분 |
 | 전체 백업·복원 | 저장한 CAD·필라멘트 작업 전체를 검증한 ZIP으로 보관하고 새 폴더에 복원 | 서버 종료 후 CLI 실행. 바이트 무결성과 자료의 정상 여부를 구분 |

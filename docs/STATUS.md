@@ -2,9 +2,11 @@
 
 Date: 2026-11-15 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.5 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.6 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.6 adds a named [Studio setup library](STUDIO_LIBRARY.md), exact unfinished drafts, and metadata discovery of earlier originals/revisions without CAD history. It also carries verified CAD bytes through preparation and rejects corrupt saved filament rows before restoring browser input. Source-bound v0.6 CI/package/native/public-release evidence is pending; v0.5 evidence below is historical.
 
 Version 0.5 adds guided review and application of six filament settings within a supported Studio project. Immutable revisions retain the original source and exact changed-only recipe; every read and preparation rederives the effective settings. The UI preserves invalid drafts, separates original/applied/recorded values, and restores edited history through its revision. Installed qualification covers actual restart, backup restoration and fresh preparation under the restored root. A fourth synthetic native case retains all previous cases. See [STUDIO_SETTINGS.md](STUDIO_SETTINGS.md). The exact qualified wheel is published in [v0.5.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.5.0), with the observed source, scope and evidence below.
 

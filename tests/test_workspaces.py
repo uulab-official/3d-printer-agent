@@ -2,6 +2,8 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime
 import math
+import json
+import sqlite3
 from pathlib import Path
 import tempfile
 import threading
@@ -66,6 +68,52 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(reopened['snapshot'], original)
         self.assertNotIn('review', reopened)
         self.assertFalse((self.root / 'jobs').exists())
+
+    def test_corrupt_saved_snapshot_is_rejected_before_return(self):
+        from print_agent.workspaces import WorkspaceIntegrityError
+        record = self.store.create('Keep', workspace_snapshot())
+        invalid = []
+        value = workspace_snapshot()
+        value['target_index'] = 99
+        invalid.append(value)
+        value = workspace_snapshot()
+        value['setup'].pop('nozzle_diameter')
+        invalid.append(value)
+        invalid.append([])
+        for value in invalid:
+            with sqlite3.connect(self.store.db_path) as db:
+                db.execute('UPDATE profile_workspaces SET snapshot_json=? WHERE id=?',
+                           (json.dumps(value), record['id']))
+            with self.subTest(value=value), self.assertRaises(WorkspaceIntegrityError):
+                self.store.get(record['id'])
+
+    def test_saved_duplicate_nonfinite_metadata_and_size_are_integrity_errors(self):
+        from print_agent.workspaces import WorkspaceIntegrityError
+        record = self.store.create('Keep', workspace_snapshot())
+        valid = json.dumps(workspace_snapshot())
+        for raw in ('{', '{"schema_version":1,'+valid[1:], valid.replace('"target_index": 1', '"target_index": NaN'),
+                    ' '*(8*1024*1024+1)):
+            with sqlite3.connect(self.store.db_path) as db:
+                db.execute('UPDATE profile_workspaces SET snapshot_json=? WHERE id=?', (raw, record['id']))
+            with self.subTest(raw=raw[:30]), self.assertRaises(WorkspaceIntegrityError):
+                self.store.get(record['id'])
+
+    def test_saved_invalid_utf8_is_reported_as_workspace_integrity(self):
+        from print_agent.workspaces import WorkspaceIntegrityError
+        record = self.store.create('Keep', workspace_snapshot())
+        with sqlite3.connect(self.store.db_path) as db:
+            db.execute("UPDATE profile_workspaces SET title=CAST(X'80' AS TEXT) WHERE id=?", (record['id'],))
+        with self.assertRaises(WorkspaceIntegrityError):
+            self.store.get(record['id'])
+
+    def test_maximum_revision_update_is_rejected_without_changing_saved_row(self):
+        record = self.store.create('Keep', workspace_snapshot())
+        with sqlite3.connect(self.store.db_path) as db:
+            db.execute('UPDATE profile_workspaces SET revision=? WHERE id=?', (2**53-2, record['id']))
+        before = self.store.get(record['id'])
+        with self.assertRaises(ValueError):
+            self.store.update(record['id'], 'Overflow', workspace_snapshot(), 2**53-2)
+        self.assertEqual(self.store.get(record['id']), before)
 
     def test_standalone_text_round_trips_without_parsing(self):
         snapshot = workspace_snapshot()

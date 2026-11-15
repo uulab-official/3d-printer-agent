@@ -1979,3 +1979,129 @@ test('workspace conflicts preserve edits, allow a separate copy and delete only 
   await noHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('filament-workspace-recovery.png'), fullPage: true });
 });
+
+// New v0.6 scenarios execute in BOTH configured desktop/mobile Chromium projects
+// in CI. Setup rows and source archives are real local-server inputs. No native
+// Studio or physical print success is inferred from these browser checks.
+async function selectStudioRecordByTitle(page, title) {
+  await expect.poll(async () => page.locator('#studio-library-list option').allTextContents()).toContainEqual(expect.stringContaining(title));
+  const label = (await page.locator('#studio-library-list option').allTextContents()).find(value => value.includes(title));
+  await page.locator('#studio-library-list').selectOption({ label });
+}
+
+async function focusedStudioScreenshot(page, selector, filename, testInfo) {
+  // Only the capture removes sticky chrome. Restore the real page immediately.
+  // Locator captures on narrow viewports otherwise include a fixed header or
+  // a focused skip link over the input evidence.
+  const style = await page.addStyleTag({ content: '.topbar { position: static !important; } .skip-link { visibility: hidden !important; }' });
+  try {
+    await page.locator(selector).scrollIntoViewIfNeeded();
+    await page.locator(selector).screenshot({ path: testInfo.outputPath(filename), scale: 'css' });
+  } finally { await style.evaluate(element => element.remove()); }
+}
+
+test('Studio library saves before CAD and reopens original edited and exact unfinished drafts after restart', async ({ page }, testInfo) => {
+  test.setTimeout(180000);
+  const runtime = await isolatedRuntime(testInfo);
+  page.on('dialog', dialog => dialog.accept());
+  try {
+    await runtime.start();await page.goto(runtime.url);await expect(page.locator('#generate-button')).toBeEnabled();
+    const upload = await studioProjectUpload('library-before-cad.3mf');
+    const importing = page.waitForResponse(response => response.url().endsWith('/api/studio-projects/import'));
+    await page.locator('#studio-project-file').setInputFiles(upload);const source = await (await importing).json();
+    await expect(page.locator('#model-result')).toBeHidden();await page.locator('#studio-project-apply').click();
+    await page.locator('#studio-workspace-title').fill('원본 · CAD 만들기 전');
+    const originalSave = page.waitForResponse(response => response.url().endsWith('/api/studio-workspaces') && response.request().method() === 'POST');
+    await page.locator('#studio-workspace-save').click();const originalHttp = await originalSave;expect(originalHttp.status()).toBe(201);const originalRecord = await originalHttp.json();
+    expect(originalRecord.snapshot).toMatchObject({source_id:source.source_id,settings_revision_id:null,draft_values:null});
+    await expect(page.locator('#studio-workspace-status')).toContainText('저장됨');
+    await page.locator('#studio-settings-open').click();await expect(page.locator('[data-studio-setting]')).toHaveCount(6);
+    await page.locator('#studio-setting-nozzle_temperature').fill('211');
+    const reviewing = page.waitForResponse(response => response.url().endsWith('/settings/review'));
+    await page.locator('#studio-settings-review').click();expect((await reviewing).status()).toBe(200);
+    const applying = page.waitForResponse(response => response.url().endsWith('/settings/revisions') && response.request().method() === 'POST');
+    await page.locator('#studio-settings-apply').click();const edited = await (await applying).json();
+    await page.locator('#studio-workspace-title').fill('편집본 · 노즐 211');
+    const editedSaving = page.waitForResponse(response => response.url().endsWith('/api/studio-workspaces') && response.request().method() === 'POST');
+    await page.locator('#studio-workspace-copy').click();const editedRecord = await (await editedSaving).json();
+    expect(editedRecord.snapshot.settings_revision_id).toBe(edited.revision.revision_id);expect(editedRecord.snapshot.draft_values).toBeNull();
+    await page.locator('#studio-settings-open').click();await page.locator('#studio-setting-filament_flow_ratio').fill(' 1. ');
+    await page.locator('#studio-workspace-title').fill('진행 중 · 정확한 미완성 초안');
+    const unfinishedSaving = page.waitForResponse(response => response.url().endsWith('/api/studio-workspaces') && response.request().method() === 'POST');
+    await page.locator('#studio-workspace-copy').click();const unfinishedRecord = await (await unfinishedSaving).json();
+    expect(unfinishedRecord.snapshot.draft_values.filament_flow_ratio).toBe(' 1. ');await expect(page.locator('#studio-workspace-status')).toContainText('저장됨');
+    await expect(page.locator('#prepare-studio-project')).toBeDisabled();await expect(page.locator('#model-result')).toBeHidden();
+    await focusedStudioScreenshot(page, '.studio-library', 'library-zero-cad-saved-draft.png', testInfo);
+    await runtime.stop();await runtime.start();await page.reload();await expect(page.locator('#generate-button')).toBeEnabled();
+    await selectStudioRecordByTitle(page,'원본 · CAD 만들기 전');await page.locator('#studio-library-open').click();
+    await expect(page.locator('#studio-workspace-candidate')).toContainText('원본 · CAD 만들기 전');await expect(page.locator('#studio-project-applied')).toBeHidden();
+    await page.locator('#studio-project-apply').click();await expect(page.locator('#studio-setting-nozzle_temperature')).toHaveValue(source.summary.nozzle_temperature);
+    await selectStudioRecordByTitle(page,'편집본 · 노즐 211');await page.locator('#studio-library-open').click();
+    await expect(page.locator('#studio-workspace-title')).toHaveValue('원본 · CAD 만들기 전');await page.locator('#studio-project-apply').click();
+    await expect(page.locator('#studio-setting-nozzle_temperature')).toHaveValue('211');await expect(page.locator('#studio-settings-applied')).toContainText('사용자 선택값');
+    await selectStudioRecordByTitle(page,'진행 중 · 정확한 미완성 초안');await page.locator('#studio-library-open').click();
+    await expect(page.locator('#studio-workspace-candidate pre')).toContainText(' 1. ');await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(source.summary.filament_flow_ratio);
+    await page.locator('#studio-project-apply').click();await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(' 1. ');
+    await expect(page.locator('#studio-workspace-status')).toContainText('저장됨');await expect(page.locator('#studio-settings-differences')).toBeHidden();await expect(page.locator('#studio-project-prepared-download')).toBeHidden();
+    const invalidReview = page.waitForResponse(response => response.url().endsWith('/settings/review'));
+    await page.locator('#studio-settings-review').click();expect((await invalidReview).status()).toBe(422);await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(' 1. ');
+    await focusedStudioScreenshot(page, '#studio-settings-editor', 'library-reopened-exact-invalid-draft.png', testInfo);
+    await page.locator('#studio-setting-filament_flow_ratio').fill('1.02');await page.locator('#studio-settings-review').click();await expect(page.locator('#studio-settings-apply')).toBeEnabled();
+    const resumedApplying = page.waitForResponse(response => response.url().endsWith('/settings/revisions') && response.request().method() === 'POST');
+    await page.locator('#studio-settings-apply').click();const resumed = await (await resumedApplying).json();
+    await page.locator('#parameter-width').fill('143');const generating = page.waitForResponse(response => response.url().endsWith('/api/models') && response.request().method() === 'POST');
+    await page.locator('#generate-button').click();const currentModel = await (await generating).json();
+    await expect(page.locator('#prepare-studio-project')).toBeEnabled();const preparing = page.waitForResponse(response => response.url().endsWith('/api/slice'));
+    await page.locator('#prepare-studio-project').click();const preparedHttp = await preparing;const prepared = await preparedHttp.json();
+    expect(preparedHttp.request().postDataJSON()).toEqual({job_id:currentModel.id,studio_settings_revision_id:resumed.revision.revision_id,execute:false});
+    const currentCadBytes = await (await page.request.get(runtime.url + currentModel.artifacts.three_mf)).body();
+    expect(prepared.plan.project_receipt.model_sha256).toBe(crypto.createHash("sha256").update(currentCadBytes).digest("hex"));
+    await expect(page.locator('#studio-project-prepared-download')).toBeVisible();await expect(page.locator('#execute-studio-project')).toBeDisabled();
+    // Legacy imports and immutable revisions are discoverable without named rows.
+    await page.locator('#studio-library-kind').selectOption('sources');await selectStudioRecordByTitle(page,upload.name);await page.locator('#studio-library-open').click();
+    await expect(page.locator('#studio-project-candidate')).toContainText(upload.name);await page.locator('#studio-project-cancel').click();
+    await page.locator('#studio-library-kind').selectOption('revisions');await expect.poll(async()=>page.locator('#studio-library-list option').count()).toBeGreaterThan(1);
+    await page.locator('#studio-library-list').selectOption({index:1});await expect(page.locator('#studio-library-detail')).toContainText('nozzle_temperature');await page.locator('#studio-library-open').click();
+    await expect(page.locator('#studio-settings-candidate')).toBeVisible();await page.locator('#studio-project-cancel').click();
+    await noHorizontalOverflow(page);
+    await fs.writeFile(testInfo.outputPath('library-before-cad-and-resumed-evidence.json'),JSON.stringify({originalRecord,editedRecord,unfinishedRecord,resumed,currentModel:currentModel.id,prepared:prepared.plan},null,2));
+  } finally { await runtime.stop(); }
+});
+
+test('Studio and profile corrupt saved rows return integrity errors while current raw and guided inputs survive', async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  const runtime = await isolatedRuntime(testInfo);
+  page.on('dialog', dialog => dialog.accept());
+  try {
+    const bootstrap = await runtime.start();await page.goto(runtime.url);await expect(page.locator('#generate-button')).toBeEnabled();
+    const upload = await studioProjectUpload('library-integrity.3mf');await page.locator('#studio-project-file').setInputFiles(upload);await expect(page.locator('#studio-project-apply')).toBeEnabled();await page.locator('#studio-project-apply').click();
+    await page.locator('#studio-workspace-title').fill('손상 전 저장본');const saving = page.waitForResponse(response=>response.url().endsWith('/api/studio-workspaces')&&response.request().method()==='POST');
+    await page.locator('#studio-workspace-save').click();const record = await (await saving).json();
+    await page.locator('#studio-settings-open').click();await page.locator('#studio-setting-filament_flow_ratio').fill(' 1. ');await page.locator('#studio-workspace-title').fill('현재 초안 이름');
+    const profileSnapshot = {schema_version:1,documents:[],target_index:0,profile_text:'{}',setup:{printer_model:'',printer_preset:'',nozzle_diameter:'',plate_type:'',extruder:'',feed_mode:'',material_id:'',material_identity_status:'unknown'}};
+    const profileHttp = await page.request.post(runtime.url+'/api/profile-workspaces',{headers:{'X-Session-Token':bootstrap.session_token},data:{title:'손상된 재료 저장본',snapshot:profileSnapshot}});expect(profileHttp.status()).toBe(201);const profile = await profileHttp.json();
+    const corruptScript = String.raw`
+import json,sqlite3,sys
+from pathlib import Path
+root=Path(sys.argv[1])
+with sqlite3.connect(root/'studio-workspaces.sqlite3') as db:
+    db.execute('UPDATE studio_workspaces SET snapshot_json=? WHERE id=?', ('{}', sys.argv[2]))
+with sqlite3.connect(root/'profile-workspaces.sqlite3') as db:
+    snapshot=json.loads(db.execute('SELECT snapshot_json FROM profile_workspaces WHERE id=?',(sys.argv[3],)).fetchone()[0])
+    snapshot['target_index']=99
+    db.execute('UPDATE profile_workspaces SET snapshot_json=? WHERE id=?',(json.dumps(snapshot),sys.argv[3]))
+`;
+    await runFile('python',['-c',corruptScript,runtime.root,record.id,profile.id],{cwd:path.resolve(__dirname,'../..'),timeout:30000});
+    await page.locator('#studio-library-refresh').click();await expect(page.locator('#studio-library-list')).toContainText('읽을 수 없는 기록');await page.locator('#studio-library-list').selectOption(record.id);
+    const opening = page.waitForResponse(response=>response.url().endsWith('/api/studio-workspaces/'+record.id));await page.locator('#studio-library-open').click();const failed = await opening;
+    expect(failed.status()).toBe(409);expect((await failed.json()).code).toBe('studio_workspace_integrity');await expect(page.locator('#studio-library-feedback')).toContainText('유지');
+    await expect(page.locator('#studio-workspace-title')).toHaveValue('현재 초안 이름');await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(' 1. ');await expect(page.locator('#studio-project-applied')).toContainText(upload.name);await expect(page.locator('#studio-project-candidate')).toBeHidden();
+    await focusedStudioScreenshot(page,'.studio-library','library-integrity-current-inputs.png',testInfo);
+    await openView(page,'profiles');await page.locator('#profile-file').setInputFiles({name:'current.json',mimeType:'application/json',buffer:Buffer.from('{"name":"Current","nozzle_temperature":["215"]}')});
+    await page.locator('#guided-nozzle_temperature').fill('220');const raw = await page.locator('#profile-json').inputValue();
+    await page.locator('#workspace-refresh').click();await expect(page.locator('#workspace-list')).toContainText('손상된 재료 저장본');await page.locator('#workspace-list').selectOption(profile.id);
+    const openingProfile = page.waitForResponse(response=>response.url().endsWith('/api/profile-workspaces/'+profile.id));await page.locator('#workspace-open').click();const failedProfile = await openingProfile;
+    expect(failedProfile.status()).toBe(409);expect((await failedProfile.json()).code).toBe('workspace_integrity');await expect(page.locator('#profile-json')).toHaveValue(raw);await expect(page.locator('#guided-nozzle_temperature')).toHaveValue('220');
+    await expect(page.locator('#workspace-feedback')).toBeVisible();await noHorizontalOverflow(page);
+  } finally { await runtime.stop(); }
+});

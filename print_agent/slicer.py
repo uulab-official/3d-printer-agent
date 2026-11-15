@@ -23,6 +23,7 @@ CLI reference: https://github.com/bambulab/BambuStudio/wiki/Command-Line-Usage
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 import os
@@ -451,21 +452,23 @@ def _build_argv(executable: str, job_dir: Path, input_path: Path, output: Path, 
             "--export-3mf", output.name, str(input_path)]
 
 
-def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executable_path: str | None = None) -> dict:
+def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executable_path: str | None = None, *,
+                  input_bytes: bytes | None = None) -> dict:
     """Stage immutable inputs and a fixed argv plan. Does not launch Studio."""
     plan = {"ready": False, "argv": [], "output_path": None, "job_dir": str(job_dir),
             "expected_settings": {}, "diagnostics": []}
     try:
-        source = Path(input_path).expanduser().resolve(strict=True)
+        source = Path(input_path).expanduser()
         job_dir = Path(job_dir).expanduser().resolve()
         plan["job_dir"] = str(job_dir)
         if ";" in str(job_dir):
             raise ValueError("작업 경로에 CLI 설정 구분자인 ';'를 사용할 수 없습니다. 다른 작업 경로를 선택하세요.")
-        if source.suffix.lower() not in (".stl", ".3mf") or not source.is_file() or not 0 < source.stat().st_size <= _MAX_ARCHIVE_BYTES:
+        if source.suffix.lower() not in (".stl", ".3mf"):
             raise ValueError("허용 크기 이내의 비어 있지 않은 STL 또는 3MF 파일이 필요합니다.")
+        model_bytes = _input_snapshot(source, input_bytes, _MAX_ARCHIVE_BYTES)
         validated = _validate_bundle(config_bundle)
         if source.suffix.lower() == ".3mf":
-            input_settings, _ = _inspect_archive(source, require_gcode=False)
+            input_settings, _ = _inspect_archive(io.BytesIO(model_bytes), require_gcode=False)
             if input_settings:
                 # Source projects may contain host scripts; never allow execution via import.
                 for key in ("post_process", "post_process_script", "post_process_scripts"):
@@ -497,8 +500,8 @@ def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executab
                 json.dump(profile, handle, ensure_ascii=False, allow_nan=False, indent=2)
             fingerprints[str(path)] = _hash(path)
         staged_input = input_dir / ("model" + source.suffix.lower())
-        with source.open("rb") as reader, staged_input.open("xb") as writer:
-            shutil.copyfileobj(reader, writer)
+        with staged_input.open("xb") as writer:
+            writer.write(model_bytes)
         fingerprints[str(staged_input)] = _hash(staged_input)
         output = job_dir / f"sliced-{uuid.uuid4().hex}.gcode.3mf"
         plan.update(ready=True, executable_path=str(executable), input_path=str(staged_input),
@@ -535,9 +538,18 @@ def _project_read_file(path: Path, maximum: int) -> bytes:
     return content
 
 
+def _input_snapshot(path: Path, supplied: bytes | None, maximum: int) -> bytes:
+    """Use immutable supplied content, or read one bounded standalone snapshot."""
+    if supplied is None:
+        return _project_read_file(path.resolve(strict=True), maximum)
+    if not isinstance(supplied, bytes) or not 0 < len(supplied) <= maximum:
+        raise ValueError("입력 스냅샷은 허용 크기 이내의 비어 있지 않은 불변 bytes여야 합니다.")
+    return supplied
+
+
 def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str, source_content: bytes, *,
                           source_id: str | None = None, executable_path: str | None = None,
-                          settings_revision: dict | None = None) -> dict:
+                          settings_revision: dict | None = None, input_bytes: bytes | None = None) -> dict:
     """Compose current generated CAD with an immutable recorded Studio snapshot.
 
     Composition requires no executable. The separate ready flag only permits a
@@ -560,10 +572,9 @@ def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str,
         effective, review = (studio_settings.verify_revision(snapshot, settings_revision, source_id=source_id)
                              if settings_revision is not None else (snapshot, None))
         original_model = Path(input_path).expanduser()
-        if original_model.is_symlink() or original_model.suffix.lower() != ".3mf":
+        if (input_bytes is None and original_model.is_symlink()) or original_model.suffix.lower() != ".3mf":
             raise ValueError("앱에서 생성한 원본 3MF 파일이 필요합니다.")
-        model = original_model.resolve(strict=True)
-        model_bytes = _project_read_file(model, studio_project.MAX_ARCHIVE_BYTES)
+        model_bytes = _input_snapshot(original_model, input_bytes, studio_project.MAX_ARCHIVE_BYTES)
         derived, receipt = studio_project.build_project_3mf(
             model_bytes, snapshot, settings_revision=settings_revision, source_id=source_id)
         requested_job = Path(job_dir).expanduser()

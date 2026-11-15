@@ -13,6 +13,7 @@ import sqlite3
 import uuid
 
 from .profile_origin import copy_archive_origin
+from .storage import _parse_json, _valid_timestamp
 
 
 MAX_WORKSPACE_BYTES = 8 * 1024 * 1024
@@ -24,6 +25,10 @@ _SETUP_FIELDS = {
     'printer_model', 'printer_preset', 'nozzle_diameter', 'plate_type',
     'extruder', 'feed_mode', 'material_id', 'material_identity_status',
 }
+
+
+class WorkspaceIntegrityError(ValueError):
+    """A saved filament workspace violates its input contract."""
 
 
 class WorkspaceConflict(ValueError):
@@ -131,10 +136,26 @@ def _now():
 
 
 def _record(row):
-    result = dict(row)
-    result['snapshot'] = json.loads(result.pop('snapshot_json'))
-    result.pop('document_count')
-    return result
+    try:
+        result = dict(row)
+        if (_workspace_id(result['id']) != result['id']
+                or _title(result['title']) != result['title']
+                or not _valid_timestamp(result['created_at'])
+                or not _valid_timestamp(result['updated_at'])):
+            raise ValueError('Invalid workspace metadata')
+        _revision(result['revision'])
+        raw = result.pop('snapshot_json')
+        if not isinstance(raw, str) or len(raw.encode('utf-8')) > MAX_WORKSPACE_BYTES:
+            raise ValueError('Invalid workspace size')
+        snapshot = _parse_json(raw)
+        _snapshot_text(snapshot)
+        count = result.pop('document_count')
+        if type(count) is not int or count != len(snapshot['documents']):
+            raise ValueError('Invalid document count')
+        result['snapshot'] = snapshot
+        return result
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError, OverflowError) as exc:
+        raise WorkspaceIntegrityError('보관한 필라멘트 작업의 입력 기록을 읽을 수 없습니다. 확인된 백업을 복구하거나 새 작업으로 저장하세요.') from exc
 
 
 class ProfileWorkspaceStore:
@@ -162,7 +183,19 @@ class ProfileWorkspaceStore:
 
     @staticmethod
     def _read(db, workspace_id):
-        row = db.execute('SELECT * FROM profile_workspaces WHERE id = ?', (workspace_id,)).fetchone()
+        try:
+            row = db.execute("""SELECT
+                CASE WHEN typeof(id) = 'text' AND length(CAST(id AS BLOB)) = 32 THEN id ELSE NULL END AS id,
+                CASE WHEN typeof(title) = 'text' AND length(CAST(title AS BLOB)) <= 480 THEN title ELSE NULL END AS title,
+                CASE WHEN typeof(revision) = 'integer' THEN revision ELSE NULL END AS revision,
+                CASE WHEN typeof(created_at) = 'text' AND length(CAST(created_at AS BLOB)) <= 320 THEN created_at ELSE NULL END AS created_at,
+                CASE WHEN typeof(updated_at) = 'text' AND length(CAST(updated_at AS BLOB)) <= 320 THEN updated_at ELSE NULL END AS updated_at,
+                CASE WHEN typeof(document_count) = 'integer' THEN document_count ELSE NULL END AS document_count,
+                CASE WHEN typeof(snapshot_json) = 'text'
+                    AND length(CAST(snapshot_json AS BLOB)) <= ? THEN snapshot_json ELSE NULL END AS snapshot_json
+                FROM profile_workspaces WHERE id = ?""", (MAX_WORKSPACE_BYTES, workspace_id)).fetchone()
+        except sqlite3.Error as exc:
+            raise WorkspaceIntegrityError('보관한 필라멘트 작업의 입력 기록을 읽을 수 없습니다.') from exc
         if row is None:
             raise KeyError('필라멘트 작업을 찾을 수 없습니다.')
         return row
@@ -197,6 +230,8 @@ class ProfileWorkspaceStore:
     def update(self, workspace_id, title, snapshot, expected_revision):
         workspace_id, expected_revision = _workspace_id(workspace_id), _revision(expected_revision)
         title, snapshot_json = _title(title), _snapshot_text(snapshot)
+        if expected_revision >= MAX_SAFE_INTEGER - 1:
+            raise ValueError('작업 revision의 저장 가능한 범위를 넘었습니다.')
         with closing(self._connect()) as db, db:
             # Acquire the write lock before computing the timestamp. The single
             # conditional update keeps metadata and the exact snapshot together.

@@ -30,13 +30,17 @@ _DATABASES = (
       ('revision', 'INTEGER', 1, None, 0), ('created_at', 'TEXT', 1, None, 0),
       ('updated_at', 'TEXT', 1, None, 0), ('document_count', 'INTEGER', 1, None, 0),
       ('snapshot_json', 'TEXT', 1, None, 0)), False),
+    ('studio_workspace_database', 'studio-workspaces.sqlite3', 'studio_workspaces',
+     (('id', 'TEXT', 0, None, 1), ('title', 'TEXT', 1, None, 0),
+      ('revision', 'INTEGER', 1, None, 0), ('created_at', 'TEXT', 1, None, 0),
+      ('updated_at', 'TEXT', 1, None, 0), ('snapshot_json', 'TEXT', 1, None, 0)), False),
 )
 
 
 def _recognizable_legacy(root: Path) -> bool:
     if not root.is_dir():
         return False
-    if any((root / name).is_file() for name in ('history.sqlite3', 'profile-workspaces.sqlite3')):
+    if any((root / name).is_file() for name in ('history.sqlite3', 'profile-workspaces.sqlite3', 'studio-workspaces.sqlite3')):
         return True
     jobs = root / 'jobs'
     if jobs.is_dir():
@@ -251,7 +255,7 @@ def _check_database(path: Path, table: str, columns: tuple, *, derived: bool) ->
         return {'passed': False, 'state': 'not_checked', 'repairable': False,
                 'detail': 'SQLite 구성 요소를 불러올 수 없어 저장소를 확인하지 못했습니다. ' + _message(exc)}
     repair_note = (' 앱을 다시 시작하면 원본 작업 기록을 기준으로 인덱스를 복구하며 손상 파일은 보존합니다.'
-                   if derived else ' 필라멘트 작업의 원본 저장소입니다. 파일을 보존하고 확인된 백업으로 복구하세요.')
+                   if derived else ' 사용자 작업 입력의 원본 저장소입니다. 파일을 보존하고 확인된 백업으로 복구하세요.')
     try:
         with _database_probe_path(path) as probe, closing(sqlite3.connect(
                 probe.resolve().as_uri() + '?mode=ro', uri=True, timeout=0.5)) as connection:
@@ -264,11 +268,16 @@ def _check_database(path: Path, table: str, columns: tuple, *, derived: bool) ->
             objects = list(connection.execute(
                 "SELECT name, type FROM sqlite_master WHERE name NOT GLOB 'sqlite_*'"))
             tables = {row[0] for row in objects if row[1] == 'table'}
-            if not objects:
+            if not objects and table != 'studio_workspaces':
                 return {'passed': True, 'state': 'uninitialized', 'repairable': False,
                         'detail': 'SQLite 파일에 사용자 저장 구조가 없습니다. 앱 시작 시 저장 구조를 초기화합니다.'}
             actual_columns = tuple(tuple(row[1:]) for row in connection.execute(f'PRAGMA table_info({table})'))
-            if table not in tables or actual_columns != columns:
+            studio_constraint = True
+            if table == 'studio_workspaces' and table in tables:
+                definition = connection.execute(
+                    'SELECT sql FROM sqlite_master WHERE name = ?', (table,)).fetchone()[0]
+                studio_constraint = re.search(r'check\s*\(\s*revision\s*>=\s*1\s*\)', definition, re.I) is not None
+            if table not in tables or actual_columns != columns or not studio_constraint:
                 return {'passed': False, 'state': 'schema_unrecognized', 'repairable': False,
                         'detail': '예상하는 저장 테이블·열 순서·자료형·제약 조건을 확인할 수 없습니다. '
                                   '자동 복구가 가능한 구조로 확인되지 않았습니다. 기존 파일을 보존하고 '

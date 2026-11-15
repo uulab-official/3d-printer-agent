@@ -195,6 +195,16 @@ class DiagnosticsTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
+    def test_studio_database_missing_is_compatible_but_existing_incompatible_is_preserved(self):
+        from print_agent.runtime import require_compatible_data, StorageCompatibilityError
+        self.assertEqual(require_compatible_data(self.root)['studio_workspace_database']['state'], 'not_initialized')
+        path = self.root / 'studio-workspaces.sqlite3'
+        for raw in (b'', b'corrupt authoritative bytes'):
+            path.write_bytes(raw)
+            with self.subTest(raw=raw), self.assertRaises(StorageCompatibilityError):
+                require_compatible_data(self.root)
+            self.assertEqual(path.read_bytes(), raw)
+
     def test_storage_file_failure_is_reported_without_altering_it(self):
         path = self.root / 'file'
         path.write_bytes(b'do not change')
@@ -256,6 +266,7 @@ class DiagnosticsTests(unittest.TestCase):
         for filename, check_id, repairable in (
             ('history.sqlite3', 'history_database', True),
             ('profile-workspaces.sqlite3', 'workspace_database', False),
+            ('studio-workspaces.sqlite3', 'studio_workspace_database', False),
         ):
             with self.subTest(filename=filename), tempfile.TemporaryDirectory(dir=self.root) as temp:
                 root = Path(temp)

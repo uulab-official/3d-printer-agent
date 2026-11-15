@@ -6,6 +6,8 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
+const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
+names.push(...libraryNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 class Element {
   constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
   set textContent(value) { this._text=String(value); this.children=[]; }
@@ -122,6 +124,7 @@ function studioApplied(c, inspection=studioInspection()) {
 const studioDescriptor=()=>({schema_version:1,source_id:'a'.repeat(32),source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),source_summary:studioInspection().summary,warnings:[],fields:['nozzle_temperature','nozzle_temperature_initial_layer','filament_flow_ratio','filament_max_volumetric_speed','bed_temperature','bed_temperature_initial_layer'].map(key=>({key,native_key:key,label:key,unit:'',kind:'integer',original:studioInspection().summary[key],value:studioInspection().summary[key],minimum:1,maximum:360,exclusive_minimum:false}))});
 const studioReview=()=>({schema_version:1,source_id:'a'.repeat(32),source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),effective_settings_sha256:'f'.repeat(64),review_sha256:'1'.repeat(64),values:{nozzle_temperature:'216'},changes:[{field:'nozzle_temperature',native_key:'nozzle_temperature',before:['215'],after:['216']}],changed_count:1,provenance:'user_selected',effective_summary:{...studioInspection().summary,nozzle_temperature:'216'}});
 const studioEnvelope=(id='e'.repeat(32))=>({source:studioInspection(),review:studioReview(),revision:{schema_version:1,revision_id:id,source_id:'a'.repeat(32),effective_settings_sha256:'f'.repeat(64),review_sha256:'1'.repeat(64),proposal:{source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),values:{nozzle_temperature:'216'}},changes:studioReview().changes,provenance:'user_selected'}});
+const studioNamed=(edited=false,draft=null)=>({source:studioInspection(),settings_revision:edited?studioEnvelope():null,editor:studioDescriptor(),workspace:{id:'b'.repeat(32),title:'Saved Studio',revision:2,created_at:'2026-11-15T00:00:00Z',updated_at:'2026-11-15T00:00:00Z',snapshot:{schema_version:1,source_id:'a'.repeat(32),settings_revision_id:edited?'e'.repeat(32):null,source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),effective_settings_sha256:edited?'f'.repeat(64):'d'.repeat(64),draft_values:draft}}});
 (async()=>{
   let failed=0,passed=0;
   async function check(name,test) {
@@ -130,6 +133,139 @@ const studioEnvelope=(id='e'.repeat(32))=>({source:studioInspection(),review:stu
     catch(error) { failed++; console.log('FAIL',name,error.message); }
     finally { clearTimeout(deadline); }
   }
+  await check('Corrupt profile restoration is atomic before epochs, guided edits and controls change',()=>{
+    for (const corrupt of [s=>{s.target_index=4;},s=>{delete s.setup.printer_model;},s=>{s.documents='bad';},s=>{s.schema_version=2;}]) {
+      const c=profileFixture();c.$('profile-json').value='{ unfinished';c.state.guidedEdits={nozzle_temperature:' 2.'};
+      const saved=plain(c.captureProfileSnapshot());corrupt(saved);
+      const before=plain({state:c.state,text:c.$('profile-json').value,title:c.$('workspace-title').value});
+      assert.throws(()=>c.restoreWorkspace(workspaceRecord(saved)),/작업|저장|형식/);
+      assert.deepEqual(plain({state:c.state,text:c.$('profile-json').value,title:c.$('workspace-title').value}),before);
+    }
+  });
+  await check('Named original and edited library opens stage coherent candidates without replacing current input',async()=>{
+    for(const edited of [false,true])for(const draft of [null,{...Object.fromEntries(studioDescriptor().fields.map(f=>[f.key,f.value])),filament_flow_ratio:' 1. '}]){
+      const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('nozzle_temperature','unfinished');
+      const envelope=studioNamed(edited,draft);c.$('studio-library-kind').value='workspaces';c.$('studio-library-list').value=envelope.workspace.id;c.api=async()=>envelope;
+      assert.equal(typeof c.openStudioLibrary,'function');await c.openStudioLibrary();
+      assert.equal(c.state.studioSettingsDraft.nozzle_temperature,'unfinished');assert.equal(c.state.studioWorkspaceId,undefined);
+      c.applyStudioCandidate();assert.equal(c.state.studioSettingsDraft.nozzle_temperature,'unfinished');
+      c.applyStudioCandidate(true);assert.equal(c.state.studioWorkspaceId,envelope.workspace.id);
+      assert.equal(c.state.studioSettingsApplied?.revision.revision_id,edited?'e'.repeat(32):undefined);
+      assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,draft?.filament_flow_ratio||'0.98');
+      assert.equal(c.state.studioSettingsDraft.nozzle_temperature,draft?.nozzle_temperature||(edited?'216':'215'));
+      assert.equal(c.studioWorkspaceDirty(),false);assert.equal(c.state.studioSettingsReview,null);assert.equal(c.state.studioSlicePrepared,false);
+    }
+  });
+  await check('Saved invalid Studio draft is persistence clean but cannot prepare stale effective settings',async()=>{
+    const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio',' 1. ');c.$('studio-workspace-title').value='Unfinished';
+    assert.equal(typeof c.saveStudioWorkspace,'function');let captured;c.api=async(path,body)=>{captured=plain(body);return {...studioNamed(false,body.snapshot.draft_values).workspace,title:body.title};};
+    await c.saveStudioWorkspace();assert.equal(captured.snapshot.draft_values.filament_flow_ratio,' 1. ');
+    assert.equal(c.studioWorkspaceDirty(),false);assert.equal(c.studioHasUnsavedChanges(),false);assert.equal(c.studioSettingsDirty(),true);
+    c.state.job=job();c.renderStudioProject();assert.equal(c.$('prepare-studio-project').disabled,true);
+    await c.runStudioSlice(false);assert.equal(captured.snapshot.draft_values.filament_flow_ratio,' 1. ');
+  });
+  await check('Studio save conflict preserves draft and save-copy creates a new record',async()=>{
+    const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio','-');c.$('studio-workspace-title').value='Work';
+    c.state.studioWorkspaceId='b'.repeat(32);c.state.studioWorkspaceRevision=3;let payload,method;
+    c.api=async()=>{const e=new Error('conflict');e.status=409;e.code='workspace_conflict';throw e;};
+    assert.equal(typeof c.saveStudioWorkspace,'function');await c.saveStudioWorkspace();assert.equal(c.state.studioWorkspaceRevision,3);assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,'-');
+    assert.match(c.$('studio-library-feedback').textContent,/복사/);
+    c.api=async(path,body,verb)=>{payload=body;method=verb;return {...studioNamed(false,body.snapshot.draft_values).workspace,title:body.title};};await c.saveStudioWorkspace(true);
+    assert.equal(method,'POST');assert.equal(payload.expected_revision,undefined);assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,'-');
+  });
+  await check('Late library opens, cancellations, selection changes and root changes preserve current input',async()=>{
+    for(const change of [c=>c.cancelStudioCandidate(),c=>c.editStudioSetting('nozzle_temperature','newer'),c=>{c.state.connectionEpoch++;},c=>{c.state.storage={path:'/new'};},c=>{c.$('studio-library-list').value='c'.repeat(32);}]){
+      const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('nozzle_temperature','before');c.$('studio-library-kind').value='workspaces';c.$('studio-library-list').value='b'.repeat(32);
+      let finish;c.api=()=>new Promise(done=>{finish=done;});assert.equal(typeof c.openStudioLibrary,'function');const pending=c.openStudioLibrary();change(c);finish(studioNamed());await pending;
+      assert.equal(c.state.studioCandidate,null);assert.equal(c.state.studioWorkspaceId,undefined);assert.match(c.state.studioSettingsDraft.nozzle_temperature,/before|newer/);
+    }
+  });
+  for(const change of ['selection','kind'])await check(`Completed stale library open releases its pending controls after ${change} changes`,async()=>{
+    for(const failure of [false,true]){
+      const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio','current draft');c.$('studio-workspace-title').value='Current title';
+      c.$('studio-library-kind').value='workspaces';c.$('studio-library-list').value='b'.repeat(32);
+      let settle;c.api=path=>path.startsWith('/api/studio-library?')?Promise.resolve({items:[],next_cursor:null}):new Promise((resolve,reject)=>{settle=failure?reject:resolve;});
+      const pending=c.openStudioLibrary();assert.equal(c.state.studioPending,true);
+      if(change==='kind'){c.$('studio-library-kind').value='sources';c.studioLibrarySelectionChanged(true);}else c.studioLibrarySelectionChanged();
+      c.$('studio-library-list').value='c'.repeat(32);
+      settle(failure?new Error('Old failed open'):studioNamed());await pending;
+      assert.equal(c.state.studioCandidate,null);assert.equal(c.state.studioPending,false);assert.equal(c.state.studioPendingName,'');
+      assert.equal(c.$('studio-library-open').disabled,false);assert.equal(c.$('studio-workspace-save').disabled,false);assert.equal(c.$('studio-settings-open').disabled,false);
+      assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,'current draft');assert.equal(c.$('studio-workspace-title').value,'Current title');
+    }
+  });
+  await check('Completed older library open cannot clear a newer open request pending state',async()=>{
+    for(const change of ['selection','kind'])for(const failure of [false,true]){
+      const c=fixture();studioApplied(c);c.$('studio-library-kind').value='workspaces';c.$('studio-library-list').value='b'.repeat(32);
+      const pendingResponses=[];c.api=path=>path.startsWith('/api/studio-library?')?Promise.resolve({items:[],next_cursor:null}):new Promise((resolve,reject)=>pendingResponses.push({resolve,reject}));
+      const first=c.openStudioLibrary();
+      if(change==='kind'){c.$('studio-library-kind').value='sources';c.studioLibrarySelectionChanged(true);}else c.studioLibrarySelectionChanged();
+      c.$('studio-library-list').value='c'.repeat(32);const second=c.openStudioLibrary();const request=c.state.studioRequest;
+      if(failure)pendingResponses[0].reject(new Error('Old failed open'));else pendingResponses[0].resolve(studioNamed());await first;
+      assert.equal(c.state.studioRequest,request);assert.equal(c.state.studioPending,true);assert.equal(c.state.studioPendingName,'보관한 설정');assert.equal(c.state.studioCandidate,null);assert.equal(c.$('studio-library-open').disabled,true);
+      const result=change==='kind'?studioInspection('c'.repeat(32)):studioNamed();if(change==='selection')result.workspace.id='c'.repeat(32);
+      pendingResponses[1].resolve(result);await second;assert.equal(c.state.studioPending,false);assert.equal(c.state.studioCandidate.source_id,result.source?.source_id||result.source_id);
+    }
+  });
+  await check('Late Studio save acknowledges only submitted text and ignores changed root or selection',async()=>{
+    for(const change of ['typing','root','selection']){
+      const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio','first');c.$('studio-workspace-title').value='Work';
+      let finish,body;c.api=(path,payload)=>new Promise(done=>{finish=done;body=plain(payload);});assert.equal(typeof c.saveStudioWorkspace,'function');const pending=c.saveStudioWorkspace();
+      if(change==='typing')c.editStudioSetting('filament_flow_ratio','newer');else if(change==='root')c.state.storage={path:'/new'};else c.cancelStudioCandidate();
+      finish(studioNamed(false,body.snapshot.draft_values).workspace);await pending;
+      if(change==='typing'){assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,'newer');assert.equal(c.studioWorkspaceDirty(),true);}
+      else assert.equal(c.state.studioWorkspaceId,undefined);
+    }
+  });
+  await check('Named candidate installs source revision descriptor and draft before any render',async()=>{
+    const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('nozzle_temperature','old draft');c.$('studio-library-kind').value='workspaces';c.$('studio-library-list').value='b'.repeat(32);c.api=async()=>studioNamed(true,null);await c.openStudioLibrary();
+    const render=c.renderStudioProject;c.renderStudioProject=()=>{assert.equal(c.state.studioWorkspaceId,'b'.repeat(32));assert.equal(c.state.studioSettingsApplied.revision.revision_id,'e'.repeat(32));assert.equal(c.state.studioSettingsDescriptor.source_id,'a'.repeat(32));assert.equal(c.state.studioSettingsDraft.nozzle_temperature,'216');render();};
+    c.applyStudioCandidate(true);
+  });
+  await check('Legacy history candidate never inherits a previously staged named workspace attachment',async()=>{
+    const c=fixture();c.$('studio-library-kind').value='workspaces';c.$('studio-library-list').value='b'.repeat(32);c.api=async()=>studioNamed(false,null);await c.openStudioLibrary();assert(c.state.studioWorkspaceCandidate);
+    c.state.studioRecorded=studioInspection('c'.repeat(32));c.api=async()=>c.state.studioRecorded;await c.revalidateStudioProject(true);
+    assert.equal(c.state.studioWorkspaceCandidate,null);c.applyStudioCandidate();assert.equal(c.state.studioApplied.source_id,'c'.repeat(32));assert.equal(c.state.studioWorkspaceId,null);
+  });
+  await check('Saved Studio persistence stays clean across reconnect while source preparation requires revalidation',async()=>{
+    const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio','-');c.$('studio-workspace-title').value='Work';
+    c.api=async(path,body)=>({...studioNamed(false,body.snapshot.draft_values).workspace,title:body.title});await c.saveStudioWorkspace();
+    c.state.connectionEpoch++;assert.equal(c.studioWorkspaceDirty(),false);assert.equal(c.studioHasUnsavedChanges(),false);assert.equal(c.studioSourceCurrent(),false);assert.equal(c.studioSettingsDirty(),true);
+  });
+  await check('Studio original can save before opening an editor or creating CAD',async()=>{
+    const c=fixture();studioApplied(c);c.$('studio-workspace-title').value='Original before CAD';let submitted;
+    c.api=async(path,body)=>body?(submitted=plain(body),{...studioNamed(false,null).workspace,title:body.title}):studioDescriptor();
+    await c.saveStudioWorkspace();assert.equal(submitted.snapshot.draft_values,null);assert.equal(submitted.snapshot.settings_revision_id,null);assert.equal(c.state.studioWorkspaceId,'b'.repeat(32));assert.equal(c.studioWorkspaceDirty(),false);assert.equal(c.state.job,null);
+  });
+  await check('Studio catalog plural kinds paginate metadata and ignore late selection or root responses',async()=>{
+    const c=fixture();c.$('studio-library-kind').value='sources';const paths=[];
+    const item=id=>({id,kind:'source',title:'<source>',summary:'Recorded',metadata_status:'recorded',has_draft:false,updated_at:null});
+    c.api=async path=>{paths.push(path);return {items:[item(paths.length===1?'a'.repeat(32):'b'.repeat(32))],next_cursor:paths.length===1?'a'.repeat(32):null};};
+    await c.loadStudioLibrary();await c.loadStudioLibrary(true);assert.equal(c.state.studioLibraryItems.length,2);assert.match(paths[0],/kind=sources/);assert.match(paths[1],/before=aaaaaaaa/);assert.match(c.$('studio-library-list').textContent,/<source>/);
+    for(const change of [()=>{c.$('studio-library-list').value='b'.repeat(32);},()=>{c.state.storage={path:'/new'};}]){
+      let finish;c.api=()=>new Promise(done=>{finish=done;});const pending=c.loadStudioLibrary();change();finish({items:[],next_cursor:null});await pending;assert.equal(c.state.studioLibraryItems.length,2);
+    }
+  });
+  await check('Malformed named and failed integrity opens retain source draft saved identity and candidate',async()=>{
+    for(const corrupt of [r=>{r.workspace.snapshot.effective_settings_sha256='0'.repeat(64);},r=>{delete r.workspace.snapshot.draft_values;},r=>{r.editor.fields.pop();},r=>{r.settings_revision=null;},r=>{r.workspace.revision=Number.MAX_SAFE_INTEGER;}]){
+      const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('nozzle_temperature','live draft');c.$('studio-library-kind').value='workspaces';c.$('studio-library-list').value='b'.repeat(32);
+      const result=studioNamed(true,null);corrupt(result);c.api=async()=>result;await c.openStudioLibrary();assert.equal(c.state.studioCandidate,null);assert.equal(c.state.studioSettingsDraft.nozzle_temperature,'live draft');assert.equal(c.state.studioSettingsApplied,null);assert.match(c.$('studio-library-feedback').textContent,/유지/);
+    }
+    const c=fixture();studioApplied(c);c.$('studio-library-kind').value='workspaces';c.$('studio-library-list').value='b'.repeat(32);let paths=[];c.api=async path=>{paths.push(path);const e=new Error('missing saved revision');e.status=409;e.code='studio_workspace_integrity';throw e;};await c.openStudioLibrary();assert.equal(paths.length,1);assert.equal(c.state.studioApplied.source_id,'a'.repeat(32));
+  });
+  await check('Studio workspace exact draft bounds use Unicode code points without trimming',async()=>{
+    const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();
+    c.editStudioSetting('filament_flow_ratio','😀'.repeat(512));assert.equal(c.studioWorkspaceSnapshot().draft_values.filament_flow_ratio,'😀'.repeat(512));
+    c.editStudioSetting('filament_flow_ratio','😀'.repeat(513));assert.throws(()=>c.studioWorkspaceSnapshot(),/512/);assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,'😀'.repeat(513));
+  });
+  await check('Canceling Studio deletion has no request and successful deletion retains exact inputs',async()=>{
+    const c=fixture();studioApplied(c);c.state.studioWorkspaceId='b'.repeat(32);c.state.studioWorkspaceRevision=2;c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio',' 1. ');
+    let requests=0;c.api=async(path,body,verb)=>{requests++;assert.equal(verb,'DELETE');assert.equal(body.expected_revision,2);return null;};c.window.confirm=()=>false;await c.deleteStudioWorkspace();assert.equal(requests,0);assert.equal(c.state.studioWorkspaceId,'b'.repeat(32));
+    c.window.confirm=()=>true;await c.deleteStudioWorkspace();assert.equal(requests,1);assert.equal(c.state.studioWorkspaceId,null);assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,' 1. ');assert.equal(c.state.studioApplied.source_id,'a'.repeat(32));
+  });
+  await check('HTTP 204 delete acknowledgement does not require JSON',async()=>{
+    const c=fixture();c.fetch=async()=>({ok:true,status:204,json:async()=>{throw new Error('empty');}});assert.equal(await c.api('/api/studio-workspaces/'+'b'.repeat(32),{expected_revision:2},'DELETE'),null);
+  });
   await check('Studio six-field editor retains exact invalid strings and never partially applies',async()=>{
     const c=fixture();studioApplied(c);c.state.job=job();const descriptor=studioDescriptor();c.api=async()=>descriptor;
     await c.openStudioSettings();assert.equal(c.state.studioSettingsDraft.nozzle_temperature,'215');
@@ -483,7 +619,7 @@ const studioEnvelope=(id='e'.repeat(32))=>({source:studioInspection(),review:stu
   await check('Reconnect preserves pending model and filament input, source and downloads while showing storage',async()=>{
     const c=profileFixture(),saved=job();c.renderJob(saved);const source=project();c.state.projectSource=source;c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true,valid:false};c.$('request-text').value='new request';c.$('profile-json').value='{ unfinished';c.$('setup-printer-model').value='keep printer';c.$('workspace-title').value='keep work';c.state.guidedEdits={nozzle_temperature:{value:'-'}};
     const downloads=c.$('download-links').textContent,paths=[];c.api=async path=>{paths.push(path);return path==='/api/bootstrap'?{session_token:'new-token',templates:c.state.templates,environment:{},storage:{path:'/Users/test/한글 폴더',source:'user_default',legacy:false,recovery:{indexed:12,interrupted:2,unreadable:1}}}:{workspaces:[]};};await c.bootstrap();
-    assert.equal(c.state.token,'new-token');assert.equal(c.state.connectionState,'connected');assert.equal(c.$('parameter-width').value,'');assert.equal(c.$('parameter-width').validity.badInput,true);assert.equal(c.$('request-text').value,'new request');assert.equal(c.$('profile-json').value,'{ unfinished');assert.equal(c.$('setup-printer-model').value,'keep printer');assert.equal(c.$('workspace-title').value,'keep work');assert.equal(c.state.projectSource,source);assert.equal(c.state.job,saved);assert.equal(c.$('download-links').textContent,downloads);assert.equal(c.state.guidedEdits.nozzle_temperature.value,'-');assert.equal(c.$('storage-path').textContent,'/Users/test/한글 폴더');assert.match(c.$('storage-recovery').textContent,/중단 처리 2개/);assert.deepEqual(paths,['/api/bootstrap','/api/profile-workspaces']);
+    assert.equal(c.state.token,'new-token');assert.equal(c.state.connectionState,'connected');assert.equal(c.$('parameter-width').value,'');assert.equal(c.$('parameter-width').validity.badInput,true);assert.equal(c.$('request-text').value,'new request');assert.equal(c.$('profile-json').value,'{ unfinished');assert.equal(c.$('setup-printer-model').value,'keep printer');assert.equal(c.$('workspace-title').value,'keep work');assert.equal(c.state.projectSource,source);assert.equal(c.state.job,saved);assert.equal(c.$('download-links').textContent,downloads);assert.equal(c.state.guidedEdits.nozzle_temperature.value,'-');assert.equal(c.$('storage-path').textContent,'/Users/test/한글 폴더');assert.match(c.$('storage-recovery').textContent,/중단 처리 2개/);assert.deepEqual(paths,['/api/bootstrap','/api/profile-workspaces','/api/studio-library?kind=workspaces&limit=25']);
   });
   await check('Reconnect invalidates a pending history open without replacing current work',async()=>{
     const c=fixture();let reply;c.changeView=()=>{};c.api=path=>path==='/api/jobs/job-a'?new Promise(resolve=>{reply=resolve;}):Promise.resolve({session_token:'new-token',templates:c.state.templates,environment:{}});
@@ -619,7 +755,7 @@ const studioEnvelope=(id='e'.repeat(32))=>({source:studioInspection(),review:stu
   await check('Actual bootstrap retry preserves a newer partial draft and applied source',async()=>{
     const c=fixture();c.setDiscoveryCatalog({purposes:[],projects:[project()]});c.browseProject('idea');c.state.projectSource=project();c.state.job=job();let done;c.api=()=>new Promise(resolve=>{done=resolve;});const pending=c.bootstrap();
     c.$('parameter-width').value='';c.$('parameter-width').validity={badInput:true};c.$('request-text').value='new draft';c.$('space-width').value='21';c.discoveryFiltersChanged();
-    done({session_token:'new',templates:c.state.templates,discovery:{purposes:[],projects:[project('new')]},environment:{}});await pending;
+    c.api=async()=>({items:[],next_cursor:null});done({session_token:'new',templates:c.state.templates,discovery:{purposes:[],projects:[project('new')]},environment:{}});await pending;
     assert.equal(c.$('parameter-width').value,'');assert.equal(c.$('request-text').value,'new draft');assert.equal(c.$('space-width').value,'21');assert.equal(c.state.projectSource.id,'idea');assert.equal(c.state.job.id,'job-a');assert.equal(c.state.discoveryMatches[0].project.id,'idea');
   });
   await check('A generated response cannot relabel a changed live draft as the generated result',async()=>{

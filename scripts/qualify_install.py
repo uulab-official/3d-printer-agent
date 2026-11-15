@@ -189,50 +189,6 @@ def qualify(args, report):
             status, content, _ = request(server.base, path)
             check('installed_http_asset_' + path, status == 200 and bool(content))
 
-        selected = next(project for project in bootstrap['discovery']['projects'] if project['id'] == 'small-parts-tray')
-        check('known_original_recipe_dimensions', selected['parameters']['width'] == 90
-              and selected['parameters']['depth'] == 60 and selected['parameters']['height'] == 18)
-        requests = [
-            ({**selected['parameters'], 'width': 92,
-              'project_selection': {'id': selected['id'], 'recipe_sha256': selected['recipe_sha256']}}, (92, 60, 18)),
-            ({'template': 'cable_comb', 'width': 80, 'depth': 18, 'height': 12, 'slots': 5}, (80, 18, 12)),
-            ({'template': 'magnet_frame', 'width': 65, 'depth': 65, 'height': 7}, (65, 65, 7)),
-        ]
-        models = []
-        for payload, dimensions in requests:
-            job = get_json(server, '/api/models', method='POST', payload=payload, token=token)
-            kind = payload['template']
-            check('cad_validated_' + kind, job['status'] == 'geometry_validated'
-                  and job['result']['geometry_status'] == 'validated')
-            check('physical_print_stays_unverified_' + kind, job['result']['print_status'] == 'not_tested'
-                  and job['latest_slice'] is None)
-            manifest = get_json(server, job['artifacts']['manifest'])
-            write_json(downloads / f'{kind}-manifest.json', manifest)
-            for artifact_kind, metadata in manifest['artifacts'].items():
-                status, content, _ = request(server.base, job['artifacts'][artifact_kind])
-                check('download_receipt_' + kind + '_' + artifact_kind,
-                      status == 200 and len(content) == metadata['bytes'] and sha256(content) == metadata['sha256'])
-                filename = {'stl': 'model.stl', 'step': 'model.step', 'three_mf': 'model.3mf', 'source': 'model.py'}[artifact_kind]
-                (downloads / f'{kind}-{filename}').write_bytes(content)
-            shape = cq.importers.importStep(str(downloads / f'{kind}-model.step')).val()
-            check('step_valid_solid_' + kind, shape.isValid() and len(shape.Solids()) == 1 and shape.Volume() > 0)
-            bounds = shape.BoundingBox()
-            check('step_dimensions_' + kind, all(abs(getattr(bounds, axis + 'len') - expected) < 1e-5
-                                                for axis, expected in zip('xyz', dimensions)))
-            with zipfile.ZipFile(downloads / f'{kind}-model.3mf') as archive:
-                check('3mf_crc_' + kind, archive.testzip() is None)
-                model = ET.fromstring(archive.read('3D/3dmodel.model'))
-                vertices = model.findall('.//{*}vertex')
-                check('3mf_mm_geometry_' + kind, model.attrib.get('unit') == 'millimeter' and len(vertices) >= 8)
-                mesh_bounds = {axis: max(float(v.attrib[axis]) for v in vertices) - min(float(v.attrib[axis]) for v in vertices)
-                               for axis in 'xyz'}
-                check('3mf_dimensions_' + kind, all(abs(mesh_bounds[axis] - expected) < 1e-5
-                                                  for axis, expected in zip('xyz', dimensions)))
-            models.append({'template': kind, 'id': job['id'], 'expected_dimensions_mm': dict(zip('xyz', dimensions)),
-                           'mesh_vertices': len(vertices), 'artifacts': manifest['artifacts'],
-                           'source': job.get('design_source')})
-        report['models'] = models
-
         # This is a labeled synthetic source container, not an authenticated
         # user's GUI export. Its complete settings came from the separately
         # retained native CI fixture. The installed app supplies all behavior.
@@ -260,44 +216,6 @@ def qualify(args, report):
         check('studio_source_reinspection_matches', inspected == imported)
         code, original, _ = request(server.base, imported['archive_url'])
         check('studio_original_download_exact', code == 200 and original == source_bytes)
-        prepared = get_json(server, '/api/slice', method='POST', token=token,
-                            payload={'job_id': models[1]['id'], 'studio_project_id': imported['source_id'],
-                                     'execute': False})
-        plan = prepared['plan']
-        check('studio_preparation_without_native', plan['kind'] == 'studio_project'
-              and plan['project_prepared'] is True and plan['ready'] is False and prepared['execution'] is None
-              and plan['project_source']['source_id'] == imported['source_id'])
-        prepared_job = get_json(server, '/api/jobs/' + models[1]['id'])
-        check('studio_history_has_distinct_prepared_download', 'prepared_three_mf' in prepared_job['artifacts']
-              and 'sliced_three_mf' not in prepared_job['artifacts']
-              and prepared_job['latest_slice']['plan'] == plan)
-        prepared_url = prepared_job['artifacts']['prepared_three_mf']
-        code, prepared_bytes, _ = request(server.base, prepared_url)
-        check('studio_prepared_download_receipt', code == 200 and sha256(prepared_bytes) == plan['project_sha256']
-              and len(prepared_bytes) == plan['project_receipt']['project_bytes'])
-        (downloads / 'prepared-project.3mf').write_bytes(prepared_bytes)
-        with zipfile.ZipFile(io.BytesIO(prepared_bytes)) as derivative, zipfile.ZipFile(downloads / 'cable_comb-model.3mf') as cad:
-            check('studio_prepared_crc_and_exact_settings', derivative.testzip() is None
-                  and derivative.read('Metadata/project_settings.config') == settings_bytes)
-            current_mesh = ET.fromstring(cad.read('3D/3dmodel.model')).find('.//{*}mesh')
-            prepared_mesh = ET.fromstring(derivative.read('3D/3dmodel.model')).find('.//{*}mesh')
-            def mesh_values(mesh):
-                return ([tuple(float(vertex.attrib[key]) for key in 'xyz') for vertex in mesh.findall('{*}vertices/{*}vertex')],
-                        [tuple(int(face.attrib[key]) for key in ('v1', 'v2', 'v3')) for face in mesh.findall('{*}triangles/{*}triangle')])
-            check('studio_prepared_current_cad_vertices_and_topology', current_mesh is not None and prepared_mesh is not None
-                  and mesh_values(current_mesh) == mesh_values(prepared_mesh))
-        code, bundle_bytes, _ = request(server.base, prepared_job['bundle_url'])
-        with zipfile.ZipFile(io.BytesIO(bundle_bytes)) as bundle:
-            check('studio_prepared_bundle_distinguishes_original_cad', code == 200
-                  and bundle.read('prepared-project.3mf') == prepared_bytes
-                  and bundle.read('model.3mf') == (downloads / 'cable_comb-model.3mf').read_bytes())
-        report['studio_project'] = {'source': imported, 'preparation': prepared,
-                                    'fixture_settings_sha256': sha256(settings_bytes),
-                                    'fixture_provenance': 'synthetic container and synthetic CI native settings; no user GUI-export claim',
-                                    'job_id': models[1]['id'], 'prepared_sha256': sha256(prepared_bytes),
-                                    'prepared_bytes': len(prepared_bytes)}
-        write_json(downloads / 'studio-source-inspection.json', imported)
-        write_json(downloads / 'studio-preparation.json', prepared)
 
         # Exercise all six user-selected fields through the installed HTTP API.
         # These literal synthetic values are independent of the derivation engine.
@@ -344,6 +262,172 @@ def qualify(args, report):
         check('studio_saved_revision_matches_review', get_json(server, revision_path) == revision
               and revision['source'] == imported and revision['revision']['proposal'] == proposal
               and revision['review'] == {key: value for key, value in review.items() if key != 'source_id'})
+
+        # Persist inputs before any CAD exists, then rediscover without a job ID.
+        def library_snapshot(*, edited=False, draft=None):
+            return {'schema_version': 1, 'source_id': imported['source_id'],
+                    'settings_revision_id': revision_id if edited else None,
+                    'source_sha256': sha256(source_bytes), 'settings_sha256': sha256(settings_bytes),
+                    'effective_settings_sha256': sha256(effective_bytes) if edited else sha256(settings_bytes),
+                    'draft_values': draft}
+
+        unfinished_values = {**values, 'filament_flow_ratio': ' 1. ',
+                             'filament_max_volumetric_speed': 'x' * 33}
+        library_records = []
+        for title, snapshot in [('원본 설정', library_snapshot()),
+                                ('사용자 변경값', library_snapshot(edited=True)),
+                                ('미완성 초안', library_snapshot(edited=True, draft=unfinished_values))]:
+            record = get_json(server, '/api/studio-workspaces', method='POST', token=token, expected=201,
+                              payload={'title': title, 'snapshot': snapshot})
+            check('studio_library_save_' + title, record['title'] == title and record['snapshot'] == snapshot
+                  and record['revision'] == 1)
+            library_records.append(record)
+        check('studio_library_saved_without_cad', get_json(server, '/api/jobs')['jobs'] == [])
+        updated_record = get_json(server, '/api/studio-workspaces/' + library_records[1]['id'],
+            method='PUT', token=token, payload={'title': '사용자 변경값 이름 수정',
+                'snapshot': library_records[1]['snapshot'], 'expected_revision': 1})
+        check('studio_library_conditional_update', updated_record['revision'] == 2
+              and updated_record['snapshot'] == library_records[1]['snapshot'])
+        stale_payload = {'title': '오래된 창', 'snapshot': library_records[1]['snapshot'], 'expected_revision': 1}
+        get_json(server, '/api/studio-workspaces/' + updated_record['id'], method='PUT', token=token,
+                 expected=409, payload=stale_payload)
+        get_json(server, '/api/studio-workspaces/' + updated_record['id'], method='DELETE', token=token,
+                 expected=409, payload={'expected_revision': 1})
+        check('studio_library_conflicts_preserve_newer_record',
+              get_json(server, '/api/studio-workspaces/' + updated_record['id'])['workspace'] == updated_record)
+        library_records[1] = updated_record
+        disposable = get_json(server, '/api/studio-workspaces', method='POST', token=token, expected=201,
+                             payload={'title': '삭제할 이름', 'snapshot': library_snapshot(edited=True)})
+        status, body, _ = request(server.base, '/api/studio-workspaces/' + disposable['id'], method='DELETE',
+                                 token=token, payload={'expected_revision': 1})
+        check('studio_library_delete_retains_original_and_recipe', status == 204 and body == b''
+              and get_json(server, revision_path) == revision
+              and request(server.base, imported['archive_url'])[1] == source_bytes)
+        duplicate_source = get_json(server, '/api/studio-projects/import', method='POST', token=token, expected=201,
+            payload={'filename': imported['source']['filename'], 'content_base64': base64.b64encode(source_bytes).decode('ascii')})
+
+        def library_catalog(current_server, kind):
+            items, cursor = [], None
+            for _ in range(8):
+                query = urllib.parse.urlencode({'kind': kind, 'limit': 1, **({'before': cursor} if cursor else {})})
+                page = get_json(current_server, '/api/studio-library?' + query)
+                items.extend(page['items'])
+                cursor = page['next_cursor']
+                if cursor is None:
+                    return items
+            raise RuntimeError('Studio catalog pagination did not finish')
+
+        source_catalog = library_catalog(server, 'sources')
+        revision_catalog = library_catalog(server, 'revisions')
+        workspace_catalog = library_catalog(server, 'workspaces')
+        check('studio_library_legacy_equal_names_discoverable', len(source_catalog) == 2
+              and {item['id'] for item in source_catalog} == {imported['source_id'], duplicate_source['source_id']}
+              and [item['id'] for item in revision_catalog] == [revision_id])
+        check('studio_library_catalog_bounded_inputs_only', len(workspace_catalog) == 3
+              and {item['id'] for item in workspace_catalog} == {item['id'] for item in library_records}
+              and all(item['metadata_status'] == 'recorded' for item in source_catalog + revision_catalog + workspace_catalog)
+              and 'draft_values' not in json.dumps(workspace_catalog)
+              and 'ready' not in json.dumps(workspace_catalog))
+        library_opened = [get_json(server, '/api/studio-workspaces/' + item['id']) for item in library_records]
+        check('studio_library_open_exact_inputs_without_current_review',
+              all(item['workspace'] == record and item['source'] == imported
+                  and item['editor']['settings_sha256'] == sha256(settings_bytes)
+                  and set(item) == {'workspace', 'source', 'settings_revision', 'editor'}
+                  for item, record in zip(library_opened, library_records))
+              and library_opened[0]['settings_revision'] is None
+              and library_opened[1]['settings_revision'] == revision
+              and library_opened[2]['workspace']['snapshot']['draft_values'] == unfinished_values)
+        write_json(downloads / 'studio-library-records.json', library_records)
+        write_json(downloads / 'studio-library-opened.json', library_opened)
+        write_json(downloads / 'studio-library-catalogs.json', {
+            'sources': source_catalog, 'revisions': revision_catalog, 'workspaces': workspace_catalog})
+        report['studio_library'] = {'records': library_records, 'source_ids': [imported['source_id'], duplicate_source['source_id']],
+                                    'revision_id': revision_id, 'created_before_cad': True,
+                                    'unfinished_values': unfinished_values}
+
+        selected = next(project for project in bootstrap['discovery']['projects'] if project['id'] == 'small-parts-tray')
+        check('known_original_recipe_dimensions', selected['parameters']['width'] == 90
+              and selected['parameters']['depth'] == 60 and selected['parameters']['height'] == 18)
+        requests = [
+            ({**selected['parameters'], 'width': 92,
+              'project_selection': {'id': selected['id'], 'recipe_sha256': selected['recipe_sha256']}}, (92, 60, 18)),
+            ({'template': 'cable_comb', 'width': 80, 'depth': 18, 'height': 12, 'slots': 5}, (80, 18, 12)),
+            ({'template': 'magnet_frame', 'width': 65, 'depth': 65, 'height': 7}, (65, 65, 7)),
+        ]
+        models = []
+        for payload, dimensions in requests:
+            job = get_json(server, '/api/models', method='POST', payload=payload, token=token)
+            kind = payload['template']
+            check('cad_validated_' + kind, job['status'] == 'geometry_validated'
+                  and job['result']['geometry_status'] == 'validated')
+            check('physical_print_stays_unverified_' + kind, job['result']['print_status'] == 'not_tested'
+                  and job['latest_slice'] is None)
+            manifest = get_json(server, job['artifacts']['manifest'])
+            write_json(downloads / f'{kind}-manifest.json', manifest)
+            for artifact_kind, metadata in manifest['artifacts'].items():
+                status, content, _ = request(server.base, job['artifacts'][artifact_kind])
+                check('download_receipt_' + kind + '_' + artifact_kind,
+                      status == 200 and len(content) == metadata['bytes'] and sha256(content) == metadata['sha256'])
+                filename = {'stl': 'model.stl', 'step': 'model.step', 'three_mf': 'model.3mf', 'source': 'model.py'}[artifact_kind]
+                (downloads / f'{kind}-{filename}').write_bytes(content)
+            shape = cq.importers.importStep(str(downloads / f'{kind}-model.step')).val()
+            check('step_valid_solid_' + kind, shape.isValid() and len(shape.Solids()) == 1 and shape.Volume() > 0)
+            bounds = shape.BoundingBox()
+            check('step_dimensions_' + kind, all(abs(getattr(bounds, axis + 'len') - expected) < 1e-5
+                                                for axis, expected in zip('xyz', dimensions)))
+            with zipfile.ZipFile(downloads / f'{kind}-model.3mf') as archive:
+                check('3mf_crc_' + kind, archive.testzip() is None)
+                model = ET.fromstring(archive.read('3D/3dmodel.model'))
+                vertices = model.findall('.//{*}vertex')
+                check('3mf_mm_geometry_' + kind, model.attrib.get('unit') == 'millimeter' and len(vertices) >= 8)
+                mesh_bounds = {axis: max(float(v.attrib[axis]) for v in vertices) - min(float(v.attrib[axis]) for v in vertices)
+                               for axis in 'xyz'}
+                check('3mf_dimensions_' + kind, all(abs(mesh_bounds[axis] - expected) < 1e-5
+                                                  for axis, expected in zip('xyz', dimensions)))
+            models.append({'template': kind, 'id': job['id'], 'expected_dimensions_mm': dict(zip('xyz', dimensions)),
+                           'mesh_vertices': len(vertices), 'artifacts': manifest['artifacts'],
+                           'source': job.get('design_source')})
+        report['models'] = models
+
+        prepared = get_json(server, '/api/slice', method='POST', token=token,
+                            payload={'job_id': models[1]['id'], 'studio_project_id': imported['source_id'],
+                                     'execute': False})
+        plan = prepared['plan']
+        check('studio_preparation_without_native', plan['kind'] == 'studio_project'
+              and plan['project_prepared'] is True and plan['ready'] is False and prepared['execution'] is None
+              and plan['project_source']['source_id'] == imported['source_id'])
+        prepared_job = get_json(server, '/api/jobs/' + models[1]['id'])
+        check('studio_history_has_distinct_prepared_download', 'prepared_three_mf' in prepared_job['artifacts']
+              and 'sliced_three_mf' not in prepared_job['artifacts']
+              and prepared_job['latest_slice']['plan'] == plan)
+        prepared_url = prepared_job['artifacts']['prepared_three_mf']
+        code, prepared_bytes, _ = request(server.base, prepared_url)
+        check('studio_prepared_download_receipt', code == 200 and sha256(prepared_bytes) == plan['project_sha256']
+              and len(prepared_bytes) == plan['project_receipt']['project_bytes'])
+        (downloads / 'prepared-project.3mf').write_bytes(prepared_bytes)
+        with zipfile.ZipFile(io.BytesIO(prepared_bytes)) as derivative, zipfile.ZipFile(downloads / 'cable_comb-model.3mf') as cad:
+            check('studio_prepared_crc_and_exact_settings', derivative.testzip() is None
+                  and derivative.read('Metadata/project_settings.config') == settings_bytes)
+            current_mesh = ET.fromstring(cad.read('3D/3dmodel.model')).find('.//{*}mesh')
+            prepared_mesh = ET.fromstring(derivative.read('3D/3dmodel.model')).find('.//{*}mesh')
+            def mesh_values(mesh):
+                return ([tuple(float(vertex.attrib[key]) for key in 'xyz') for vertex in mesh.findall('{*}vertices/{*}vertex')],
+                        [tuple(int(face.attrib[key]) for key in ('v1', 'v2', 'v3')) for face in mesh.findall('{*}triangles/{*}triangle')])
+            check('studio_prepared_current_cad_vertices_and_topology', current_mesh is not None and prepared_mesh is not None
+                  and mesh_values(current_mesh) == mesh_values(prepared_mesh))
+        code, bundle_bytes, _ = request(server.base, prepared_job['bundle_url'])
+        with zipfile.ZipFile(io.BytesIO(bundle_bytes)) as bundle:
+            check('studio_prepared_bundle_distinguishes_original_cad', code == 200
+                  and bundle.read('prepared-project.3mf') == prepared_bytes
+                  and bundle.read('model.3mf') == (downloads / 'cable_comb-model.3mf').read_bytes())
+        report['studio_project'] = {'source': imported, 'preparation': prepared,
+                                    'fixture_settings_sha256': sha256(settings_bytes),
+                                    'fixture_provenance': 'synthetic container and synthetic CI native settings; no user GUI-export claim',
+                                    'job_id': models[1]['id'], 'prepared_sha256': sha256(prepared_bytes),
+                                    'prepared_bytes': len(prepared_bytes)}
+        write_json(downloads / 'studio-source-inspection.json', imported)
+        write_json(downloads / 'studio-preparation.json', prepared)
+
         edited = get_json(server, '/api/slice', method='POST', token=token,
                           payload={'job_id': models[2]['id'], 'studio_settings_revision_id': revision_id,
                                    'execute': False})
@@ -461,6 +545,13 @@ def qualify(args, report):
         code, edited_reopened_bytes, _ = request(restarted.base, edited_url)
         check('studio_revision_survives_real_restart', revision_reopened == revision and edited_reopened == edited_job
               and code == 200 and edited_reopened_bytes == edited_bytes)
+        restarted_library = library_catalog(restarted, 'workspaces')
+        restarted_library_opened = [get_json(restarted, '/api/studio-workspaces/' + item['id']) for item in library_records]
+        check('studio_library_survives_real_restart', restarted_library == workspace_catalog
+              and restarted_library_opened == library_opened
+              and library_catalog(restarted, 'sources') == source_catalog
+              and library_catalog(restarted, 'revisions') == revision_catalog)
+        write_json(downloads / 'restarted-studio-library.json', restarted_library_opened)
         write_json(downloads / 'restarted-settings-revision.json', revision_reopened)
         write_json(downloads / 'restarted-edited-job.json', edited_reopened)
         retained_job = get_json(restarted, '/api/jobs/' + models[0]['id'])
@@ -551,8 +642,15 @@ def qualify(args, report):
         code, restored_edited_bytes, _ = request(restored_server.base, edited_url)
         check('studio_revision_survives_backup_restore', restored_revision == revision and restored_edited == edited_job
               and code == 200 and restored_edited_bytes == edited_bytes)
+        restored_library = library_catalog(restored_server, 'workspaces')
+        restored_library_opened = [get_json(restored_server, '/api/studio-workspaces/' + item['id']) for item in library_records]
+        check('studio_library_survives_backup_restore', restored_library == workspace_catalog
+              and restored_library_opened == library_opened
+              and library_catalog(restored_server, 'sources') == source_catalog
+              and library_catalog(restored_server, 'revisions') == revision_catalog)
+        write_json(downloads / 'restored-studio-library.json', restored_library_opened)
         fresh_edited = get_json(restored_server, '/api/slice', method='POST', token=restored_bootstrap['session_token'],
-                               payload={'job_id': models[2]['id'], 'studio_settings_revision_id': revision_id,
+                               payload={'job_id': models[2]['id'], 'studio_settings_revision_id': restored_library_opened[1]['workspace']['snapshot']['settings_revision_id'],
                                         'execute': False})
         fresh_job = get_json(restored_server, '/api/jobs/' + models[2]['id'])
         code, fresh_bytes, _ = request(restored_server.base, fresh_job['artifacts']['prepared_three_mf'])
@@ -563,6 +661,10 @@ def qualify(args, report):
               and fresh_plan['expected_settings'] == expected_core
               and fresh_plan['project_sha256'] == edited_plan['project_sha256']
               and code == 200 and fresh_bytes == edited_bytes)
+        check('studio_library_reopened_settings_prepare_current_cad',
+              fresh_plan['project_receipt']['model_sha256'] == models[2]['artifacts']['three_mf']['sha256']
+              and fresh_plan['settings_revision']['revision_id'] == restored_library_opened[1]['workspace']['snapshot']['settings_revision_id']
+              and fresh_plan['expected_settings'] == expected_core)
         check('studio_revision_restored_preparation_uses_new_directory',
               Path(fresh_plan['project_path']).is_relative_to(restored_data)
               and not Path(fresh_plan['project_path']).is_relative_to(data)

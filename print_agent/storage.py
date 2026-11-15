@@ -674,6 +674,15 @@ class JobStore:
                             or derivative.get('project_sha256') != expected_hash
                             or type(derivative.get('project_bytes')) is not int):
                         raise ValueError('Missing prepared project receipt')
+                    if '_artifact_receipts' in job:
+                        originals = job['_artifact_receipts']
+                        if not isinstance(originals, dict):
+                            raise ValueError('Missing original model receipt')
+                    else:
+                        _, _, originals = self._legacy_manifest(job)
+                    original_model = _check_receipt(originals.get('three_mf'), job['_files'].get('three_mf'))
+                    if derivative.get('model_sha256') != original_model['sha256']:
+                        raise ValueError('Prepared project does not bind to the original recorded model')
                     self._record_slice_artifact(job, 'prepared_three_mf', plan.get('project_path'),
                                                 expected_hash, derivative['project_bytes'])
                 if execution and execution['status'] in ('sliced', 'needs_review'):
