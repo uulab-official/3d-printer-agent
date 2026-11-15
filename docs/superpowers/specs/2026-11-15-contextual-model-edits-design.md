@@ -33,10 +33,12 @@ Move the exact `_validate_geometry` function from `geometry.py` into pure `geome
 
 An operation is exactly `{field, op, value}`. `field` is an editable field for the selected template; `op` is `set` or `add`; `value` is a finite JSON number. Count fields `dividers` and `slots` allow only `set` with a strict integer. No duplicate fields, extra keys, empty operations, or more than 12 operations. Calculate additions with decimal arithmetic from numeric strings, then normalize and validate the entire result. Unchanged fields must remain identical. A selection with no actual changed value is invalid.
 
+Before hashing, canonical length operation values and every non-count geometry field are Python floats with zero normalized to positive `0.0`; counts stay strict integers. This makes a browser JSON round trip (`5.0` → `5`, `-0.0` → `0`) rederive the exact same selection, parent parameter hash and review hash. Raw numeric validation still precedes normalization. Stored records must match the canonical rederivation exactly.
+
 Canonical selection (exact keys):
 
 ```json
-{"schema_version":1,"request_text":"높이를 5mm 늘려줘","base_parameters":{"template":"tray","width":150,"depth":90,"height":30,"wall":2,"bottom":2,"dividers":2,"slots":5,"cable_diameter":6,"inset_diameter":52,"inset_depth":2,"fit_clearance":0.3},"operations":[{"field":"height","op":"add","value":5}],"parent":null}
+{"schema_version":1,"request_text":"높이를 5mm 늘려줘","base_parameters":{"template":"tray","width":150.0,"depth":90.0,"height":30.0,"wall":2.0,"bottom":2.0,"dividers":2,"slots":5,"cable_diameter":6.0,"inset_diameter":52.0,"inset_depth":2.0,"fit_clearance":0.3},"operations":[{"field":"height","op":"add","value":5.0}],"parent":null}
 ```
 
 `schema_version` is strictly integer 1, not boolean or float. `request_text` is the original nonblank string, at most 4000 characters. Canonical selection retains exact request text and normalized numeric parameters. An optional parent is exactly `{job_id, parameters_sha256, model_sha256, manifest_sha256}`, lowercase hex lengths 32/64/64/64. Its parameters hash must match the base. Canonical JSON for hashes uses UTF-8, `ensure_ascii=False`, sorted keys, compact separators and `allow_nan=False`.

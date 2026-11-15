@@ -4,9 +4,20 @@ import hashlib
 import importlib
 import importlib.util
 import json
+import subprocess
 import unittest
 
 BASE = {'template':'tray','width':150,'depth':90,'height':30,'wall':2,'bottom':2,'dividers':2}
+
+
+def javascript_json_roundtrip(value):
+    """Use the actual JSON serialization boundary exercised by browser clients."""
+    result = subprocess.run(
+        ['node', '-e', "process.stdout.write(JSON.stringify(JSON.parse(require('fs').readFileSync(0, 'utf8'))))"],
+        input=json.dumps(value, ensure_ascii=False, allow_nan=False),
+        capture_output=True, text=True, check=True,
+    )
+    return json.loads(result.stdout)
 
 
 class ModelEditTests(unittest.TestCase):
@@ -17,6 +28,47 @@ class ModelEditTests(unittest.TestCase):
     def selection(self, operations=None, **overrides):
         return {'schema_version':1,'request_text':'높이를 5mm 늘려줘','base_parameters':dict(BASE),
                 'operations':operations or [{'field':'height','op':'add','value':5}], 'parent':None, **overrides}
+
+    def test_actual_javascript_roundtrip_preserves_operation_and_record_hashes(self):
+        engine=self.engine()
+        for value in (5, 5.0, 0.2, -0.2, 0, 0.0, -0.0):
+            with self.subTest(value=repr(value)):
+                review=engine.review_model_edit(self.selection([
+                    {'field':'height','op':'add','value':value},
+                    {'field':'wall','op':'set','value':1.8},
+                    {'field':'dividers','op':'set','value':3}]))
+                wire=javascript_json_roundtrip(review)
+                record=engine.model_edit_record(wire['selection'],wire['parameters'])
+                self.assertEqual(record['review_sha256'],review['review_sha256'])
+                self.assertEqual(record['base_sha256'],review['base_sha256'])
+                self.assertEqual(record['parameters_sha256'],review['parameters_sha256'])
+                self.assertEqual(engine.validate_model_edit_record(record,wire['parameters']),record)
+                self.assertIs(type(record['selection']['operations'][2]['value']),int)
+
+    def test_signed_zero_base_has_one_canonical_representation(self):
+        engine=self.engine()
+        cable={'template':'cable_comb','width':80,'depth':18,'height':12,'wall':2,'bottom':2,
+               'slots':5,'cable_diameter':6,'fit_clearance':-0.0}
+        negative=engine.normalize_parameters(cable)
+        positive=engine.normalize_parameters({**cable,'fit_clearance':0.0})
+        self.assertEqual(json.dumps(negative,sort_keys=True),json.dumps(positive,sort_keys=True))
+
+    def test_actual_javascript_roundtrip_keeps_signed_zero_parent_binding(self):
+        engine=self.engine()
+        cable={'template':'cable_comb','width':80,'depth':18,'height':12,'wall':2,'bottom':2,
+               'slots':5,'cable_diameter':6,'fit_clearance':-0.0}
+        normalized=engine.normalize_parameters(cable)
+        base_hash=hashlib.sha256(json.dumps(normalized,ensure_ascii=False,sort_keys=True,
+                                          separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        parent={'job_id':'a'*32,'parameters_sha256':base_hash,'model_sha256':'b'*64,'manifest_sha256':'c'*64}
+        review=engine.review_model_edit(self.selection([
+            {'field':'height','op':'set','value':13.0},
+            {'field':'fit_clearance','op':'add','value':-0.0}],base_parameters=cable,parent=parent))
+        wire=javascript_json_roundtrip(review)
+        record=engine.model_edit_record(wire['selection'],wire['parameters'])
+        self.assertEqual(record['review_sha256'],review['review_sha256'])
+        self.assertEqual(record['selection']['parent'],parent)
+        self.assertEqual(record['base_sha256'],base_hash)
 
     def test_relative_edit_preserves_every_unspecified_field(self):
         engine=self.engine()

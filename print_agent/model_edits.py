@@ -38,6 +38,12 @@ def _number(value):
         raise ValueError('치수는 유한한 JSON 숫자여야 합니다.')
 
 
+def _length_number(value):
+    # JavaScript serializes integral floats as integers and signed zero as 0.
+    # Restore one representation at every pure boundary before deriving hashes.
+    return 0.0 if value == 0 else float(value)
+
+
 def _editable(template):
     return _COMMON | TEMPLATE_SPECIFIC_FIELDS[template]
 
@@ -59,6 +65,8 @@ def normalize_parameters(base: dict) -> dict:
         if name not in editable and value != fields[name].default:
             raise ValueError('현재 템플릿에 적용되지 않는 치수입니다.')
     parameters = GeometryRequest(**{**{name:field.default for name,field in fields.items()}, **base}).model_dump()
+    for name in parameters.keys() - _COUNTS - {'template'}:
+        parameters[name] = _length_number(parameters[name])
     _validate_geometry(parameters)
     return parameters
 
@@ -99,6 +107,8 @@ def _selection(selection):
         _number(value)
         if field in _COUNTS and (op != 'set' or type(value) is not int):
             raise ValueError('개수 변경은 정수를 직접 지정해야 합니다.')
+        if field not in _COUNTS:
+            value = _length_number(value)
         seen.add(field)
         result.append({'field':field, 'op':op, 'value':value})
     return {'schema_version':1, 'request_text':text, 'base_parameters':base, 'operations':result, 'parent':parent}

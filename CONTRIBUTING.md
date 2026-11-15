@@ -43,7 +43,7 @@ Open `http://127.0.0.1:8765`. The template workflow needs neither an LLM API key
 
 ## Run the relevant checks
 
-The Python suite uses the standard library's `unittest` runner:
+The Python suite uses the standard library's `unittest` runner. The complete suite also needs Node.js 22 or newer on `PATH`: contextual-edit regressions exercise actual JavaScript JSON serialization across the Python API boundary. These checks use the Node executable only, with no npm packages or browser installation. Running the application and installed-wheel qualification does not require Node.js.
 
 ```bash
 python -m unittest discover -v

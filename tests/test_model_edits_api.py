@@ -12,6 +12,7 @@ import zipfile
 from fastapi.testclient import TestClient
 
 from print_agent.app import create_app
+from tests.test_model_edits import javascript_json_roundtrip
 
 
 BASE = {'template': 'tray', 'width': 150, 'depth': 90, 'height': 30,
@@ -58,6 +59,26 @@ class ModelEditsAPITests(unittest.TestCase):
         self.assertIsNone(review['selection']['parent'])
         self.assertEqual(self.client.get('/api/jobs').json()['jobs'], [])
         self.assertEqual(list((self.root / 'jobs').iterdir()), [])
+
+    def test_browser_json_roundtrip_keeps_proposal_hash_on_generated_parented_record(self):
+        base={'template':'cable_comb','width':80,'depth':18,'height':12,'wall':2,'bottom':2,
+              'slots':5,'cable_diameter':6,'fit_clearance':-0.0}
+        parent=self.generate(base)
+        for text in ('높이를 5mm 늘려줘', '벽 두께를 0.2mm 줄여줘',
+                     '높이를 5mm 늘려줘, 여유 0mm'):
+            with self.subTest(text=text):
+                response=self.post('/api/model-edits/plan',javascript_json_roundtrip({
+                    'text':text,'base_parameters':base,'parent_job_id':parent['id']}))
+                self.assertEqual(response.status_code,200,response.text)
+                original=response.json()['review']
+                wire=javascript_json_roundtrip(original)
+                job=self.generate({**wire['parameters'],'model_edit':wire['selection']})
+                self.assertEqual(job['model_edit']['review_sha256'],original['review_sha256'])
+                self.assertEqual(job['model_edit']['selection']['parent'],original['selection']['parent'])
+                self.assertEqual(job['model_edit']['base_sha256'],original['base_sha256'])
+                self.assertEqual(job['model_edit']['parameters_sha256'],original['parameters_sha256'])
+                manifest=self.client.get(job['artifacts']['manifest']).json()
+                self.assertEqual(manifest['model_edit'],job['model_edit'])
 
     def test_route_is_session_protected_and_rejects_incomplete_or_coerced_context(self):
         payload = {'text': '높이를 5mm 늘려줘', 'base_parameters': BASE}

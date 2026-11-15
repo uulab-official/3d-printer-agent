@@ -24,7 +24,7 @@ Keep web UI operations and tool implementations separate. A future hosted websit
 
 ## Verification
 
-Use Python 3.12 for the supported development path. Run behavior tests relevant to a change, and the full required CI gates before merging.
+Use Python 3.12 for the supported development path and Node.js 22 or newer for the full development suite, including Python tests of JavaScript JSON round trips. Run behavior tests relevant to a change, and the full required CI gates before merging.
 
 ```bash
 python -m pip install -r requirements.txt
