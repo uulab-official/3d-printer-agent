@@ -1435,7 +1435,7 @@
     if (!inspection) return;
     const value = (item) => item === undefined || item === null || item === "" ? "기록 없음" : Array.isArray(item) ? item.join(" · ") : String(item);
     area.append(node("h4", "", title), node("p", "", inspection.source?.filename || "기록된 프로젝트"));
-    const fields = [["프린터", "printer_model"], ["프린터 프리셋", "printer_preset"], ["노즐 지름 · mm", "nozzle_diameter"], ["플레이트", "plate_type"], ["필라멘트", "filament_name"], ["재료 종류", "filament_type"], ["출력 공정", "process_preset"]];
+    const fields = [["프린터", "printer_model"], ["프린터 프리셋", "printer_preset"], ["노즐 지름 · mm", "nozzle_diameter"], ["플레이트", "plate_type"], ["기록된 출력 높이 · mm", "printable_height"], ["필라멘트", "filament_name"], ["재료 종류", "filament_type"], ["출력 공정", "process_preset"]];
     const list = node("dl", "studio-source-summary");
     for (const [label, key] of fields) {
       const row = node("div");
@@ -1719,9 +1719,83 @@
 
   $("slicer-json").addEventListener("input", manualSlicerChanged);
 
+  function renderPrintVolumeReview(report, recorded = false) {
+    if (!report || report.schema_version !== 1) return null;
+    const volumeFormat = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 9 });
+    const area = node("section", "print-volume-review");
+    area.id = "print-volume-review";
+    area.setAttribute("aria-labelledby", "print-volume-heading");
+    const heading = node("h3", "", recorded ? "이 작업에 기록된 출력 크기 비교" : "현재 CAD와 기록된 출력 크기");
+    heading.id = "print-volume-heading";
+    const labels = { fits: "기록된 출력 공간과 크기 비교 완료", height_exceeded: "기록된 출력 높이 초과", needs_review: "배치 추가 확인 필요" };
+    const status = node("span", `badge badge-${report.status === "fits" ? "blue" : "warning"}`, labels[report.status] || "크기 비교 결과 확인 필요");
+    const header = node("div", "print-volume-heading");
+    header.append(heading, status);
+    area.append(header);
+    if (recorded) area.append(node("p", "field-help", "이 모델 작업에 저장된 비교입니다. 현재 입력을 다시 비교한 결과가 아닙니다. 사용할 설정을 선택한 뒤 새로 준비해 주세요."));
+
+    const table = node("table", "print-volume-comparison");
+    table.append(node("caption", "", "가로·세로·높이 비교 · mm"));
+    const head = node("thead"), headers = node("tr");
+    for (const label of ["대상", "가로", "세로", "높이"]) {
+      const cell = node("th", "", label);
+      cell.scope = "col";
+      headers.append(cell);
+    }
+    head.append(headers);
+    const body = node("tbody");
+    for (const [label, values] of [[recorded ? "기록된 CAD" : "현재 CAD", report.model_dimensions_mm], ["설정에 기록된 출력 공간", report.recorded_volume_mm]]) {
+      const row = node("tr"), labelCell = node("th", "", label);
+      labelCell.scope = "row";
+      row.append(labelCell);
+      for (const index of [0, 1, 2]) row.append(node("td", "", Number.isFinite(values?.[index]) ? volumeFormat.format(values[index]) : "미확인"));
+      body.append(row);
+    }
+    table.append(head, body);
+    const comparison = node("div", "table-wrap");
+    comparison.append(table);
+    area.append(comparison);
+
+    const orientations = node("ul", "print-volume-orientations");
+    for (const orientation of Array.isArray(report.orientations) ? report.orientations : []) {
+      if (![0, 90].includes(orientation.rotation_degrees)) continue;
+      const label = orientation.rotation_degrees === 0 ? "현재 방향 · 0°" : "가로·세로 회전 · 90°";
+      orientations.append(node("li", "", `${label}: ${orientation.fits === true ? "크기 비교 통과" : "범위 내 배치 미확인"}`));
+    }
+    if (orientations.children.length) area.append(orientations);
+    if (Array.isArray(report.issues) && report.issues.length) {
+      const reasons = node("ul", "reason-list");
+      for (const issue of report.issues) if (typeof issue?.message === "string") reasons.append(node("li", "", issue.message));
+      area.append(reasons);
+    }
+    area.append(node("p", "field-help", "똑바로 세운 CAD 외곽 상자를 파일에 기록된 출력 공간과 비교했습니다. 실제 장착 장비와 실물 출력 가능 여부를 확인한 결과는 아닙니다."));
+    if (report.status === "needs_review") area.append(node("p", "field-help", "다른 각도의 배치는 확인하지 않았습니다."));
+    if (report.placement_applied === false) area.append(node("p", "field-help", "모델 크기는 그대로입니다. 회전이나 배치를 적용하지 않았습니다. Studio에서 실제 배치를 확인해 주세요."));
+    if (Array.isArray(report.limitations) && report.limitations.length) {
+      const details = node("details", "help-details");
+      details.append(node("summary", "", "이 크기 비교의 범위"));
+      const limitations = node("ul", "reason-list");
+      for (const text of report.limitations) if (typeof text === "string") limitations.append(node("li", "", text));
+      details.append(limitations);
+      area.append(details);
+    }
+    if (!recorded) {
+      const edit = node("button", "button button-secondary", "현재 치수 수정하기");
+      edit.type = "button";
+      edit.addEventListener("click", () => {
+        $("parameter-heading").scrollIntoView?.({ block: "start", behavior: "auto" });
+        $("parameter-heading").focus({ preventScroll: true });
+      });
+      area.append(edit);
+    }
+    return area;
+  }
+
   function renderSliceResult(plan, execution, recorded = false) {
     const area = $("slice-result");
     area.replaceChildren();
+    const volumeReview = renderPrintVolumeReview(plan.print_volume, recorded);
+    if (volumeReview) area.append(volumeReview);
     if (execution) {
       const labels = { blocked: ["실행 조건 확인 필요", "warning"], failed: ["슬라이싱 실패", "error"], timed_out: ["슬라이싱 시간 초과", "warning"], sliced: ["슬라이스 파일 검증 완료", "success"], needs_review: ["슬라이스 결과 추가 확인 필요", "warning"] };
       const [title, tone] = labels[execution.status] || ["실행 결과 확인 필요", "info"];

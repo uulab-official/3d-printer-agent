@@ -2,9 +2,11 @@
 
 Date: 2026-11-15 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.7 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.8 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.8 adds a [recorded print-volume review](PRINT_VOLUME.md) before generated-CAD preparation. The server compares verified mesh dimensions with recorded rectangular areas, heights and supported exclusions, retains identity-bound reports, and rejects unknown or oversized preparation without launching native code. Both Studio-project and manual app paths use the gate; the UI shows dimensions, orientation results and a return-to-edit action. This is a bounded CAD-envelope check, not native placement or hardware qualification. Fresh source-bound release evidence is required; v0.7 evidence below remains historical.
 
 Version 0.7 adds [contextual model edits](MODEL_EDITS.md): typed changes to the current template, explicit before/after review and application, preserved unspecified parameters and beginner-project origin, and a rederived edit record bound to verified parent artifacts. Job replacement retains unsaved print-outcome drafts with their original identity in the current browser session. New-model planning now rejects conflicting XYZ triples. The exact qualified wheel is published in [v0.7.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.7.0); source-bound observations are recorded below. Earlier release evidence remains historical.
 

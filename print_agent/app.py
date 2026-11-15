@@ -576,7 +576,8 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
                 plan = prepare_project_slice(input_path, work_dir, snapshot['source']['filename'], source_content,
                                              source_id=payload.studio_project_id, input_bytes=input_bytes)
             else:
-                plan = prepare_slice(input_path, work_dir, payload.config_bundle, input_bytes=input_bytes)
+                plan = prepare_slice(input_path, work_dir, payload.config_bundle,
+                                     input_bytes=input_bytes, require_volume_review=True)
             execution = execute_slice(plan) if payload.execute and plan['ready'] else None
             store.record_slice(payload.job_id,plan,execution)
             return {'plan':plan,'execution':execution}

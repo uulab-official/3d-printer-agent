@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0 — 2026-11-15
+
+- Review the actual generated CAD envelope against recorded printer volume before Studio composition and the application's full-config preparation. Reject height overflow and unresolved placement without staging or native execution.
+- Recognize strict rectangular beds and rectangular exclusions; check 0°/90° bounding-box placements without resizing, moving or rotating the original model. Unsupported and diagonal-only possibilities remain reviewable rather than being described as impossible.
+- Bind reports to model/settings hashes, rederive before execution, preserve them in history and full workspace backup, and require installed lifecycle evidence before release promotion.
+- Show a Korean dimensions comparison and return-to-edit action; distinguish historical comparisons and clear stale reports/downloads when inputs change. Noninteractive toast messages no longer intercept pointer actions.
+- Preserve the canonical v0.7 source inspection and revision records while enriching response-only volume summaries. Keep near-boundary dimensions distinct in the comparison table.
+- Keep previous prepared downloads readable. Old execution plans need fresh preparation under the new review rules. Actual hardware, toolpath structures and physical printing remain separately qualified.
+
+
 ## 0.5.0 — 2026-11-15
 
 - Edit six supported Studio project filament settings with original values, units, pinned format bounds, explicit difference review and separate application to the current CAD.

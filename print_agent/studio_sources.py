@@ -1,5 +1,4 @@
 """Immutable Studio project sources; original bytes are verified on every read."""
-import copy
 import hashlib
 import json
 import os
@@ -9,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from .storage import _atomic_write, _parse_json, _read_regular, _same_json, _valid_timestamp, now_iso
-from .studio_project import MAX_ARCHIVE_BYTES, inspect_studio_project, public_snapshot
+from .studio_project import MAX_ARCHIVE_BYTES, inspect_studio_project, public_snapshot, source_display_snapshot
 
 _MAX_RECEIPT_BYTES = 256 * 1024
 _INTEGRITY_MESSAGE = '가져온 Studio 프로젝트의 원본 또는 기록이 달라졌습니다. 보관한 원본을 복구하거나 파일을 다시 선택해 주세요.'
@@ -48,7 +47,7 @@ class StudioProjectStore:
 
     @staticmethod
     def _public(snapshot, source_id):
-        return {**copy.deepcopy(public_snapshot(snapshot)), 'source_id': source_id,
+        return {**source_display_snapshot(snapshot), 'source_id': source_id,
                 'archive_url': f'/api/studio-projects/{source_id}/archive'}
 
     def import_project(self, filename, content):

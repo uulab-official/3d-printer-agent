@@ -430,6 +430,20 @@ class PromotionTests(unittest.TestCase):
                     self.promote()
                 self.assertEqual(self.api.writes, [])
 
+    def test_missing_print_volume_evidence_cannot_publish(self):
+        for check_id in ('print_volume_rejects_oversized_before_staging',
+                         'print_volume_review_bound_to_verified_cad_and_settings',
+                         'print_volume_review_survives_restart_and_restore'):
+            with self.subTest(check_id=check_id):
+                self.api = FakeAPI()
+                def remove_check(report):
+                    report['checks'] = [item for item in report['checks'] if item['id'] != check_id]
+                    report['checks_passed'] = report['checks_total'] = len(report['checks'])
+                self.api.mutate_report('windows-2025', remove_check)
+                with self.assertRaises(promotion.PromotionError):
+                    self.promote()
+                self.assertEqual(self.api.writes, [])
+
     def test_tag_pointing_elsewhere_is_never_moved(self):
         self.api.tag = 'b' * 40
         with self.assertRaises(promotion.PromotionError):
