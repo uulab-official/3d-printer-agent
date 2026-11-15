@@ -400,6 +400,12 @@ def qualify(args, report):
         small_source = get_json(server, '/api/studio-projects/import', method='POST', token=token, expected=201,
             payload={'filename': '합성 높이 초과 검사.3mf',
                      'content_base64': base64.b64encode(small_stream.getvalue()).decode('ascii')})
+        updated_source_catalog = library_catalog(server, 'sources')
+        check('print_volume_fixture_preserves_existing_library', len(updated_source_catalog) == 3
+              and [item for item in updated_source_catalog if item['id'] != small_source['source_id']] == source_catalog
+              and any(item['id'] == small_source['source_id'] for item in updated_source_catalog))
+        source_catalog = updated_source_catalog
+        report['studio_library']['source_ids'].append(small_source['source_id'])
         oversized = get_json(server, '/api/slice', method='POST', token=token,
             payload={'job_id': models[1]['id'], 'studio_project_id': small_source['source_id'], 'execute': True})
         oversized_job = get_json(server, '/api/jobs/' + models[1]['id'])
