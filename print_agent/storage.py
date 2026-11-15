@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from . import __version__
+from .model_edits import normalize_parameters, validate_model_edit_record
 from .schemas import GeometryRequest
 
 
@@ -243,6 +244,12 @@ class JobStore:
                     raise ValueError('Invalid saved slice structure')
             if 'request' in job:
                 GeometryRequest.model_validate(job['request'])
+            if 'model_edit' in job:
+                if 'request' not in job:
+                    raise ValueError('Missing model edit geometry request')
+                validate_model_edit_record(job['model_edit'], job['request'])
+                if job['result'] is not None:
+                    validate_model_edit_record(job['model_edit'], job['result'].get('parameters'))
             if 'design_source' in job and not isinstance(job['design_source'], dict):
                 raise ValueError('Invalid source record')
             _json_bytes(job)
@@ -264,12 +271,18 @@ class JobStore:
         job.pop('_slice_artifact_receipt', None)
         job.pop('_prepared_artifact_receipt', None)
 
-    def reserve(self, *, request=None, design_source=None):
+    def reserve(self, *, request=None, design_source=None, model_edit=None):
         normalized = GeometryRequest.model_validate(request).model_dump(mode='json') if request is not None else None
         if design_source is not None and not isinstance(design_source, dict):
             raise ValueError('원본 설계 기록은 객체여야 합니다.')
         if design_source is not None:
             _json_bytes(design_source)
+        edit_record = None
+        if model_edit is not None:
+            if normalized is None:
+                raise ValueError('모델 수정 기록에는 생성할 치수가 필요합니다.')
+            edit_record = copy.deepcopy(validate_model_edit_record(model_edit, request))
+            _json_bytes(edit_record)
         with self.lock:
             self._require_index()
             job_id = uuid.uuid4().hex
@@ -283,6 +296,8 @@ class JobStore:
                 job['request'] = normalized
             if design_source is not None:
                 job['design_source'] = copy.deepcopy(design_source)
+            if edit_record is not None:
+                job['model_edit'] = edit_record
             self._write(job)
             return job_id, folder
 
@@ -397,6 +412,8 @@ class JobStore:
                 actual = GeometryRequest.model_validate(result['parameters']).model_dump(mode='json')
                 if actual != job['request'] or result['template'] != actual['template']:
                     raise ValueError('생성 결과의 치수가 저장한 요청과 다릅니다.')
+            if 'model_edit' in job:
+                validate_model_edit_record(job['model_edit'], result['parameters'])
             if design_source is not None:
                 if not isinstance(design_source, dict):
                     raise ValueError('원본 설계 기록은 객체여야 합니다.')
@@ -425,6 +442,8 @@ class JobStore:
                         'artifacts': hashes}
             if 'design_source' in job:
                 manifest['design_source'] = copy.deepcopy(job['design_source'])
+            if 'model_edit' in job:
+                manifest['model_edit'] = copy.deepcopy(job['model_edit'])
             manifest_bytes = _json_bytes(manifest)
             _atomic_write(folder / 'manifest.json', manifest_bytes)
             job['_files'] = {**result['files'], 'manifest': 'manifest.json'}
@@ -557,6 +576,8 @@ class JobStore:
                         ('parameters', 'dimensions_mm', 'volume_mm3', 'geometry_status', 'checks', 'warnings')}}
             if 'design_source' in job:
                 expected['design_source'] = job['design_source']
+            if 'model_edit' in job:
+                expected['model_edit'] = job['model_edit']
             if (not isinstance(manifest, dict) or set(manifest) != set(expected) | {'app_version', 'artifacts'}
                     or any(not _same_json(manifest.get(key), value) for key, value in expected.items())
                     or not isinstance(manifest['app_version'], str) or not isinstance(manifest['artifacts'], dict)):
@@ -618,6 +639,57 @@ class JobStore:
             if kind not in job['_files']:
                 raise KeyError('등록된 파일이 없습니다.')
             return self._snapshots(job, [kind])[kind]
+
+    def model_edit_parent(self, job_id, base_parameters):
+        """Bind an edit base to verified original model and manifest snapshots.
+
+        Reading a child's record only rederives its edit. Historical parents
+        are opened here, when explicitly selected as the base of a new edit.
+        """
+        base = normalize_parameters(base_parameters)
+        with self.lock:
+            job = self._read(job_id)
+            if job['status'] != 'geometry_validated':
+                raise ValueError('형상 검증이 완료된 모델이 필요합니다.')
+            actual = normalize_parameters(job['result']['parameters'])
+            if not _same_json(actual, base) or job['template'] != actual['template']:
+                raise ValueError('현재 치수가 저장한 모델과 다릅니다.')
+            if not {'manifest', 'three_mf'}.issubset(job['_files']):
+                raise ArtifactIntegrityError(_INTEGRITY_MESSAGE)
+            snapshots = self._snapshots(job, ['manifest', 'three_mf'])
+            manifest_bytes = snapshots['manifest'][1]
+            model_bytes = snapshots['three_mf'][1]
+            # A valid byte receipt alone does not establish that the manifest
+            # describes this job or that it binds the same original model.
+            try:
+                manifest = _parse_json(manifest_bytes)
+                result = job['result']
+                expected = {'schema_version': 1, 'job_id': job_id, 'created_at': job['created_at'],
+                            'template': job['template'], 'units': 'mm', 'physical_print_status': 'not_tested',
+                            'slicer_status': 'not_run', **{key: result[key] for key in
+                            ('parameters', 'dimensions_mm', 'volume_mm3', 'geometry_status', 'checks', 'warnings')}}
+                for key in ('design_source', 'model_edit'):
+                    if key in job:
+                        expected[key] = job[key]
+                if (not isinstance(manifest, dict)
+                        or set(manifest) != set(expected) | {'app_version', 'artifacts'}
+                        or any(not _same_json(manifest.get(key), value) for key, value in expected.items())
+                        or manifest['geometry_status'] != 'validated'
+                        or not isinstance(manifest['app_version'], str)
+                        or not isinstance(manifest['artifacts'], dict)
+                        or set(manifest['artifacts']) != set(job['_files']) - {'manifest', *_SLICE_FILES}):
+                    raise ValueError('Manifest does not identify the validated model')
+                receipt = _check_receipt(manifest['artifacts'].get('three_mf'), 'model.3mf')
+                if (receipt['bytes'] != len(model_bytes)
+                        or receipt['sha256'] != hashlib.sha256(model_bytes).hexdigest()):
+                    raise ValueError('Manifest does not identify original model bytes')
+            except (ValueError, TypeError, KeyError, RecursionError) as exc:
+                raise ArtifactIntegrityError(_INTEGRITY_MESSAGE) from exc
+            parameters_bytes = json.dumps(actual, ensure_ascii=False, sort_keys=True,
+                                          separators=(',', ':'), allow_nan=False).encode('utf-8')
+            return {'job_id': job_id, 'parameters_sha256': hashlib.sha256(parameters_bytes).hexdigest(),
+                    'model_sha256': hashlib.sha256(model_bytes).hexdigest(),
+                    'manifest_sha256': hashlib.sha256(manifest_bytes).hexdigest()}
 
     def artifact_path(self, job_id, kind):
         return self.read_artifact(job_id, kind)[0]

@@ -62,7 +62,7 @@
       <section id="local-runtime" class="workspace-health" aria-label="로컬 연결과 저장 위치">
         <div class="connection-row"><div><span id="connection-status" class="badge badge-neutral" role="status">연결 확인 중</span><p id="connection-detail">로컬 서버의 연결을 확인합니다.</p></div><button id="reconnect-button" class="button button-secondary" type="button">다시 연결</button></div>
         <div id="storage-change-notice" class="notice" role="status" hidden></div>
-        <section id="retained-outcome-notes" class="notice notice-warning" aria-label="저장 위치 변경 전 입력하던 출력 메모" hidden></section>
+        <section id="retained-outcome-notes" class="notice notice-warning" aria-label="이전 작업에 입력하던 출력 메모" hidden></section>
         <details id="storage-details" class="storage-details"><summary>이 PC의 저장 위치와 복구 기록</summary><p id="storage-source" class="field-help">저장 위치 확인 전</p><code id="storage-path">서버에서 저장 위치를 아직 확인하지 못했습니다.</code><p id="storage-recovery" class="field-help">연결되면 현재 앱 데이터 위치와 시작 시 복구 결과를 보여줍니다.</p><details id="backup-help"><summary>전체 작업 백업·복원</summary><p class="field-help">업데이트하거나 PC를 옮기기 전에는 편집 내용을 저장하고 서버를 종료한 뒤 전체 작업을 백업하세요. 모델 ZIP에는 필라멘트 저장본과 전체 작업 기록이 포함되지 않습니다. 복원은 기존 자료를 덮어쓰지 않는 새 폴더에만 가능합니다.</p><a href="https://github.com/uulab-official/3d-printer-agent/blob/main/docs/BACKUP_RESTORE.md" target="_blank" rel="noopener noreferrer">백업·검사·복원 명령과 운영 안내 ↗</a></details></details>
       </section>
       <div id="bootstrap-error" class="notice notice-error" role="alert" hidden>
@@ -127,6 +127,28 @@
                 <p class="field-help defaults-note">각 입력 아래에 템플릿 기본값을 표시합니다. 형상 조건은 생성할 때 다시 확인합니다.</p>
                 <button id="generate-button" class="button button-primary button-wide" type="submit" disabled><span>CAD 모델 생성하기</span><span aria-hidden="true">→</span></button>
               </form>
+              <section id="model-edit-panel" class="model-edit-panel" aria-labelledby="model-edit-heading">
+                <h3 id="model-edit-heading">현재 제작안 수정</h3>
+                <p class="field-help">현재 치수에서 필요한 부분만 바꿉니다. 예: 높이를 5mm 늘려줘. 제안을 검토하고 적용한 뒤 CAD를 별도로 생성하세요.</p>
+                <form id="model-edit-form">
+                  <label for="model-edit-text">수정할 내용</label>
+                  <textarea id="model-edit-text" rows="2" maxlength="4000" required placeholder="높이를 5mm 늘려줘" aria-describedby="model-edit-provider-note"></textarea>
+                  <div class="request-actions">
+                    <label class="mode-control" for="model-edit-mode"><span>제안 방식</span><select id="model-edit-mode"><option value="templates">템플릿 모드</option><option value="llm" disabled>LLM 모드 · 미설정</option></select></label>
+                    <button id="model-edit-propose" class="button button-secondary" type="submit" disabled>수정 제안 검토</button>
+                    <button id="model-edit-cancel" class="button button-secondary" type="button">취소 · 현재 제작안 유지</button>
+                  </div>
+                  <p id="model-edit-provider-note" class="field-help">LLM 모드를 선택하면 수정 요청과 현재 숫자 치수를 설정된 모델 서버로 보냅니다.</p>
+                </form>
+                <div id="model-edit-feedback" class="notice" role="status" hidden></div>
+                <section id="model-edit-review" class="notice notice-info" aria-labelledby="model-edit-review-heading" hidden>
+                  <h4 id="model-edit-review-heading" tabindex="-1">적용 전 치수 확인</h4>
+                  <ul id="model-edit-changes"></ul>
+                  <p>표시한 치수만 바뀝니다. 적용하면 현재 미리보기와 슬라이싱 결과를 해제하고, 저장하지 않은 출력 메모는 이전 작업에 연결해 보관합니다.</p>
+                  <div class="request-actions"><button id="model-edit-apply" class="button button-primary" type="button">치수 수정 적용</button></div>
+                </section>
+                <p id="model-edit-selected" class="field-help" hidden></p>
+              </section>
               <div id="model-feedback" class="notice" role="status" hidden></div>
             </section>
           </div>
@@ -150,6 +172,7 @@
             <section id="model-result" class="card result-card" aria-labelledby="result-heading" hidden>
               <div class="card-heading"><div><span class="step-label">생성한 파일</span><h2 id="result-heading">모델 파일이 준비됐어요</h2></div><span class="badge badge-warning">실물 출력 미검증</span></div>
               <section id="generated-source-record" class="source-details generated-source-details" aria-label="생성한 모델의 시작 설계 기록" hidden><p class="source-label">생성한 모델의 시작 설계 기록</p><div id="generated-source" class="project-source" hidden></div></section>
+              <section id="generated-model-edit" class="source-details" aria-label="생성한 모델의 최신 치수 수정 기록" hidden></section>
               <div id="model-metrics" class="metric-grid"></div>
               <div id="model-checks" class="check-list"></div>
               <div id="model-warnings" class="warning-list"></div>

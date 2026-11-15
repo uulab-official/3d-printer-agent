@@ -8,6 +8,7 @@ Help people discover useful things to print, customize models, prepare settings 
 
 - `print_agent/app.py`: FastAPI routes, local session and request boundary.
 - `schemas.py`, `planner.py`: typed geometry parameters and rules/optional LLM planning.
+- `model_edits.py`, `geometry_rules.py`: contextual parameter edits, canonical review records and shared pure geometry constraints.
 - `geometry.py`: deterministic CadQuery solids, mesh preview, exports and reproduction source.
 - `profiles.py`: supplied evidence, exact scope matching and calibration review.
 - `preset_library.py`: explicit single-parent values, per-field evidence and original-baseline comparison.
@@ -43,6 +44,7 @@ When a test cannot run, record its concrete blocker. A successful HTTP response,
 - Do not flatten an inherited profile by deleting `inherits`; resolve its complete configuration with per-field evidence before supporting it.
 - Keep generation artifacts and source files reproducible. Never overwrite the user's imported source model.
 - A changed draft must not keep an old preview/download looking current. A failed new slice must not retain the old slice as the current result.
+- Contextual model edits preserve every unspecified parameter and project origin. Apply only a reviewed current-scope selection; rederive it and recheck any parent artifact identity before reserving CAD. Retain unsaved outcome notes with the original job/storage identity whenever replacing a job.
 - Saved filament workspaces restore inputs, not current reviews. Preserve imported originals and invalid draft text; stale revision writes must not overwrite another tab's saved changes.
 - Keep provider keys in local environment variables; do not return them to the browser, commit them, or include them in issue logs.
 - New model sources require recorded origin and applicable reuse terms. Do not imply a supported external API without verifying it.

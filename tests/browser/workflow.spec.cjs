@@ -941,6 +941,8 @@ test('discovery preserves unfinished drafts and recovers from empty, stale and f
 
   await page.locator('#request-text').fill('가로 90mm 세로 60mm 높이 18mm 수납함');
   await page.locator('#plan-button').click();
+  await expect(page.locator('#model-replace-confirm')).toBeVisible();
+  await page.locator('#model-confirm-replace').click();
   await expect(page.locator('#parameter-width')).toHaveValue('90');
   await expect(page.locator('#draft-source')).toBeHidden();
   await expect(page.locator('#model-result')).toBeHidden();
@@ -2115,4 +2117,228 @@ with sqlite3.connect(root/'profile-workspaces.sqlite3') as db:
     expect(failedProfile.status()).toBe(409);expect((await failedProfile.json()).code).toBe('workspace_integrity');await expect(page.locator('#profile-json')).toHaveValue(raw);await expect(page.locator('#guided-nozzle_temperature')).toHaveValue('220');
     await expect(page.locator('#workspace-feedback')).toBeVisible();await noHorizontalOverflow(page);
   } finally { await runtime.stop(); }
+});
+
+// Independent stdlib readback of downloaded bytes; no production geometry/parser
+// imports and no native tool. Verifies served child mesh and recorded parent bytes.
+async function inspectContextualDownloads(parentManifestFile, parentModelFile, childManifestFile, childModelFile) {
+  const script = String.raw`
+import hashlib, io, json, math, sys, zipfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
+core = '{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}'
+sha = lambda content: hashlib.sha256(content).hexdigest()
+def inspect(manifest_file, model_file, expected):
+    manifest_bytes = Path(manifest_file).read_bytes()
+    manifest = json.loads(manifest_bytes)
+    model_bytes = Path(model_file).read_bytes()
+    assert sha(model_bytes) == manifest['artifacts']['three_mf']['sha256']
+    assert len(model_bytes) == manifest['artifacts']['three_mf']['bytes']
+    with zipfile.ZipFile(io.BytesIO(model_bytes)) as archive:
+        root = ET.fromstring(archive.read('3D/3dmodel.model'))
+    assert root.get('unit') == 'millimeter'
+    points = [tuple(float(vertex.get(axis)) for axis in ('x','y','z')) for vertex in root.iter(core+'vertex')]
+    triangles = list(root.iter(core+'triangle'))
+    assert points and triangles
+    bounds = [max(point[i] for point in points)-min(point[i] for point in points) for i in range(3)]
+    assert all(math.isclose(value, expected[i], rel_tol=0, abs_tol=1e-6) for i,value in enumerate(bounds)), bounds
+    return manifest, manifest_bytes, model_bytes, {'job_id':manifest['job_id'], 'model_sha256':sha(model_bytes),
+        'manifest_sha256':sha(manifest_bytes), 'dimensions_mm':bounds, 'vertices':len(points), 'triangles':len(triangles)}
+parent, parent_manifest, parent_model, parent_result = inspect(sys.argv[1],sys.argv[2],[150,90,30])
+child, child_manifest, child_model, child_result = inspect(sys.argv[3],sys.argv[4],[150,90,35])
+canonical = json.dumps(parent['parameters'],ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False).encode('utf-8')
+identity = {'job_id':parent['job_id'],'parameters_sha256':sha(canonical),'model_sha256':sha(parent_model),'manifest_sha256':sha(parent_manifest)}
+assert child['model_edit']['selection']['parent'] == identity
+assert child['parameters'] == dict(parent['parameters'],height=35)
+assert child['design_source']['project_id'] == parent['design_source']['project_id']
+assert child['design_source']['recipe_sha256'] == parent['design_source']['recipe_sha256']
+print(json.dumps({'parent':parent_result,'child':child_result,'verified_parent_identity':identity,
+    'downloaded_child_mesh_matches_dimensions':True,'downloaded_model_receipts_match_manifests':True,
+    'parent_identity_matches_downloaded_bytes':True,'unchanged_parameters_preserved':True}))
+`;
+  const result = await runFile('python', ['-c', script, parentManifestFile, parentModelFile, childManifestFile, childModelFile], {
+    cwd:path.resolve(__dirname,'../..'),timeout:30000,maxBuffer:100000,
+  });
+  return JSON.parse(result.stdout);
+}
+
+// v0.7 evidence runs in the configured desktop/mobile Chromium CI projects.
+// Rules, CAD generation, verified parent storage and downloads use the real server.
+test('contextual recipe edits preserve untouched dimensions, parent source and old outcome notes through real CAD and history', async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  await page.locator('#discovery-cards [data-project-id="desk-sorter"]').click();
+  await page.locator('#discovery-apply').click();
+  await expect(page.locator('#parameter-width')).toHaveValue('150');
+  await expect(page.locator('#parameter-height')).toHaveValue('30');
+  const originalResponse = page.waitForResponse(response => response.url().endsWith('/api/models') && response.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const originalHttp = await originalResponse;
+  expect(originalHttp.status()).toBe(200);
+  const original = await originalHttp.json();
+  const parentManifestFile = testInfo.outputPath('contextual-parent-manifest.json');
+  const parentModelFile = testInfo.outputPath('contextual-parent-model.3mf');
+  const parentManifestHttp = await page.request.get(original.artifacts.manifest);
+  const parentModelHttp = await page.request.get(original.artifacts.three_mf);
+  expect(parentManifestHttp.status()).toBe(200);
+  expect(parentModelHttp.status()).toBe(200);
+  await fs.writeFile(parentManifestFile, await parentManifestHttp.body());
+  await fs.writeFile(parentModelFile, await parentModelHttp.body());
+  await expect(page.locator('#model-canvas')).toBeVisible();
+  const note = 'v0.7 CI: 이전 모델 관찰 메모\n  공백까지 유지';
+  await page.locator('#outcome-result').selectOption('failure');
+  await page.locator('#outcome-notes').fill(note);
+  await page.locator('#model-edit-text').fill('높이를 5mm 늘려줘');
+  const proposalResponse = page.waitForResponse(response => response.url().endsWith('/api/model-edits/plan'));
+  await page.locator('#model-edit-propose').click();
+  const proposalHttp = await proposalResponse;
+  expect(proposalHttp.status()).toBe(200);
+  const proposal = await proposalHttp.json();
+  expect(proposal.status).toBe('ready');
+  expect(proposal.review.selection.parent.job_id).toBe(original.id);
+  expect(proposal.review.changes).toEqual([{field:'height',before:30,after:35}]);
+  expect(proposal.review.selection.base_parameters).toEqual(original.result.parameters);
+  await expect(page.locator('#model-edit-review')).toBeVisible();
+  await expect(page.locator('#model-edit-changes')).toContainText('30 → 35');
+  await expect(page.locator('#parameter-height')).toHaveValue('30');
+  await expect(page.locator('#outcome-notes')).toHaveValue(note);
+  await expect(page.locator('#model-canvas')).toBeVisible();
+  await focusedStudioScreenshot(page, '#model-edit-panel', 'contextual-edit-review.png', testInfo);
+  await page.locator('#model-edit-cancel').click();
+  await expect(page.locator('#model-edit-review')).toBeHidden();
+  await expect(page.locator('#parameter-height')).toHaveValue('30');
+  await expect(page.locator('#outcome-notes')).toHaveValue(note);
+  await page.locator('#model-edit-propose').click();
+  await expect(page.locator('#model-edit-review')).toBeVisible();
+  await page.locator('#model-edit-apply').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#parameter-height')).toHaveValue('35');
+  await expect(page.locator('#parameter-width')).toHaveValue('150');
+  await expect(page.locator('#parameter-depth')).toHaveValue('90');
+  await expect(page.locator('#parameter-dividers')).toHaveValue('2');
+  await expect(page.locator('#draft-source')).toContainText('세 칸 책상 정리함');
+  await expect(page.locator('#model-result')).toBeHidden();
+  await expect(page.locator('#download-links a')).toHaveCount(0);
+  await expect(page.locator('#retained-outcome-notes')).toContainText(original.id);
+  await expect(page.locator('#retained-outcome-notes pre')).toHaveText(note);
+  await expect(page.locator('#retained-outcome-notes')).toContainText('출력 실패');
+  await focusedStudioScreenshot(page, '#retained-outcome-notes', 'contextual-retained-note.png', testInfo);
+  const editedResponse = page.waitForResponse(response => response.url().endsWith('/api/models') && response.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const editedHttp = await editedResponse;
+  expect(editedHttp.status()).toBe(200);
+  const edited = await editedHttp.json();
+  expect(editedHttp.request().postDataJSON().model_edit).toEqual(proposal.review.selection);
+  expect(edited.result.parameters).toEqual({...original.result.parameters,height:35});
+  expect(edited.result.geometry_status).toBe('validated');
+  expect(edited.design_source.project_id).toBe(original.design_source.project_id);
+  expect(edited.design_source.recipe_sha256).toBe(original.design_source.recipe_sha256);
+  expect(edited.model_edit).toEqual({...proposal.review,provenance:'user_confirmed_parameters'});
+  expect(edited.latest_slice).toBeNull();
+  await expect(page.locator('#outcome-notes')).toHaveValue('');
+  await expect(page.locator('#outcome-result')).toHaveValue('not_tested');
+  await expect(page.locator('#generated-model-edit')).toContainText('높이를 5mm 늘려줘');
+  await expect(page.locator('#generated-model-edit')).toContainText(original.id);
+  const manifestDownloadPromise = page.waitForEvent('download');
+  await page.locator('#download-links a').filter({hasText:'생성 기록'}).click();
+  const manifestDownload = await manifestDownloadPromise;
+  const manifestFile = testInfo.outputPath('contextual-edit-manifest.json');
+  await manifestDownload.saveAs(manifestFile);
+  const manifest = JSON.parse(await fs.readFile(manifestFile,'utf8'));
+  expect(manifest.model_edit).toEqual(edited.model_edit);
+  expect(manifest.design_source).toEqual(edited.design_source);
+  const modelDownloadPromise = page.waitForEvent('download');
+  await page.locator('#download-links a').filter({hasText:'3MF 형상'}).click();
+  const modelDownload = await modelDownloadPromise;
+  const childModelFile = testInfo.outputPath('contextual-child-model.3mf');
+  await modelDownload.saveAs(childModelFile);
+  const readback = await inspectContextualDownloads(parentManifestFile,parentModelFile,manifestFile,childModelFile);
+  expect(readback.child.dimensions_mm).toEqual([150,90,35]);
+  expect(readback.child.model_sha256).toBe(manifest.artifacts.three_mf.sha256);
+  expect(readback.verified_parent_identity).toEqual(edited.model_edit.selection.parent);
+  await fs.writeFile(testInfo.outputPath('contextual-download-readback.json'),JSON.stringify(readback,null,2));
+  await focusedStudioScreenshot(page, '#model-result', 'contextual-generated-model.png', testInfo);
+  // Manual changes detach the selected provenance and invalidate current artifacts.
+  await page.locator('#parameter-height').fill('36');
+  await expect(page.locator('#model-edit-selected')).toBeHidden();
+  await expect(page.locator('#model-result')).toBeHidden();
+  await openView(page,'history');
+  const recorded = page.locator('.history-item').filter({hasText:'높이를 5mm 늘려줘'}).first();
+  await expect(recorded).toContainText('30 → 35');
+  await focusedStudioScreenshot(page, ':nth-match(.history-item:has(.history-model-edit), 1)', 'contextual-history-edit.png', testInfo);
+  await recorded.getByRole('button',{name:'열기 ↗'}).click();
+  await expect(page.locator('#model-replace-confirm')).toBeVisible();
+  await page.locator('#model-confirm-replace').click();
+  await expect(page.locator('#parameter-height')).toHaveValue('35');
+  await expect(page.locator('#model-edit-selected')).toBeHidden();
+  await expect(page.locator('#generated-model-edit')).toBeVisible();
+  await noHorizontalOverflow(page);
+  await fs.writeFile(testInfo.outputPath('contextual-edit-evidence.json'),JSON.stringify({
+    project:testInfo.project.name,source:'real local rules, CAD, storage and downloaded manifest',
+    parent_job_id:original.id,child_job_id:edited.id,proposal,record:edited.model_edit,download_readback:readback,
+    unchanged_dimensions_preserved:true,recipe_identity_preserved:true,explicit_cancel_preserved_draft:true,
+    explicit_keyboard_apply:true,old_notes_retained_under_parent:true,new_job_notes_empty:true,
+    manual_change_detached_selection:true,history_restored_record_without_selection:true,
+    native_studio_executed:false,physical_print_claimed:false,
+  },null,2));
+});
+
+test('dirty new-model plans confirm after completion and preserve exact old notes across cancel, replacement and regeneration', async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  const originalResponse = page.waitForResponse(response => response.url().endsWith('/api/models') && response.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const originalHttp = await originalResponse;
+  expect(originalHttp.status()).toBe(200);
+  const original = await originalHttp.json();
+  const note='v0.7 CI: 새 제작안 전에 쓴 출력 메모\n   원래 작업에 보관';
+  await page.locator('#outcome-result').selectOption('failure');
+  await page.locator('#outcome-notes').fill(note);
+  await page.locator('#request-text').fill('수납함 140 x 85 x 32mm');
+  const planResponse=page.waitForResponse(response=>response.url().endsWith('/api/plan'));
+  await page.locator('#plan-button').click();
+  const planHttp=await planResponse;
+  expect(planHttp.status()).toBe(200);
+  const plan=await planHttp.json();
+  expect(plan.status).toBe('ready');
+  await expect(page.locator('#model-confirm-replace')).toBeEnabled();
+  await expect(page.locator('#model-replace-confirm')).toBeVisible();
+  await expect(page.locator('#parameter-width')).toHaveValue(String(original.result.parameters.width));
+  await expect(page.locator('#outcome-notes')).toHaveValue(note);
+  await expect(page.locator('#model-canvas')).toBeVisible();
+  await focusedStudioScreenshot(page,'#model-replace-confirm','dirty-plan-confirmation.png',testInfo);
+  await page.locator('#model-cancel-replace').click();
+  await expect(page.locator('#outcome-notes')).toHaveValue(note);
+  await expect(page.locator('#request-text')).toHaveValue('수납함 140 x 85 x 32mm');
+  await page.locator('#plan-button').click();
+  await expect(page.locator('#model-confirm-replace')).toBeEnabled();
+  await page.locator('#model-confirm-replace').click();
+  await expect(page.locator('#parameter-width')).toHaveValue('140');
+  await expect(page.locator('#parameter-depth')).toHaveValue('85');
+  await expect(page.locator('#parameter-height')).toHaveValue('32');
+  await expect(page.locator('#model-result')).toBeHidden();
+  await expect(page.locator('#retained-outcome-notes')).toContainText(original.id);
+  await expect(page.locator('#retained-outcome-notes pre')).toHaveText(note);
+  const newResponse=page.waitForResponse(response=>response.url().endsWith('/api/models')&&response.request().method()==='POST');
+  await page.locator('#generate-button').click();
+  const newHttp=await newResponse;
+  expect(newHttp.status()).toBe(200);
+  const next=await newHttp.json();
+  await expect(page.locator('#outcome-notes')).toHaveValue('');
+  await page.locator('#outcome-notes').fill('동일 치수 재생성 전에 쓴 메모');
+  const regeneratedResponse=page.waitForResponse(response=>response.url().endsWith('/api/models')&&response.request().method()==='POST');
+  await page.locator('#generate-button').click();
+  const regeneratedHttp=await regeneratedResponse;
+  expect(regeneratedHttp.status()).toBe(200);
+  const regenerated=await regeneratedHttp.json();
+  expect(regenerated.result.parameters).toEqual(next.result.parameters);
+  await expect(page.locator('#outcome-notes')).toHaveValue('');
+  await expect(page.locator('#retained-outcome-notes')).toContainText(next.id);
+  await expect(page.locator('#retained-outcome-notes')).toContainText('동일 치수 재생성 전에 쓴 메모');
+  await noHorizontalOverflow(page);
+  await focusedStudioScreenshot(page,'#retained-outcome-notes','dirty-plan-retained-notes.png',testInfo);
+  await fs.writeFile(testInfo.outputPath('dirty-new-plan-evidence.json'),JSON.stringify({
+    project:testInfo.project.name,source:'real local planner and CAD',original_job_id:original.id,new_job_id:next.id,regenerated_job_id:regenerated.id,
+    plan,confirmation_after_request_release:true,cancel_preserved_draft_and_notes:true,
+    original_notes_retained:true,same_dimension_regeneration_retained_old_notes:true,new_job_notes_empty:true,
+    native_studio_executed:false,physical_print_claimed:false,
+  },null,2));
 });

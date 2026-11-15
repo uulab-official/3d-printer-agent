@@ -64,6 +64,12 @@ REQUIRED_CHECKS = frozenset({
     'studio_library_legacy_equal_names_discoverable', 'studio_library_catalog_bounded_inputs_only',
     'studio_library_open_exact_inputs_without_current_review', 'studio_library_survives_real_restart',
     'studio_library_survives_backup_restore', 'studio_library_reopened_settings_prepare_current_cad',
+    'model_edit_plan_preserves_base', 'model_edit_parent_matches_verified_artifacts',
+    'model_edit_invalid_selection_has_no_job', 'model_edit_generation_preserves_source',
+    'model_edit_no_print_claim', 'model_edit_record_manifest_and_bundle',
+    'model_edit_step_matches_requested_dimensions', 'model_edit_3mf_matches_requested_dimensions',
+    'model_edit_survives_real_restart', 'model_edit_survives_backup_restore',
+    'model_edit_fresh_studio_preparation_after_restore', 'model_edit_restored_job_is_a_verified_new_parent',
 })
 MAX_JSON = 8 * 1024 * 1024
 MAX_ZIP_BYTES = 64 * 1024 * 1024

@@ -481,6 +481,80 @@ def qualify(args, report):
                                          ensure_ascii=False, allow_nan=False).encode('utf-8'))
         check('recorded_recipe_hash', recipe_digest == selected['recipe_sha256'] == source_record['recipe_sha256'])
 
+        # A genuine child model keeps the parent's unmentioned dimensions and
+        # beginner recipe, with independently observed artifact identities.
+        edit_parent = get_json(server, '/api/jobs/' + models[0]['id'])
+        parent_manifest_code, parent_manifest_bytes, _ = request(server.base, edit_parent['artifacts']['manifest'])
+        edit_proposal = get_json(server, '/api/model-edits/plan', method='POST', token=token,
+            payload={'text': '높이를 5mm 늘려줘', 'mode': 'templates',
+                     'base_parameters': edit_parent['result']['parameters'], 'parent_job_id': edit_parent['id']})
+        edit_review = edit_proposal['review']
+        expected_edit_parameters = {**edit_parent['result']['parameters'], 'height': 23.0}
+        check('model_edit_plan_preserves_base', edit_proposal['status'] == 'ready'
+              and edit_proposal['engine'] == 'template_rules'
+              and edit_review['parameters'] == expected_edit_parameters
+              and edit_review['changes'] == [{'field': 'height', 'before': 18.0, 'after': 23.0}])
+        expected_parent_identity = {'job_id': edit_parent['id'],
+            'parameters_sha256': sha256(json.dumps(edit_parent['result']['parameters'], ensure_ascii=False,
+                sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')),
+            'model_sha256': models[0]['artifacts']['three_mf']['sha256'],
+            'manifest_sha256': sha256(parent_manifest_bytes)}
+        check('model_edit_parent_matches_verified_artifacts', parent_manifest_code == 200
+              and edit_review['selection']['parent'] == expected_parent_identity)
+        edit_payload = {**edit_review['parameters'], 'model_edit': edit_review['selection'],
+                        'project_selection': {'id': selected['id'], 'recipe_sha256': selected['recipe_sha256']}}
+        before_edit_jobs = get_json(server, '/api/jobs')['jobs']
+        get_json(server, '/api/models', method='POST', token=token, expected=422,
+                 payload={**edit_payload, 'height': 24})
+        check('model_edit_invalid_selection_has_no_job', get_json(server, '/api/jobs')['jobs'] == before_edit_jobs)
+        contextual_job = get_json(server, '/api/models', method='POST', token=token, payload=edit_payload)
+        contextual_record = {**edit_review, 'provenance': 'user_confirmed_parameters'}
+        check('model_edit_generation_preserves_source', contextual_job['model_edit'] == contextual_record
+              and contextual_job['result']['parameters'] == expected_edit_parameters
+              and contextual_job['design_source']['recipe'] == source_record['recipe']
+              and contextual_job['design_source']['recipe_sha256'] == source_record['recipe_sha256']
+              and contextual_job['design_source']['changed_parameters'] == ['height', 'width']
+              and contextual_job['id'] != edit_parent['id'])
+        check('model_edit_no_print_claim', contextual_job['result']['print_status'] == 'not_tested'
+              and contextual_job['latest_slice'] is None)
+        contextual_manifest = get_json(server, contextual_job['artifacts']['manifest'])
+        contextual_downloads = {}
+        for artifact_kind, metadata in contextual_manifest['artifacts'].items():
+            code, content, _ = request(server.base, contextual_job['artifacts'][artifact_kind])
+            check('model_edit_download_receipt_' + artifact_kind,
+                  code == 200 and len(content) == metadata['bytes'] and sha256(content) == metadata['sha256'])
+            filename = {'stl': 'model.stl', 'step': 'model.step', 'three_mf': 'model.3mf', 'source': 'model.py'}[artifact_kind]
+            (downloads / ('contextual-' + filename)).write_bytes(content)
+            contextual_downloads[artifact_kind] = content
+        code, contextual_bundle, _ = request(server.base, contextual_job['bundle_url'])
+        with zipfile.ZipFile(io.BytesIO(contextual_bundle)) as bundle:
+            check('model_edit_record_manifest_and_bundle', code == 200 and bundle.testzip() is None
+                  and contextual_manifest['model_edit'] == contextual_record
+                  and json.loads(bundle.read('manifest.json')) == contextual_manifest
+                  and json.loads(bundle.read('job.json'))['model_edit'] == contextual_record
+                  and bundle.read('model.3mf') == contextual_downloads['three_mf'])
+        contextual_shape = cq.importers.importStep(str(downloads / 'contextual-model.step')).val()
+        contextual_bounds = contextual_shape.BoundingBox()
+        check('model_edit_step_matches_requested_dimensions', contextual_shape.isValid()
+              and len(contextual_shape.Solids()) == 1 and contextual_shape.Volume() > 0
+              and all(abs(getattr(contextual_bounds, axis + 'len') - expected) < 1e-5
+                      for axis, expected in zip('xyz', (92, 60, 23))))
+        with zipfile.ZipFile(io.BytesIO(contextual_downloads['three_mf'])) as archive:
+            contextual_mesh = ET.fromstring(archive.read('3D/3dmodel.model')).find('.//{*}mesh')
+            vertices = contextual_mesh.findall('.//{*}vertex')
+            check('model_edit_3mf_matches_requested_dimensions', archive.testzip() is None
+                  and len(vertices) >= 8 and all(abs(max(float(v.attrib[axis]) for v in vertices)
+                      - min(float(v.attrib[axis]) for v in vertices) - expected) < 1e-5
+                      for axis, expected in zip('xyz', (92, 60, 23))))
+        for name, value in (('contextual-parent-job', edit_parent), ('contextual-proposal', edit_proposal),
+                            ('contextual-job', contextual_job), ('contextual-manifest', contextual_manifest)):
+            write_json(downloads / (name + '.json'), value)
+        (downloads / 'contextual-parent-manifest.json').write_bytes(parent_manifest_bytes)
+        (downloads / 'contextual-job-bundle.zip').write_bytes(contextual_bundle)
+        report['model_edit'] = {'parent': expected_parent_identity, 'proposal': edit_proposal,
+            'job_id': contextual_job['id'], 'record': contextual_record,
+            'artifacts': contextual_manifest['artifacts'], 'expected_dimensions_mm': {'x': 92, 'y': 60, 'z': 23}}
+
         snapshot = {'schema_version': 1, 'documents': [{'filename': '합성 filament.json',
                     'profile': {'name': 'Synthetic installation profile', 'inherits': 'Missing synthetic parent'},
                     'draft_text': '{"unfinished":  '}], 'target_index': 0, 'profile_text': '',
@@ -527,7 +601,7 @@ def qualify(args, report):
         servers.append(restarted)
         refreshed = restarted.wait_ready()
         recovery = refreshed['storage']['recovery']
-        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 4
+        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 5
               and recovery['interrupted'] == 1 and recovery['unreadable'] == 0, json.dumps(recovery))
         check('restart_rotates_session', refreshed['session_token'] != token)
         old_session = get_json(restarted, '/api/discovery', method='POST', payload={}, token=token, expected=403)
@@ -557,6 +631,10 @@ def qualify(args, report):
         retained_job = get_json(restarted, '/api/jobs/' + models[0]['id'])
         check('generation_source_survives_restart', retained_job['design_source'] == source_record
               and retained_job['result']['parameters']['width'] == 92)
+        contextual_reopened = get_json(restarted, '/api/jobs/' + contextual_job['id'])
+        check('model_edit_survives_real_restart', contextual_reopened == contextual_job
+              and get_json(restarted, contextual_job['artifacts']['manifest']) == contextual_manifest)
+        write_json(downloads / 'restarted-contextual-job.json', contextual_reopened)
         abandoned = get_json(restarted, '/api/jobs/' + interrupted_id)
         check('interrupted_job_preserves_inputs_without_verified_outputs', abandoned['status'] == 'interrupted'
               and abandoned['request'] == saved_request and abandoned['design_source'] == source_record
@@ -573,8 +651,8 @@ def qualify(args, report):
             cursor = page['next_cursor']
             if cursor is None:
                 break
-        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 4
-              and set(paged_ids) == {model['id'] for model in models} | {interrupted_id})
+        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 5
+              and set(paged_ids) == {model['id'] for model in models} | {interrupted_id, contextual_job['id']})
 
         def backup_command(name, arguments, expected_exit=0):
             operation = subprocess.run([entrypoint, *map(str, arguments)], cwd=work, env=environment,
@@ -675,6 +753,41 @@ def qualify(args, report):
         (downloads / 'restored-fresh-project.3mf').write_bytes(fresh_bytes)
         report['studio_settings_revision']['restored_preparation'] = fresh_edited
         report['studio_settings_revision']['restored_prepared_sha256'] = sha256(fresh_bytes)
+        contextual_restored = get_json(restored_server, '/api/jobs/' + contextual_job['id'])
+        code, contextual_restored_bytes, _ = request(restored_server.base, contextual_job['artifacts']['three_mf'])
+        check('model_edit_survives_backup_restore', contextual_restored == contextual_job and code == 200
+              and contextual_restored_bytes == contextual_downloads['three_mf']
+              and get_json(restored_server, contextual_job['artifacts']['manifest']) == contextual_manifest)
+        contextual_prepared = get_json(restored_server, '/api/slice', method='POST', token=restored_bootstrap['session_token'],
+            payload={'job_id': contextual_job['id'], 'studio_settings_revision_id': revision_id, 'execute': False})
+        contextual_prepared_job = get_json(restored_server, '/api/jobs/' + contextual_job['id'])
+        code, contextual_prepared_bytes, _ = request(restored_server.base, contextual_prepared_job['artifacts']['prepared_three_mf'])
+        contextual_plan = contextual_prepared['plan']
+        with zipfile.ZipFile(io.BytesIO(contextual_prepared_bytes)) as archive:
+            current_mesh = ET.fromstring(archive.read('3D/3dmodel.model')).find('.//{*}mesh')
+            check('model_edit_fresh_studio_preparation_after_restore', code == 200
+                  and contextual_prepared['execution'] is None and contextual_plan['project_prepared'] is True
+                  and contextual_plan['project_receipt']['model_sha256'] == sha256(contextual_downloads['three_mf'])
+                  and contextual_plan['settings_revision'] == revision['revision']
+                  and Path(contextual_plan['project_path']).is_relative_to(restored_data)
+                  and contextual_prepared_job['model_edit'] == contextual_record
+                  and archive.testzip() is None
+                  and archive.read('Metadata/project_settings.config') == effective_bytes
+                  and mesh_values(current_mesh) == mesh_values(contextual_mesh))
+        reproposed = get_json(restored_server, '/api/model-edits/plan', method='POST', token=restored_bootstrap['session_token'],
+            payload={'text': '높이를 1mm 늘려줘', 'base_parameters': expected_edit_parameters,
+                     'parent_job_id': contextual_job['id']})
+        check('model_edit_restored_job_is_a_verified_new_parent', reproposed['review']['parameters']['height'] == 24.0
+              and reproposed['review']['selection']['parent']['job_id'] == contextual_job['id']
+              and reproposed['review']['selection']['parent']['model_sha256'] == sha256(contextual_downloads['three_mf']))
+        for name, value in (('restored-contextual-job', contextual_restored),
+                            ('restored-contextual-preparation', contextual_prepared),
+                            ('restored-contextual-prepared-job', contextual_prepared_job),
+                            ('restored-contextual-reproposal', reproposed)):
+            write_json(downloads / (name + '.json'), value)
+        (downloads / 'restored-contextual-project.3mf').write_bytes(contextual_prepared_bytes)
+        report['model_edit']['restored_preparation'] = contextual_prepared
+        report['model_edit']['restored_prepared_sha256'] = sha256(contextual_prepared_bytes)
         check('backup_source_bytes_unchanged', original_bytes == data_hashes())
         report['backup'] = {'created': created_backup, 'inspected': inspected_backup, 'restored': restored_backup,
                             'source_files': original_bytes, 'restored_before_start_files': restored_bytes,

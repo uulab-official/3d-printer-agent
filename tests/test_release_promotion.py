@@ -403,6 +403,19 @@ class PromotionTests(unittest.TestCase):
                     self.promote()
                 self.assertEqual(self.api.writes, [])
 
+    def test_missing_contextual_edit_lifecycle_evidence_cannot_publish(self):
+        for check_id in ('model_edit_record_manifest_and_bundle', 'model_edit_survives_real_restart',
+                         'model_edit_survives_backup_restore', 'model_edit_fresh_studio_preparation_after_restore'):
+            with self.subTest(check_id=check_id):
+                self.api = FakeAPI()
+                def remove_check(report):
+                    report['checks'] = [item for item in report['checks'] if item['id'] != check_id]
+                    report['checks_passed'] = report['checks_total'] = len(report['checks'])
+                self.api.mutate_report('windows-2025', remove_check)
+                with self.assertRaises(promotion.PromotionError):
+                    self.promote()
+                self.assertEqual(self.api.writes, [])
+
     def test_tag_pointing_elsewhere_is_never_moved(self):
         self.api.tag = 'b' * 40
         with self.assertRaises(promotion.PromotionError):

@@ -3,9 +3,11 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
-const names = ['renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
+const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
+const editNames = ['modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
+names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
 names.push(...libraryNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 class Element {
@@ -125,6 +127,16 @@ const studioDescriptor=()=>({schema_version:1,source_id:'a'.repeat(32),source_sh
 const studioReview=()=>({schema_version:1,source_id:'a'.repeat(32),source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),effective_settings_sha256:'f'.repeat(64),review_sha256:'1'.repeat(64),values:{nozzle_temperature:'216'},changes:[{field:'nozzle_temperature',native_key:'nozzle_temperature',before:['215'],after:['216']}],changed_count:1,provenance:'user_selected',effective_summary:{...studioInspection().summary,nozzle_temperature:'216'}});
 const studioEnvelope=(id='e'.repeat(32))=>({source:studioInspection(),review:studioReview(),revision:{schema_version:1,revision_id:id,source_id:'a'.repeat(32),effective_settings_sha256:'f'.repeat(64),review_sha256:'1'.repeat(64),proposal:{source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),values:{nozzle_temperature:'216'}},changes:studioReview().changes,provenance:'user_selected'}});
 const studioNamed=(edited=false,draft=null)=>({source:studioInspection(),settings_revision:edited?studioEnvelope():null,editor:studioDescriptor(),workspace:{id:'b'.repeat(32),title:'Saved Studio',revision:2,created_at:'2026-11-15T00:00:00Z',updated_at:'2026-11-15T00:00:00Z',snapshot:{schema_version:1,source_id:'a'.repeat(32),settings_revision_id:edited?'e'.repeat(32):null,source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),effective_settings_sha256:edited?'f'.repeat(64):'d'.repeat(64),draft_values:draft}}});
+const editBase=()=>({template:'tray',width:150,depth:90,height:30,wall:2,bottom:2,dividers:2,slots:5,cable_diameter:6,inset_diameter:52,inset_depth:2,fit_clearance:0.3});
+function editFixture() {
+  const c=fixture(),base=editBase(),editable=['width','depth','height','wall','bottom','dividers'];
+  c.state.templates=[{id:'tray',defaults:base,editable_fields:editable,description:'tray'}];c.state.parameters=base;c.state.projectSource=project();c.state.storage={path:'/original'};
+  for(const key of editable){c.$(`parameter-${key}`).value=String(base[key]);c.$(`parameter-${key}`).valueAsNumber=base[key];}
+  c.$('model-edit-text').value='높이를 5mm 늘려줘';c.$('model-edit-mode').value='templates';
+  c.document.querySelectorAll=selector=>selector==='[data-parameter]'?editable.map(key=>Object.assign(c.$(`parameter-${key}`),{dataset:{parameter:key}})):[];
+  return c;
+}
+const editReply=(parent=null)=>({status:'ready',engine:'template_rules',capability:'current_template_parameters_only',message:'review',questions:[],assumptions:[],review:{schema_version:1,selection:{schema_version:1,request_text:'높이를 5mm 늘려줘',base_parameters:editBase(),operations:[{field:'height',op:'add',value:5}],parent},base_sha256:'1'.repeat(64),parameters:{...editBase(),height:35},parameters_sha256:'2'.repeat(64),changes:[{field:'height',before:30,after:35}],review_sha256:'3'.repeat(64)}});
 (async()=>{
   let failed=0,passed=0;
   async function check(name,test) {
@@ -133,6 +145,79 @@ const studioNamed=(edited=false,draft=null)=>({source:studioInspection(),setting
     catch(error) { failed++; console.log('FAIL',name,error.message); }
     finally { clearTimeout(deadline); }
   }
+  await check('Contextual proposal leaves exact draft and source untouched until explicit apply, then sends selection provenance',async()=>{
+    const c=editFixture();assert.equal(typeof c.planModelEdit,'function');c.$('parameter-width').value='0150.0';const source=c.state.projectSource;let body;c.api=async(path,payload)=>{body=plain(payload);return editReply();};await c.planModelEdit();
+    assert.equal(c.$('parameter-width').value,'0150.0');assert.equal(c.$('parameter-height').value,'30');assert.equal(c.state.modelEditCandidate.review.parameters.height,35);assert.match(c.$('model-edit-changes').textContent,/30.*35/);
+    c.applyModelEdit();assert.equal(c.$('parameter-height').value,'35');assert.equal(c.$('parameter-width').value,'0150.0');assert.equal(c.state.projectSource,source);assert.equal(c.state.job,null);
+    assert.equal(body.base_parameters.height,30);assert.equal(Object.keys(body.base_parameters).length,12);assert.equal(body.parent_job_id,undefined);
+    c.api=async(path,payload)=>{body=plain(payload);throw new Error('CAD unavailable');};await c.generateModel();assert.deepEqual(body.model_edit,editReply().review.selection);assert.deepEqual(body.project_selection,{id:'idea',recipe_sha256:'a'.repeat(64)});
+    c.manualModelChanged();assert.equal(c.state.modelEditApplied,null);assert.equal(c.$('parameter-width').value,'0150.0');
+  });
+  await check('Contextual cancel failure and stale scope preserve exact draft, job notes and source',async()=>{
+    const mutations=[c=>c.cancelModelEdit(),c=>{c.$('parameter-width').value='0150.0';},c=>{c.$('parameter-width').validity={badInput:true};},c=>{c.state.projectSource={...project(),recipe_sha256:'b'.repeat(64)};},c=>{c.state.connectionEpoch++;},c=>{c.state.storage={path:'/new'};},c=>{c.$('model-edit-text').value='different';},c=>{c.$('model-edit-mode').value='llm';},c=>{c.state.job={...job(),id:'different'};}];
+    for(const mutate of mutations) {
+      const c=editFixture();assert.equal(typeof c.planModelEdit,'function');c.$('outcome-notes').value='exact pending note';let finish;c.api=()=>new Promise(resolve=>{finish=resolve;});const pending=c.planModelEdit();mutate(c);finish(editReply());await pending;
+      assert.equal(c.state.modelEditCandidate,null);assert.equal(c.state.modelEditPending,false);assert.equal(c.$('parameter-height').value,'30');assert.equal(c.$('outcome-notes').value,'exact pending note');
+    }
+    const c=editFixture();c.api=async()=>{throw new Error('provider failed');};await c.planModelEdit();assert.equal(c.state.modelEditPending,false);assert.equal(c.$('parameter-height').value,'30');assert.match(c.$('model-edit-feedback').textContent,/provider failed/);
+    c.api=async()=>editReply();await c.planModelEdit();c.cancelModelEdit();c.applyModelEdit();assert.equal(c.$('parameter-height').value,'30');
+  });
+  await check('Pending contextual requests and unapplied reviews participate in pending-work protection',async()=>{
+    const c=editFixture();c.state.projectSource=null;assert.equal(c.hasPendingWork(),false);let finish;c.api=()=>new Promise(resolve=>{finish=resolve;});const pending=c.planModelEdit();assert.equal(c.hasPendingWork(),true);finish(editReply());await pending;assert.equal(c.hasPendingWork(),true);c.cancelModelEdit();assert.equal(c.hasPendingWork(),false);
+  });
+  await check('Changing and restoring edit text still rejects the prior response and releases only its pending owner',async()=>{
+    const c=editFixture();let finish;c.api=()=>new Promise(resolve=>{finish=resolve;});const pending=c.planModelEdit();c.$('model-edit-text').value='different';c.modelEditInputChanged();c.$('model-edit-text').value='높이를 5mm 늘려줘';c.modelEditInputChanged();finish(editReply());await pending;assert.equal(c.state.modelEditCandidate,null);assert.equal(c.state.modelEditPending,false);assert.equal(c.$('parameter-height').value,'30');
+  });
+  await check('Older contextual completions cannot replace a newer candidate or release its busy owner',async()=>{
+    const c=editFixture();assert.equal(typeof c.planModelEdit,'function');const replies=[];c.api=()=>new Promise((resolve,reject)=>replies.push({resolve,reject}));const old=c.planModelEdit();c.cancelModelEdit();const fresh=c.planModelEdit();replies[0].reject(new Error('old failure'));await old;assert.equal(c.state.modelEditPending,true);replies[1].resolve(editReply());await fresh;assert.equal(c.state.modelEditPending,false);assert(c.state.modelEditCandidate);assert.doesNotMatch(c.$('model-edit-feedback').textContent,/old failure/);
+  });
+  await check('Contextual reviews accept explicitly unchanged operations alongside an actual change',async()=>{
+    const c=editFixture();const reply=editReply();reply.review.selection.operations.unshift({field:'width',op:'set',value:150});c.api=async()=>reply;await c.planModelEdit();assert(c.state.modelEditCandidate);assert.equal(c.state.modelEditCandidate.review.changes.length,1);c.applyModelEdit();assert.equal(c.$('parameter-width').value,'150');assert.equal(c.$('parameter-height').value,'35');assert.equal(c.state.modelEditApplied.operations.length,2);
+  });
+  await check('Complete contextual response validation rejects missing fields, unrelated changes, malformed operations and wrong context',async()=>{
+    const corruptions=[r=>{delete r.review.parameters.bottom;},r=>{delete r.review.selection.base_parameters.slots;},r=>{r.review.parameters.depth=91;},r=>{r.review.changes=[];},r=>{r.review.changes[0].before=29;},r=>{r.review.parameters.height='35';},r=>{r.engine='llm';},r=>{r.review.review_sha256='invalid';},r=>{r.review.selection.request_text='wrong';},r=>{r.review.selection.parent={job_id:'a'.repeat(32),parameters_sha256:'1'.repeat(64),model_sha256:'4'.repeat(64),manifest_sha256:'5'.repeat(64)};},r=>{r.review.selection.operations.push({...r.review.selection.operations[0]});},r=>{r.review.selection.operations[0].field='slots';},r=>{r.review.parameters.extra=1;},r=>{r.questions=['unexpected'];},r=>{r.review.changes.push({field:'width',before:150,after:150});},r=>{r.review.selection.schema_version=true;},r=>{r.review.parameters.slots=6;}];
+    for(const corrupt of corruptions){const c=editFixture();assert.equal(typeof c.planModelEdit,'function');const reply=editReply();corrupt(reply);c.api=async()=>reply;await c.planModelEdit();assert.equal(c.state.modelEditCandidate,null);assert.equal(c.$('parameter-height').value,'30');assert.equal(c.state.modelEditPending,false);assert.match(c.$('model-edit-feedback').textContent,/응답|제안/);}
+  });
+  await check('Applying contextual edits retains notes under verified parent and subsequent manual/history changes detach selection',async()=>{
+    const c=editFixture();assert.equal(typeof c.planModelEdit,'function');const original={...job(),id:'a'.repeat(32),result:{...job().result,template:'tray',parameters:editBase()}};c.renderJob(original);c.$('outcome-notes').value='parent observations';
+    const parent={job_id:original.id,parameters_sha256:'1'.repeat(64),model_sha256:'4'.repeat(64),manifest_sha256:'5'.repeat(64)};let sent;c.api=async(path,payload)=>{sent=payload;return editReply(parent);};await c.planModelEdit();assert.equal(sent.parent_job_id,original.id);assert.equal(c.state.job,original);c.applyModelEdit();assert.equal(c.state.job,null);assert.equal(c.state.retainedOutcomeDrafts[0].job_id,original.id);assert.equal(c.state.retainedOutcomeDrafts[0].notes,'parent observations');
+    const record={...editReply(parent).review,provenance:'user_confirmed_parameters'};c.renderJob({...original,id:'b'.repeat(32),model_edit:record});assert.match(c.$('generated-model-edit').textContent,/높이를 5mm/);assert.match(c.$('generated-model-edit').textContent,/30.*35/);assert.match(c.$('generated-model-edit').textContent,/aaaaaaaa/);
+    c.changeView=()=>{};c.performModelReplacement({kind:'history',job:original});assert.equal(c.state.modelEditApplied,null);assert.equal(c.$('generated-model-edit').hidden,true);
+  });
+  await check('Invalidating an old model retains exact outcome draft and original storage identity',()=>{
+    const c=fixture();c.state.storage={path:'/original'};c.renderJob(job());c.$('outcome-result').value='failure';c.$('outcome-notes').value='  exact old note\n';
+    c.invalidateCurrentJob('changed');assert.deepEqual(plain(c.state.retainedOutcomeDrafts.map(x=>[x.job_id,x.storage_path,x.result,x.notes])),[['job-a','/original','failure','  exact old note\n']]);assert.equal(c.state.job,null);
+  });
+  await check('Same-dimension regeneration retains old notes only after success and never attaches them to new job',async()=>{
+    const c=fixture();c.state.storage={path:'/original'};c.renderJob(job());c.$('outcome-notes').value='old observation';c.api=async()=>({...job(),id:'new-job'});await c.generateModel();
+    assert.equal(c.state.job.id,'new-job');assert.equal(c.$('outcome-notes').value,'');assert.equal(c.state.retainedOutcomeDrafts[0]?.job_id,'job-a');assert.equal(c.state.retainedOutcomeDrafts[0]?.notes,'old observation');
+  });
+  await check('Failed regeneration and invalid job responses preserve current notes without creating retained replacements',async()=>{
+    for(const malformed of [false,true]){const c=fixture();c.renderJob(job());c.$('outcome-notes').value='  unchanged note\n';c.api=async()=>{if(malformed)return {id:'new-job',result:null};throw new Error('generation failed');};await c.generateModel();assert.equal(c.state.job.id,'job-a');assert.equal(c.$('outcome-notes').value,'  unchanged note\n');assert.equal(c.state.retainedOutcomeDrafts.length,0);assert.equal(c.state.workflowBusy,false);}
+  });
+  await check('Changed edit parents preserve selected draft and report an edit-specific recovery path',async()=>{
+    const c=editFixture();c.api=async()=>editReply();await c.planModelEdit();c.applyModelEdit();const selected=plain(c.state.modelEditApplied);c.api=async()=>{const error=new Error('이전 모델 변경');error.status=409;error.code='model_edit_parent_changed';throw error;};await c.generateModel();assert.deepEqual(plain(c.state.modelEditApplied),selected);assert.equal(c.$('parameter-height').value,'35');assert.match(c.$('model-feedback').textContent,/수정 제안/);assert.doesNotMatch(c.$('model-feedback').textContent,/출처 연결을 해제/);
+  });
+  await check('A prefilled new-model plan protects a pristine unapplied contextual candidate until explicit replacement',async()=>{
+    const c=editFixture();c.state.projectSource=null;c.$('request-text').value='new tray';c.api=async()=>editReply();await c.planModelEdit();const candidate=c.state.modelEditCandidate;assert(candidate);
+    c.api=async()=>({status:'ready',parameters:{template:'tray',width:88},message:'ready'});await c.preparePlan();assert.equal(c.state.workflowBusy,false);assert.equal(c.state.modelReplacement?.kind,'plan');assert.equal(c.state.modelEditCandidate,candidate);assert.equal(c.state.parameters.width,150);assert.equal(c.$('parameter-height').value,'30');
+    c.cancelModelReplacement();assert.equal(c.state.modelEditCandidate,candidate);assert.equal(c.$('request-text').value,'new tray');assert.equal(c.$('model-edit-text').value,'높이를 5mm 늘려줘');assert.equal(c.$('parameter-width').value,'150');
+    await c.preparePlan();c.confirmModelReplacement();assert.equal(c.state.parameters.width,88);assert.equal(c.state.modelEditCandidate,null);
+  });
+  await check('A prefilled new-model plan protects a pristine pending contextual request through cancel and ignores it after confirmed replacement',async()=>{
+    const c=editFixture();c.state.projectSource=null;c.$('request-text').value='new tray';let finish;c.api=path=>path==='/api/model-edits/plan'?new Promise(resolve=>{finish=resolve;}):Promise.resolve({status:'ready',parameters:{template:'tray',width:88},message:'ready'});
+    const pending=c.planModelEdit(),request=c.state.modelEditRequest;assert.equal(c.state.modelEditPending,true);await c.preparePlan();assert.equal(c.state.workflowBusy,false);assert.equal(c.state.modelReplacement?.kind,'plan');assert.equal(c.state.modelEditPending,true);assert.equal(c.state.modelEditRequest,request);assert.equal(c.state.parameters.width,150);
+    c.cancelModelReplacement();assert.equal(c.state.modelEditPending,true);assert.equal(c.state.modelEditRequest,request);assert.equal(c.$('request-text').value,'new tray');assert.equal(c.$('model-edit-text').value,'높이를 5mm 늘려줘');assert.equal(c.$('parameter-width').value,'150');
+    await c.preparePlan();c.confirmModelReplacement();assert.equal(c.state.parameters.width,88);assert.equal(c.state.modelEditPending,false);finish(editReply());await pending;assert.equal(c.state.modelEditCandidate,null);assert.equal(c.state.parameters.width,88);
+  });
+  await check('A first new-model request on pristine defaults applies without replacement while exact customized strings stay protected',async()=>{
+    const clean=fixture();clean.$('request-text').value='new tray';clean.api=async()=>({status:'ready',parameters:{template:'tray',width:88},message:'ready'});await clean.preparePlan();assert.equal(clean.state.parameters.width,88);assert.equal(clean.state.modelReplacement,null);
+    const dirty=fixture();dirty.$('parameter-width').value='120.0';dirty.$('request-text').value='new tray';dirty.api=clean.api;await dirty.preparePlan();assert.equal(dirty.state.parameters.width,120);assert.equal(dirty.state.modelReplacement?.kind,'plan');dirty.cancelModelReplacement();assert.equal(dirty.$('parameter-width').value,'120.0');
+  });
+  await check('Dirty new-model plans await explicit replacement after busy releases and cancellation keeps exact work',async()=>{
+    const c=fixture();c.renderJob(job());c.state.projectSource=project();c.$('parameter-width').value='0120.0';c.$('request-text').value='new tray';c.$('outcome-notes').value='pending';c.api=async()=>({status:'ready',parameters:{template:'tray',width:88},message:'ready'});await c.preparePlan();
+    assert.equal(c.state.workflowBusy,false);assert.equal(c.state.job.id,'job-a');assert.equal(c.$('parameter-width').value,'0120.0');assert.equal(c.state.modelReplacement?.kind,'plan');c.cancelModelReplacement();assert.equal(c.$('outcome-notes').value,'pending');assert.equal(c.state.projectSource.id,'idea');
+  });
   await check('Corrupt profile restoration is atomic before epochs, guided edits and controls change',()=>{
     for (const corrupt of [s=>{s.target_index=4;},s=>{delete s.setup.printer_model;},s=>{s.documents='bad';},s=>{s.schema_version=2;}]) {
       const c=profileFixture();c.$('profile-json').value='{ unfinished';c.state.guidedEdits={nozzle_temperature:' 2.'};
@@ -714,7 +799,7 @@ const studioNamed=(edited=false,draft=null)=>({source:studioInspection(),setting
   });
   await check('Generic/reset drafts clear source and successful text plans clear it',async()=>{
     const c=fixture();c.state.projectSource=project();c.applyDraft('tray');assert.equal(c.state.projectSource,null);
-    c.state.projectSource=project();c.$('request-text').value='request';c.api=async()=>({status:'ready',parameters:{template:'tray',width:100}});await c.preparePlan();assert.equal(c.state.projectSource,null);assert.equal(c.state.parameters.width,100);
+    c.state.projectSource=project();c.$('request-text').value='request';c.api=async()=>({status:'ready',parameters:{template:'tray',width:100}});await c.preparePlan();c.confirmModelReplacement();assert.equal(c.state.projectSource,null);assert.equal(c.state.parameters.width,100);
   });
   await check('History and generated source use the saved snapshot rather than today’s catalog',async()=>{
     const c=fixture(),value=job();value.design_source={kind:'project_catalog',project_id:'idea',recipe_sha256:'b'.repeat(64),recipe:{...project(),title:'Saved old title'}};

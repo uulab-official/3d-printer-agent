@@ -1,5 +1,6 @@
 """Constrained planning. Both rule and LLM modes propose typed template parameters only."""
 import asyncio
+from decimal import Decimal, localcontext
 import json
 import os
 import re
@@ -31,7 +32,12 @@ def _question(message, *, action=None, engine='template_rules'):
 
 
 def _mm(value, unit):
-    return float(value) * (10 if unit and unit.lower() in ('cm','센티미터','센티') else 1)
+    # Keep user-written dimensions exact through conflict comparisons. The
+    # GeometryRequest boundary converts them to public float parameters later.
+    numeric_text = str(value)
+    with localcontext() as context:
+        context.prec = max(28, len(numeric_text) + 1)
+        return Decimal(numeric_text) * (10 if unit and unit.lower() in ('cm','센티미터','센티') else 1)
 
 
 def _route_existing_workflow(text: str) -> dict | None:
@@ -87,8 +93,8 @@ def plan_from_text(text: str) -> dict:
             m=matches[-1]
             values[field]=_mm(m.group(1),m.group(2)); explicit.add(field)
             occupied.extend(match.span() for match in matches)
-    triple=re.search(NUMBER+UNIT+r'\s*[x×*]\s*'+NUMBER+UNIT+r'\s*[x×*]\s*'+NUMBER+UNIT,lowered)
-    if triple:
+    triples=re.finditer(NUMBER+UNIT+r'\s*[x×*]\s*'+NUMBER+UNIT+r'\s*[x×*]\s*'+NUMBER+UNIT,lowered)
+    for triple in triples:
         groups=triple.groups()
         units=groups[1::2]
         normalized={_mm(1,unit) for unit in units if unit}
@@ -192,9 +198,6 @@ async def plan_with_llm(text: str) -> dict:
     routed = _route_existing_workflow(text)
     if routed is not None:
         return routed
-    config=provider_config()
-    if not config['configured']:
-        raise ValueError('LLM 연결이 설정되지 않았습니다. 템플릿 모드를 이용하거나 PPA_LLM_BASE_URL과 PPA_LLM_MODEL을 설정하세요.')
     system=(
         'You plan parameterized 3D-printing models. Return only a JSON object with parameters, explanation in Korean, and questions (array). '
         'Never return code, commands, temperatures, prices or claims of printing success. '
@@ -203,6 +206,14 @@ async def plan_with_llm(text: str) -> dict:
         'For N tray compartments use dividers=N-1. fit_clearance adds to diameter. Missing dimensions must be described as assumptions in explanation. '
         'Allowed parameter schema: '+json.dumps(GeometryRequest.model_json_schema(),ensure_ascii=False)
     )
+    return validate_llm_plan(await request_llm_json(system,text))
+
+
+async def request_llm_json(system: str, text: str) -> dict:
+    """Protected bounded transport shared by the typed model planners."""
+    config=provider_config()
+    if not config['configured']:
+        raise ValueError('LLM 연결이 설정되지 않았습니다. 템플릿 모드를 이용하거나 PPA_LLM_BASE_URL과 PPA_LLM_MODEL을 설정하세요.')
     # Keep the wire budget meaningful: HTTPX decodes compressed responses before
     # yielding aiter_bytes chunks, so a small compressed body could expand first.
     headers={'Content-Type':'application/json', 'Accept-Encoding':'identity'}
@@ -235,7 +246,9 @@ async def plan_with_llm(text: str) -> dict:
             raise ValueError('LLM의 텍스트 응답이 없습니다.')
         content=re.sub(r'^```(?:json)?\s*|\s*```$','',content.strip())
         raw=json.loads(content,parse_constant=lambda x: (_ for _ in ()).throw(ValueError('LLM 응답에는 유한한 JSON 값만 사용할 수 있습니다.')))
-        return validate_llm_plan(raw)
+        if not isinstance(raw,dict):
+            raise ValueError('LLM 응답에는 JSON 객체가 필요합니다.')
+        return raw
     except TimeoutError as exc:
         raise ValueError('LLM 응답 대기 시간을 초과했습니다. 연결 상태를 확인하거나 템플릿 모드를 사용하세요.') from exc
     except httpx.HTTPStatusError as exc:

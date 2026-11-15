@@ -621,3 +621,13 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .studio-library .button-row { flex-wrap: wrap; margin: 12px 0; }
 #studio-workspace-candidate pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .studio-library { padding: 12px; } .studio-library-catalog { grid-template-columns: minmax(0, 1fr); } .studio-library .button { width: 100%; } }
+
+.model-edit-panel { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border, #ddd); min-width: 0; }
+.model-edit-panel textarea { width: 100%; resize: vertical; }
+.model-edit-panel .request-actions { flex-wrap: wrap; gap: .75rem; }
+.model-edit-panel .request-actions > * { min-width: 0; }
+#model-edit-changes { padding-left: 1.25rem; font-variant-numeric: tabular-nums; }
+#model-edit-selected, .history-model-edit, #generated-model-edit { overflow-wrap: anywhere; }
+.history-model-edit { font-size: .85rem; }
+.history-model-edit h3 { font-size: .9rem; }
+@media (max-width: 540px) { .model-edit-panel .request-actions > button { width: 100%; } }

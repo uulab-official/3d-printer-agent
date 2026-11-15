@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -101,6 +101,7 @@
 
   function connectionFailed(message) {
     state.connectionEpoch += 1;
+    cancelModelEdit();
     invalidateStudioRequests();
     state.slicePrepared = false;
     if (state.job) showNotice("slice-feedback", "연결을 다시 확인한 뒤 현재 설정으로 준비해 주세요. 처리 중이던 요청의 결과는 작업 기록에서 확인할 수 있습니다. 요청을 자동으로 반복하지 않습니다.", "warning");
@@ -194,11 +195,13 @@
     $("save-outcome").disabled = busy || !state.token || !state.job;
     updateSliceControls();
     updateDiscoveryControls();
+    renderModelEdit();
     $("model-confirm-replace").disabled = busy || !state.modelReplacement;
     $("model-cancel-replace").disabled = busy;
   }
 
   function invalidateCurrentJob(message) {
+    retainOutcomeDraft();
     cancelSlicerReads();
     state.studioRecorded = null;
     state.studioSettingsRecorded = null;
@@ -487,6 +490,8 @@
   function detachProjectSource() {
     if (state.workflowBusy || !state.projectSource) return;
     state.projectSource = null;
+    state.modelEditApplied = null;
+    cancelModelEdit();
     invalidateCurrentJob("출처 연결을 해제했습니다. 현재 치수로 새 모델을 생성해 주세요.");
     renderProjectSource("draft-source", null);
     updateDiscoveryControls();
@@ -519,6 +524,200 @@
     }
   }
 
+  function modelGeometrySignature() {
+    const template = state.templates.find(item => item.id === state.template);
+    return JSON.stringify([state.template, state.projectSource, ...(template?.editable_fields || []).map(key => {
+      const input = $(`parameter-${key}`);
+      return [key, input.value, Boolean(input.validity?.badInput), input.validity?.valid !== false];
+    })]);
+  }
+
+  function modelEditScope() {
+    return JSON.stringify([modelGeometrySignature(), modelDraftSignature(), state.job?.id || null, state.connectionEpoch, state.storage?.path || null, $("model-edit-text").value, $("model-edit-mode").value]);
+  }
+
+  function validateEditParameters(parameters) {
+    const defaults = { width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
+    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"] };
+    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== 12 || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
+    for (const [key, neutral] of Object.entries(defaults)) {
+      const value = parameters[key];
+      if (!Object.hasOwn(parameters, key) || typeof value !== "number" || !Number.isFinite(value) || ((key === "dividers" || key === "slots") && !Number.isSafeInteger(value)) || (!applicable[parameters.template].includes(key) && value !== neutral)) throw new Error("수정 제안의 치수 응답이 올바르지 않습니다.");
+      const definition = fields[key];
+      if (definition && (value < definition.min || value > definition.max)) throw new Error("수정 제안의 치수 범위를 확인해 주세요.");
+    }
+    return applicable[parameters.template];
+  }
+
+  function currentEditParameters() {
+    const parameters = { template: state.template, width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
+    const template = state.templates.find(item => item.id === state.template);
+    if (!template) throw new Error("수정할 템플릿을 먼저 선택해 주세요.");
+    for (const key of template.editable_fields) {
+      const input = $(`parameter-${key}`);
+      if (!input.value.trim() || input.validity?.badInput || input.validity?.valid === false || !Number.isFinite(Number(input.value))) throw new Error("현재 치수 입력을 완성한 뒤 수정 제안을 요청해 주세요.");
+      parameters[key] = Number(input.value);
+    }
+    validateEditParameters(parameters);
+    return parameters;
+  }
+
+  function modelEditParentJob(parameters) {
+    const job = state.job;
+    if (!job || !/^[a-f0-9]{32}$/.test(job.id) || job.result?.geometry_status !== "validated") return null;
+    try {
+      validateEditParameters(job.result.parameters);
+      return Object.keys(parameters).every(key => parameters[key] === job.result.parameters[key]) ? job.id : null;
+    } catch { return null; }
+  }
+
+  function validateModelEditResponse(response, context) {
+    const fail = () => { throw new Error("수정 제안 응답을 현재 제작안과 일치하는지 확인할 수 없습니다. 입력은 유지했습니다. 다시 요청해 주세요."); };
+    const exact = (value, keys) => Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key)));
+    const hash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+    if (response?.status !== "ready" || response.engine !== context.engine || response.capability !== "current_template_parameters_only" || typeof response.message !== "string" || !response.message.trim() || !Array.isArray(response.questions) || response.questions.length || !Array.isArray(response.assumptions) || response.assumptions.length || Object.hasOwn(response, "parameters")) fail();
+    const review = response.review, selection = review?.selection;
+    if (!exact(review, ["schema_version", "selection", "base_sha256", "parameters", "parameters_sha256", "changes", "review_sha256"]) || review.schema_version !== 1 || !hash(review.base_sha256) || !hash(review.parameters_sha256) || !hash(review.review_sha256) || !exact(selection, ["schema_version", "request_text", "base_parameters", "operations", "parent"]) || selection.schema_version !== 1 || selection.request_text !== context.text) fail();
+    let editable;
+    try { editable = validateEditParameters(review.parameters); validateEditParameters(selection.base_parameters); } catch { fail(); }
+    const keys = ["template", "width", "depth", "height", "wall", "bottom", "dividers", "slots", "cable_diameter", "inset_diameter", "inset_depth", "fit_clearance"];
+    if (review.parameters.template !== context.base.template || keys.some(key => selection.base_parameters[key] !== context.base[key])) fail();
+    if (context.parent) {
+      const parent = selection.parent;
+      if (!exact(parent, ["job_id", "parameters_sha256", "model_sha256", "manifest_sha256"]) || parent.job_id !== context.parent || !hash(parent.parameters_sha256) || !hash(parent.model_sha256) || !hash(parent.manifest_sha256) || parent.parameters_sha256 !== review.base_sha256) fail();
+    } else if (selection.parent !== null) fail();
+    const operations = selection.operations;
+    if (!Array.isArray(operations) || !operations.length || operations.length > 12) fail();
+    const seen = new Set();
+    for (const operation of operations) {
+      if (!exact(operation, ["field", "op", "value"]) || !editable.includes(operation.field) || seen.has(operation.field) || !["set", "add"].includes(operation.op) || typeof operation.value !== "number" || !Number.isFinite(operation.value) || (["dividers", "slots"].includes(operation.field) && (operation.op !== "set" || !Number.isSafeInteger(operation.value)))) fail();
+      seen.add(operation.field);
+      if (operation.op === "set" && review.parameters[operation.field] !== operation.value) fail();
+    }
+    // Review consistency only: the server rederives operations and geometry before CAD.
+    const expectedChanges = keys.slice(1).filter(key => context.base[key] !== review.parameters[key]).map(field => ({ field, before: context.base[field], after: review.parameters[field] }));
+    if (!expectedChanges.length || expectedChanges.some(change => !seen.has(change.field)) || !Array.isArray(review.changes) || review.changes.length !== expectedChanges.length) fail();
+    for (const [index, change] of review.changes.entries()) {
+      const expected = expectedChanges[index];
+      if (!exact(change, ["field", "before", "after"]) || change.field !== expected.field || change.before !== expected.before || change.after !== expected.after) fail();
+    }
+    return JSON.parse(JSON.stringify(review));
+  }
+
+  function renderModelEdit() {
+    if (state.modelEditCandidate && state.modelEditCandidate.scope !== modelEditScope()) state.modelEditCandidate = null;
+    const candidate = state.modelEditCandidate, busy = state.workflowBusy;
+    $("model-edit-review").hidden = !candidate;
+    $("model-edit-review").setAttribute("aria-busy", String(Boolean(state.modelEditPending)));
+    $("model-edit-propose").disabled = busy || !state.token || !state.template;
+    $("model-edit-propose").textContent = state.modelEditPending ? "새 요청으로 다시 제안" : "수정 제안 검토";
+    $("model-edit-apply").disabled = busy || !state.token || !candidate;
+    $("model-edit-cancel").disabled = busy;
+    $("model-edit-changes").replaceChildren();
+    if (candidate) {
+      for (const change of candidate.review.changes) $("model-edit-changes").append(node("li", "", `${fieldNames[change.field] || change.field}: ${change.before} → ${change.after} ${["dividers", "slots"].includes(change.field) ? "개" : "mm"}`));
+    }
+    $("model-edit-selected").hidden = !state.modelEditApplied;
+    $("model-edit-selected").textContent = state.modelEditApplied ? `적용한 최신 수정: ${state.modelEditApplied.request_text} · 다음 생성에 기록됩니다. 치수를 직접 바꾸면 이 수정 선택은 해제됩니다.` : "";
+  }
+
+  function cancelModelEdit() {
+    state.modelEditRequest = (state.modelEditRequest || 0) + 1;
+    state.modelEditCandidate = null;
+    state.modelEditPending = false;
+    state.modelEditBusyRequest = null;
+    renderModelEdit();
+    hideNotice("model-edit-feedback");
+  }
+
+  function modelEditInputChanged() {
+    state.modelEditRequest = (state.modelEditRequest || 0) + 1;
+    state.modelEditCandidate = null;
+    renderModelEdit();
+  }
+
+  function manualModelChanged() {
+    state.modelEditApplied = null;
+    state.modelEditAppliedSignature = null;
+    cancelModelEdit();
+    invalidateCurrentJob("치수가 바뀌었습니다. 새 모델을 생성하면 변경한 형상을 확인할 수 있습니다.");
+  }
+
+  async function planModelEdit() {
+    if (state.workflowBusy || !state.token) return;
+    state.modelEditCandidate = null;
+    let base;
+    try {
+      base = currentEditParameters();
+      if (!$("model-edit-text").value.trim() || $("model-edit-text").value.length > 4000) throw new Error("수정할 내용을 4000자 이내로 입력해 주세요.");
+      if (!["templates", "llm"].includes($("model-edit-mode").value)) throw new Error("수정 제안 방식을 확인해 주세요.");
+    } catch (error) { renderModelEdit(); showNotice("model-edit-feedback", error.message, "error"); return; }
+    const request = state.modelEditRequest = (state.modelEditRequest || 0) + 1, scope = modelEditScope();
+    const context = { base, text: $("model-edit-text").value, parent: modelEditParentJob(base), engine: $("model-edit-mode").value === "llm" ? "llm" : "template_rules" };
+    const current = () => request === state.modelEditRequest && scope === modelEditScope();
+    const payload = { text: context.text, mode: $("model-edit-mode").value, base_parameters: base };
+    if (context.parent) payload.parent_job_id = context.parent;
+    state.modelEditPending = true;
+    state.modelEditBusyRequest = request;
+    renderModelEdit();
+    showNotice("model-edit-feedback", "현재 치수의 수정 제안을 요청하고 있습니다. 적용 전에는 제작안과 모델을 바꾸지 않습니다.");
+    try {
+      const response = await api("/api/model-edits/plan", payload, undefined, { current });
+      if (!current()) return;
+      if (response.status === "ready") {
+        const review = validateModelEditResponse(response, context);
+        state.modelEditCandidate = { review, scope };
+        showNotice("model-edit-feedback", "바뀔 치수를 확인한 뒤 적용해 주세요. 모델 생성은 별도로 시작합니다.", "success");
+        renderModelEdit();
+        $("model-edit-review-heading").focus({ preventScroll: true });
+      } else if (response.status === "needs_input" && !Object.hasOwn(response, "review") && !Object.hasOwn(response, "parameters") && response.engine === context.engine && response.capability === "current_template_parameters_only" && Array.isArray(response.questions) && response.questions.every(question => typeof question === "string")) {
+        showNotice("model-edit-feedback", response.message || "수정할 치수를 더 구체적으로 알려주세요.", "info", response.questions);
+      } else if (["open_profiles", "open_offers"].includes(response.action) && !response.review && !response.parameters) {
+        showNotice("model-edit-feedback", response.message || "해당 작업 화면에서 요청을 이어가 주세요.");
+        const view = response.action === "open_profiles" ? "profiles" : "offers";
+        const button = node("button", "button button-secondary", `${pageNames[view]} 열기`);
+        button.type = "button";
+        button.addEventListener("click", () => changeView(view));
+        $("model-edit-feedback").append(button);
+      } else throw new Error("수정 제안 응답을 확인할 수 없습니다. 현재 입력은 유지했습니다.");
+    } catch (error) { if (current()) showNotice("model-edit-feedback", error.message, "error"); }
+    finally {
+      if (state.modelEditBusyRequest === request) {
+        state.modelEditPending = false;
+        state.modelEditBusyRequest = null;
+        renderModelEdit();
+      }
+    }
+  }
+
+  function applyModelEdit() {
+    const candidate = state.modelEditCandidate;
+    if (state.workflowBusy || !state.token || !candidate || candidate.scope !== modelEditScope()) { renderModelEdit(); return; }
+    retainOutcomeDraft();
+    state.modelEditApplied = candidate.review.selection;
+    for (const change of candidate.review.changes) {
+      $(`parameter-${change.field}`).value = String(change.after);
+      state.parameters[change.field] = change.after;
+    }
+    state.modelEditAppliedSignature = modelGeometrySignature();
+    cancelModelEdit();
+    invalidateCurrentJob("검토한 치수 수정을 적용했습니다. CAD 모델을 생성하면 최신 수정과 원본 출처를 기록합니다.");
+    showNotice("model-edit-feedback", "치수 수정을 적용했습니다. 다른 치수와 시작 설계는 유지했습니다. CAD 모델을 별도로 생성해 주세요.", "success");
+    $("parameter-heading").focus({ preventScroll: true });
+  }
+
+  function renderModelEditRecord(id, record) {
+    const area = typeof id === "string" ? $(id) : id;
+    area.replaceChildren();
+    area.hidden = !record;
+    if (!record) return;
+    area.append(node("h3", "", "기록된 최신 치수 수정"), node("p", "", record.selection.request_text));
+    const changes = node("ul");
+    for (const change of record.changes) changes.append(node("li", "", `${fieldNames[change.field] || change.field}: ${change.before} → ${change.after}`));
+    area.append(changes, node("p", "muted", "사용자가 확인한 치수입니다. 전체 대화 이력이나 실물 출력 검증을 뜻하지 않습니다."));
+    if (record.selection.parent) area.append(node("p", "source-path", `이전 모델 작업 ID: ${record.selection.parent.job_id}`));
+  }
+
   function modelDraftSignature() {
     const template = state.templates.find((item) => item.id === state.template);
     return JSON.stringify([state.template, $("request-text").value, $("plan-mode").value, state.projectSource?.id || state.projectSource?.project_id, state.projectSource?.recipe_sha256, ...(template?.editable_fields || []).map((key) => {
@@ -547,7 +746,7 @@
   }
 
   function hasPendingWork() {
-    return state.retainedOutcomeDrafts.length > 0 || state.workflowBusy || state.workspaceBusy || state.offersPending || offersHaveUnsavedChanges() || modelHasUnsavedChanges() || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges() || workspaceDirty();
+    return Boolean(state.modelEditPending || state.modelEditCandidate) || state.retainedOutcomeDrafts.length > 0 || state.workflowBusy || state.workspaceBusy || state.offersPending || offersHaveUnsavedChanges() || modelHasUnsavedChanges() || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges() || workspaceDirty();
   }
 
   function replacementSignature() {
@@ -562,15 +761,24 @@
     if (previous?.button?.isConnected) previous.button.focus({ preventScroll: true });
   }
 
+  function newPlanHasPendingWork() {
+    if (state.modelEditPending || state.modelEditCandidate || state.job || state.projectSource || state.modelEditApplied || state.retainedOutcomeDrafts.length || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges()) return true;
+    const template = state.templates.find(item => item.id === state.template);
+    return (template?.editable_fields || []).some(key => {
+      const input = $(`parameter-${key}`);
+      return input.validity?.badInput || input.validity?.valid === false || input.value !== String(template.defaults[key]);
+    });
+  }
+
   function requestModelReplacement(action) {
     if (state.workflowBusy) return;
     cancelModelReplacement();
     cancelProjectApplication();
-    if (modelHasUnsavedChanges() || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges()) {
+    if (action.kind === "plan" ? newPlanHasPendingWork() : (state.retainedOutcomeDrafts.length || modelHasUnsavedChanges() || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges())) {
       state.modelReplacement = { ...action, signature: replacementSignature() };
       const titles = { history: "현재 제작안을 저장된 모델로 바꿀까요?", retry: "현재 제작안을 이 기록의 치수로 바꿀까요?", template: "현재 제작안을 다른 템플릿으로 바꿀까요?", reset: "현재 제작안을 기본 치수로 되돌릴까요?" };
       $("model-replace-title").textContent = titles[action.kind] || "현재 제작안을 바꿀까요?";
-      $("model-replace-detail").textContent = `${action.title || "선택한 제작안"}을 준비합니다. 저장하지 않은 치수와 출력 메모가 바뀔 수 있으며, 현재 미리보기와 다운로드는 교체됩니다. 생성해 둔 파일은 작업 기록에 남습니다.`;
+      $("model-replace-detail").textContent = `${action.title || "선택한 제작안"}을 준비합니다. 현재 치수와 미리보기·다운로드를 교체합니다. 저장하지 않은 출력 메모는 원래 작업과 저장 위치를 표시해 이 화면에 보관합니다. 생성해 둔 파일은 작업 기록에 남습니다.`;
       $("model-replace-confirm").hidden = false;
       updateWorkflowControls();
       $("model-replace-confirm").scrollIntoView?.({ block: "center", behavior: "auto" });
@@ -605,6 +813,9 @@
       hideNotice("plan-feedback");
       showNotice("model-feedback", "저장된 요청의 치수를 준비했습니다. 치수를 확인한 뒤 새 모델을 생성해 주세요. 이전 중단·실패 기록은 그대로 남습니다.");
       changeView("models");
+    } else if (action.kind === "plan") {
+      applyDraft(action.result.parameters.template, action.result.parameters);
+      showNotice("plan-feedback", action.result.message, "success", action.result.assumptions || []);
     } else {
       applyDraft(action.template);
       hideNotice("plan-feedback");
@@ -645,6 +856,9 @@
     const template = state.templates.find((item) => item.id === templateId);
     if (!template) throw new Error("지원하지 않는 제작 템플릿입니다.");
     cancelModelReplacement();
+    cancelModelEdit();
+    state.modelEditApplied = null;
+    state.modelEditAppliedSignature = null;
     state.modelCleanSignature = null;
     state.projectSource = source;
     state.projectReplacement = null;
@@ -686,7 +900,7 @@
   }
 
   $("model-form").addEventListener("input", (event) => {
-    if (event.target.dataset.parameter) invalidateCurrentJob("치수가 바뀌었습니다. 새 모델을 생성하면 변경한 형상을 확인할 수 있습니다.");
+    if (event.target.dataset.parameter) manualModelChanged();
   });
 
   $("reset-parameters").addEventListener("click", () => requestModelReplacement({ kind: "reset", template: state.template, title: "현재 템플릿의 기본 치수", button: $("reset-parameters") }));
@@ -695,30 +909,34 @@
 
   async function preparePlan() {
     if (state.workflowBusy) return;
-    const signature = modelDraftSignature();
+    const signature = modelDraftSignature(), epoch = state.connectionEpoch;
+    const current = () => signature === modelDraftSignature() && epoch === state.connectionEpoch;
     hideNotice("plan-feedback");
     try {
-      await withWorkflow($("plan-button"), "요청 해석 중", async () => {
-        const result = await api("/api/plan", { text: $("request-text").value, mode: $("plan-mode").value }, undefined, { current: () => signature === modelDraftSignature() });
-        if (signature !== modelDraftSignature()) return;
-        if (result.status === "ready" && result.parameters) {
-          applyDraft(result.parameters.template, result.parameters);
-          showNotice("plan-feedback", result.message, "success", result.assumptions || []);
-          $("parameter-heading").focus({ preventScroll: true });
-          if (result.engine === "llm") $("provider-note").textContent = "설정된 LLM에서 제작안을 받았습니다. 치수를 확인한 뒤 모델을 생성하세요.";
-        } else {
-          showNotice("plan-feedback", result.message || "추가 정보가 필요합니다.", "info", (result.questions || []).filter((item) => item !== result.message));
-          const view = { open_profiles: "profiles", open_offers: "offers" }[result.action];
-          if (view) {
-            const button = node("button", "button button-secondary", `${pageNames[view]} 열기`);
-            button.type = "button";
-            button.addEventListener("click", () => changeView(view));
-            $("plan-feedback").append(button);
-          }
+      const result = await withWorkflow($("plan-button"), "요청 해석 중", () => api("/api/plan", { text: $("request-text").value, mode: $("plan-mode").value }, undefined, { current }));
+      if (!current()) return;
+      if (result.status === "ready" && result.parameters) {
+        requestModelReplacement({ kind: "plan", result, title: "요청에서 준비한 새 제작안", button: $("plan-button") });
+      } else {
+        showNotice("plan-feedback", result.message || "추가 정보가 필요합니다.", "info", (result.questions || []).filter((item) => item !== result.message));
+        const view = { open_profiles: "profiles", open_offers: "offers" }[result.action];
+        if (view) {
+          const button = node("button", "button button-secondary", `${pageNames[view]} 열기`);
+          button.type = "button";
+          button.addEventListener("click", () => changeView(view));
+          $("plan-feedback").append(button);
         }
-      });
-    } catch (error) { showNotice("plan-feedback", error.message, "error"); }
+      }
+    } catch (error) { if (current() || (error.code === "connection_changed" && signature === modelDraftSignature())) showNotice("plan-feedback", error.message, "error"); }
   }
+
+  $("model-edit-form").addEventListener("submit", event => { event.preventDefault(); planModelEdit(); });
+  $("model-edit-apply").addEventListener("click", applyModelEdit);
+  $("model-edit-cancel").addEventListener("click", cancelModelEdit);
+  $("model-edit-text").addEventListener("input", modelEditInputChanged);
+  $("model-edit-mode").addEventListener("change", modelEditInputChanged);
+  $("request-text").addEventListener("input", modelEditInputChanged);
+  $("plan-mode").addEventListener("change", modelEditInputChanged);
 
   $("plan-form").addEventListener("submit", (event) => { event.preventDefault(); preparePlan(); });
 
@@ -735,6 +953,7 @@
     const signature = modelDraftSignature();
     const parameters = { template: state.template };
     for (const input of document.querySelectorAll("[data-parameter]")) parameters[input.dataset.parameter] = input.valueAsNumber;
+    if (state.modelEditApplied && state.modelEditAppliedSignature === modelGeometrySignature()) parameters.model_edit = state.modelEditApplied;
     if (state.projectSource) parameters.project_selection = { id: state.projectSource.project_id || state.projectSource.id, recipe_sha256: state.projectSource.recipe_sha256 };
     try {
       await withWorkflow($("generate-button"), "CAD 생성 · 검증 중", async () => {
@@ -748,7 +967,7 @@
         showNotice("model-feedback", "실제 CAD 모델과 파일을 생성했습니다. 오른쪽에서 형상과 검증 결과를 확인하세요.", "success");
         toast("모델 파일이 준비됐습니다.");
       });
-    } catch (error) { showNotice("model-feedback", error.status === 409 && error.code !== "resource_busy" && state.projectSource ? `${error.message} 현재 치수는 유지했습니다. 출처 연결을 해제하거나 새 시작점을 선택한 뒤 다시 생성해 주세요.` : error.message, "error"); }
+    } catch (error) { showNotice("model-feedback", error.code === "model_edit_parent_changed" ? `${error.message} 현재 치수와 수정 선택은 유지했습니다. 이전 모델 기록을 확인한 뒤 수정 제안을 다시 검토해 주세요.` : error.status === 409 && error.code !== "resource_busy" && state.projectSource ? `${error.message} 현재 치수는 유지했습니다. 출처 연결을 해제하거나 새 시작점을 선택한 뒤 다시 생성해 주세요.` : error.message, "error"); }
   }
 
   $("model-form").addEventListener("submit", (event) => { event.preventDefault(); generateModel(); });
@@ -789,6 +1008,7 @@
   function renderJob(job) {
     const result = job.result;
     if (!result) throw new Error("작업에 모델 결과가 없습니다.");
+    if (state.job?.id !== job.id) retainOutcomeDraft();
     cancelSlicerReads();
     state.job = job;
     state.studioRecorded = job.latest_slice?.plan?.kind === "studio_project" ? job.latest_slice.plan.project_source || null : null;
@@ -796,6 +1016,7 @@
     state.studioSettingsRecordedReview = job.latest_slice?.plan?.settings_review ?? null;
     state.studioSavedIdentity = JSON.stringify([studioSourceIdentity(state.studioRecorded), studioSettingsIdentity(state.studioSettingsRecorded)]);
     renderProjectSource("generated-source", job.design_source);
+    renderModelEditRecord("generated-model-edit", job.model_edit);
     state.slicePrepared = false;
     $("model-result").hidden = false;
     $("outcome-card").hidden = false;
@@ -2833,6 +3054,12 @@
       const card = node("article", "history-item");
       const title = node("div");
       title.append(node("h3", "", job.title || "생성한 모델"), node("p", "", dateTime(job.created_at)));
+      if (job.model_edit) {
+        const edit = node("div", "history-model-edit");
+        edit.id = `history-model-edit-${job.id}`;
+        title.append(edit);
+        renderModelEditRecord(edit, job.model_edit);
+      }
       if (job.diagnostic) title.append(node("p", "history-diagnostic", job.diagnostic));
       const statuses = node("div", "history-statuses");
       const warning = ["failed", "interrupted", "unreadable"].includes(job.status);
@@ -3050,7 +3277,7 @@
     area.replaceChildren();
     area.hidden = !state.retainedOutcomeDrafts.length;
     if (area.hidden) return;
-    area.append(node("h3", "", "저장하지 않은 이전 출력 메모"), node("p", "", "저장 위치를 바꿀 때 입력 중이던 내용을 이 화면에 보관했습니다. 원래 작업에 옮기거나 복사한 뒤 보관을 해제하세요. 새 모델에 자동으로 연결하거나 저장하지 않습니다."));
+    area.append(node("h3", "", "저장하지 않은 이전 출력 메모"), node("p", "", "제작안이나 저장 위치를 바꿀 때 입력 중이던 내용을 이 화면에 보관했습니다. 원래 작업에 옮기거나 복사한 뒤 보관을 해제하세요. 새 모델에 자동으로 연결하거나 저장하지 않습니다."));
     const labels = { success: "출력 성공 · 입력 중", failure: "출력 실패 · 입력 중", not_tested: "출력 미실시 · 입력 중" };
     for (const draft of state.retainedOutcomeDrafts) {
       const details = node("details", "help-details");
@@ -3067,11 +3294,18 @@
     }
   }
 
+  function retainOutcomeDraft(storagePath = state.storage?.path || "저장 위치 미확인") {
+    if (!outcomeHasUnsavedChanges()) return;
+    const draft = { job_id: state.job.id, title: state.job.title, storage_path: storagePath, result: $("outcome-result").value, notes: $("outcome-notes").value };
+    if (!state.retainedOutcomeDrafts.some(item => JSON.stringify(item) === JSON.stringify(draft))) state.retainedOutcomeDrafts.push(draft);
+    renderRetainedOutcomes();
+  }
+
   function detachPreviousStorage(previousPath) {
-    if (outcomeHasUnsavedChanges()) {
-      state.retainedOutcomeDrafts.push({ job_id: state.job.id, title: state.job.title, storage_path: previousPath, result: $("outcome-result").value, notes: $("outcome-notes").value });
-      renderRetainedOutcomes();
-    }
+    retainOutcomeDraft(previousPath);
+    state.modelEditApplied = null;
+    state.modelEditAppliedSignature = null;
+    cancelModelEdit();
     const hadWorkspace = Boolean(state.workspaceId) || workspaceDirty();
     state.studioWorkspaceEpoch = (state.studioWorkspaceEpoch || 0) + 1;
     state.studioWorkspaceId = null;
@@ -3128,6 +3362,7 @@
     const request = ++state.bootstrapRequest;
     const previousStoragePath = state.storage?.path;
     state.connectionEpoch += 1;
+    cancelModelEdit();
     invalidateStudioRequests();
     state.slicePrepared = false;
     if (state.job) showNotice("slice-feedback", "연결을 다시 확인합니다. 현재 입력은 유지하며 실행 계획은 새로 준비해야 합니다. 처리 중이던 요청의 결과는 작업 기록에서 확인해 주세요.", "info");
@@ -3162,6 +3397,9 @@
       document.title = `${name} · 로컬 작업 공간`;
       $("app-version").textContent = data.app?.version ? `Version ${data.app.version}` : "버전 정보 없음";
       renderSlicerEnvironment();
+      const editLlmOption = $("model-edit-mode").querySelector('option[value="llm"]');
+      editLlmOption.disabled = !state.provider.configured;
+      editLlmOption.textContent = state.provider.configured ? "LLM 모드 · 설정 있음" : "LLM 모드 · 미설정";
       const llmOption = $("plan-mode").querySelector('option[value="llm"]');
       llmOption.disabled = !state.provider.configured;
       llmOption.textContent = state.provider.configured ? "LLM 모드 · 설정 있음" : "LLM 모드 · 미설정";

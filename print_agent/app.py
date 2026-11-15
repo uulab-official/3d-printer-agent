@@ -24,6 +24,7 @@ from .discovery import (
     project_catalog, recommend_projects, resolve_project_selection,
 )
 from .geometry import generate_model, template_catalog
+from .model_edits import model_edit_record, normalize_parameters, plan_model_edit, plan_model_edit_with_llm
 from .offers import compare_offers
 from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
@@ -137,9 +138,25 @@ class PlanPayload(StrictPayload):
     mode: Literal['templates','llm'] = 'templates'
 
 
+class ModelEditPlanPayload(PlanPayload):
+    base_parameters: dict
+    parent_job_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
+
+
 class ModelPayload(GeometryRequest):
     """A source reference accompanies geometry; it never becomes CAD parameters."""
     project_selection: ProjectSelection | None = None
+    model_edit: dict | None = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def explicit_edit_geometry(cls, value):
+        if isinstance(value, dict) and value.get('model_edit') is not None:
+            # Preserve the strict edit contract before GeometryRequest's legacy
+            # float coercion can erase booleans, strings or missing fields.
+            normalize_parameters({key: item for key, item in value.items()
+                                  if key not in {'project_selection', 'model_edit'}})
+        return value
 
 
 class ProfilePayload(StrictPayload):
@@ -354,16 +371,36 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     async def plan(payload: PlanPayload):
         return await plan_with_llm(payload.text) if payload.mode == 'llm' else plan_from_text(payload.text)
 
+    @app.post('/api/model-edits/plan')
+    async def model_edits_plan(payload: ModelEditPlanPayload):
+        base = normalize_parameters(payload.base_parameters)
+        parent = (store.model_edit_parent(payload.parent_job_id, base)
+                  if payload.parent_job_id is not None else None)
+        if payload.mode == 'llm':
+            return await plan_model_edit_with_llm(payload.text, base, parent=parent)
+        return plan_model_edit(payload.text, base, parent=parent)
+
     @app.post('/api/models')
     def models(payload: ModelPayload):
-        spec = GeometryRequest.model_validate(payload.model_dump(exclude={'project_selection'}))
+        spec = GeometryRequest.model_validate(payload.model_dump(exclude={'project_selection', 'model_edit'}))
         design_source = (resolve_project_selection(payload.project_selection, spec)
                          if payload.project_selection is not None else None)
+        edit = (model_edit_record(payload.model_edit, spec.model_dump())
+                if payload.model_edit is not None else None)
+        if edit is not None and edit['selection']['parent'] is not None:
+            expected_parent = edit['selection']['parent']
+            try:
+                current_parent = store.model_edit_parent(expected_parent['job_id'], edit['selection']['base_parameters'])
+                if current_parent != expected_parent:
+                    raise ValueError('Parent identity changed')
+            except (ValueError, KeyError, OSError, sqlite3.Error):
+                return JSONResponse({'detail': '수정의 기준 모델을 확인할 수 없거나 원본이 달라졌습니다. 작업 기록을 확인하고 수정안을 다시 검토해 주세요.',
+                                     'code': 'model_edit_parent_changed'}, status_code=409)
         if not CAD_LOCK.acquire(blocking=False):
             return resource_busy()
         job_id = None
         try:
-            job_id, folder = store.reserve(request=spec.model_dump(), design_source=design_source)
+            job_id, folder = store.reserve(request=spec.model_dump(), design_source=design_source, model_edit=edit)
             result = generate_model(spec,folder)
             return store.finish(job_id,result,design_source=design_source)
         except ValueError as exc:

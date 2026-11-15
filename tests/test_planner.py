@@ -3,6 +3,29 @@ from print_agent.planner import plan_from_text, validate_llm_plan
 
 
 class PlannerTests(unittest.TestCase):
+    def test_conflicting_later_xyz_triple_requires_clarification(self):
+        self.assertEqual(plan_from_text('수납함 120x80x35mm 그리고 130x80x35mm')['status'],'needs_input')
+
+    def test_equivalent_repeated_xyz_triples_and_named_values_are_accepted(self):
+        result=plan_from_text('수납함 120x80x35mm 12x8x3.5cm 가로 120mm')
+        self.assertEqual(result['status'],'ready')
+        self.assertEqual(result['parameters']['height'],35)
+
+    def test_equivalent_decimal_unit_triples_are_accepted_in_both_orders(self):
+        for text in ('트레이 1.06x8x3.5cm 10.6x80x35mm',
+                     '트레이 10.6x80x35mm 1.06x8x3.5cm'):
+            with self.subTest(text=text):
+                result=plan_from_text(text)
+                self.assertEqual(result['status'],'ready')
+                self.assertEqual([result['parameters'][field] for field in ('width','depth','height')],[10.6,80,35])
+
+    def test_distinct_adjacent_decimal_triples_still_require_clarification(self):
+        for text in ('트레이 1.06x8x3.5cm 10.6000001x80x35mm',
+                     '트레이 10.6000001x80x35mm 1.06x8x3.5cm',
+                     '트레이 10.6x80x35mm 10.6000000000000001x80x35mm'):
+            with self.subTest(text=text):
+                self.assertEqual(plan_from_text(text)['status'],'needs_input')
+
     def test_unsupported_shapes_are_not_silently_simplified(self):
         for text in ('원형 수납함 가로 100mm 높이 30mm 만들어줘','손잡이 달린 수납함 만들어줘'):
             self.assertEqual(plan_from_text(text)['status'],'needs_input')

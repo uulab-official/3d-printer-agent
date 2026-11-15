@@ -2,9 +2,11 @@
 
 Date: 2026-11-15 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.6 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.7 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.7 adds [contextual model edits](MODEL_EDITS.md): typed changes to the current template, explicit before/after review and application, preserved unspecified parameters and beginner-project origin, and a rederived edit record bound to verified parent artifacts. Job replacement retains unsaved print-outcome drafts with their original identity. New-model planning now rejects conflicting XYZ triples. Source-bound release qualification is pending for this implementation; v0.6 evidence below remains historical.
 
 Version 0.6 adds a named [Studio setup library](STUDIO_LIBRARY.md), exact unfinished drafts, and metadata discovery of earlier originals/revisions without CAD history. It also carries verified CAD bytes through preparation and rejects corrupt saved filament rows before restoring browser input. The exact qualified wheel is published in [v0.6.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.6.0); source-bound observations are recorded below. Earlier release evidence remains historical.
 
