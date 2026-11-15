@@ -16,7 +16,7 @@
 
 **설정을 CAD 작업과 별도로 저장하고 다시 열 수 있습니다.** [Studio 설정 보관함](docs/STUDIO_LIBRARY.md)은 이름 붙인 설정과 정확한 미완성 입력을 보관합니다. 이전 버전의 원본·변경 기록도 목록에서 찾으며, 다시 열 때 검사하고 후보를 직접 선택합니다. 다른 탭과의 저장 충돌과 손상된 항목은 현재 초안을 보존한 채 안내합니다.
 
-**현재 제작안에서 필요한 치수만 수정할 수 있습니다.** “높이를 5mm 늘려줘”처럼 요청하면 기존 치수를 유지한 변경 전후를 보여 줍니다. 직접 적용한 뒤 새 CAD를 만들며, 시작안과 수정 기록이 함께 남습니다. 새 제작안 적용·재생성 시 작성 중인 출력 메모도 원래 작업과 연결해 화면에 보관합니다. [현재 제작안 수정 안내](docs/MODEL_EDITS.md)를 확인하세요.
+**현재 제작안에서 필요한 치수만 수정할 수 있습니다.** “높이를 5mm 늘려줘”처럼 요청하면 기존 치수를 유지한 변경 전후를 보여 줍니다. 직접 적용한 뒤 새 CAD를 만들며, 시작안과 수정 기록이 작업 이력과 내보내기 파일에 함께 남습니다. 새 제작안 적용·재생성 시 작성 중인 출력 메모도 원래 작업과 연결해 화면에 임시 보관합니다. 브라우저를 닫기 전에 원래 작업에 저장하거나 복사하세요. [현재 제작안 수정 안내](docs/MODEL_EDITS.md)를 확인하세요.
 
 ![실제 생성한 세 CAD 모델](examples/model-preview.png)
 
@@ -26,7 +26,7 @@
 
 권장 실행 경로는 **Python 3.12 가상환경**입니다. Linux·macOS·Windows의 설치 패키지 검증과 native Bambu 실행 검증은 분리합니다. 플랫폼별로 실제 통과한 커밋과 범위는 [검증 기록](docs/VERIFICATION.md)을 확인하세요. 이 앱은 자신의 PC에서 사용하는 단일 사용자 앱이며 공개 서버로 배포하는 구성은 제공하지 않습니다.
 
-현재 공개된 패키지는 [검증된 v0.6.0 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.6.0)와 [설치·릴리스 안내](docs/RELEASES.md)를 확인하세요. 같은 wheel의 Ubuntu·macOS·Windows 설치 검사는 각각 235개, 실제 데스크톱·모바일 Chromium 검사는 총 46개를 통과했습니다. Studio 설정 보관함의 CAD 생성 전 저장, 정확한 미완성 입력, 실제 재시작·백업·복원과 복원된 설정의 재사용을 포함합니다. 실제 Linux Studio의 네 가지 합성 슬라이싱 경로도 통과했으며, 공개 파일 7개를 다시 내려받아 검증에 사용한 바이트와 대조했습니다. 정확한 소스와 진단·검증 범위는 [검증 기록](docs/VERIFICATION.md)에 남깁니다. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
+현재 공개된 패키지는 [검증된 v0.7.0 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.7.0)와 [설치·릴리스 안내](docs/RELEASES.md)를 확인하세요. 같은 wheel의 Ubuntu·macOS·Windows 설치 검사는 각각 **274개**, 실제 데스크톱·모바일 Chromium 검사는 총 **50개**를 통과했습니다. 현재 제작안의 치수 수정, 원본과 수정 기록의 연결, 이력 표시와 실제 재시작·백업·복원 후 설정 재사용을 포함합니다. 실제 Linux Studio의 기존 네 합성 슬라이싱 경로도 통과했으며, 공개 파일 7개를 인증 없이 다시 내려받아 검증한 파일과 대조했습니다. 정확한 소스와 진단·검증 범위는 [검증 기록](docs/VERIFICATION.md)에 남깁니다. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
 
 저장소를 받은 다음 프로젝트 폴더로 이동합니다.
 
@@ -57,7 +57,6 @@ py -3.12 -m venv .venv
 ```bash
 python -m print_agent doctor
 python -m print_agent --port 8766 --data-dir ./my-print-data
-python -m unittest discover -v
 ```
 
 화면 위의 **로컬 연결과 저장 위치**에서 실제 데이터 폴더를 확인할 수 있습니다.
@@ -72,7 +71,14 @@ python -m unittest discover -v
 실패하면 종료 코드 1을 반환합니다. 설치·업데이트·백업·복구 절차는
 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
 
-UI 상태 회귀 검사는 개발용 Node.js가 있을 때 `node tests/test_ui_state.cjs`로 실행할 수 있습니다. DOM 대역을 사용하는 검사이며 실제 브라우저 테스트와 구분합니다.
+전체 개발 테스트에는 **Node.js 22 이상**도 필요합니다. Python 테스트 일부가 실제 JavaScript JSON 직렬화를 확인하기 때문입니다. 앱 실행과 설치 패키지 검증에는 Node.js가 필요하지 않습니다.
+
+```bash
+python -m unittest discover -v
+node tests/test_ui_state.cjs
+```
+
+UI 상태 회귀 검사는 DOM 대역을 사용하며 실제 브라우저 테스트와 구분합니다.
 
 CI는 Python 검사와 패키지 설치, UI 상태 검사, 실제 Chromium에서의 브라우저 검사를 실행하도록 구성했습니다. 실행 결과는 [GitHub Actions](https://github.com/uulab-official/3d-printer-agent/actions)에서 커밋별로 확인합니다. 브라우저 검사에는 개발용 Node.js가 필요하며 실행 방법은 [기여 안내](CONTRIBUTING.md)를 따릅니다.
 
