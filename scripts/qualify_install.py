@@ -517,6 +517,11 @@ def qualify(args, report):
               and contextual_job['id'] != edit_parent['id'])
         check('model_edit_no_print_claim', contextual_job['result']['print_status'] == 'not_tested'
               and contextual_job['latest_slice'] is None)
+        contextual_history = get_json(server, '/api/jobs?limit=20')
+        check('model_edit_history_lists_verified_record',
+              [item.get('model_edit') for item in contextual_history['jobs']
+               if item['id'] == contextual_job['id']] == [contextual_record])
+        write_json(downloads / 'contextual-history.json', contextual_history)
         contextual_manifest = get_json(server, contextual_job['artifacts']['manifest'])
         contextual_downloads = {}
         for artifact_kind, metadata in contextual_manifest['artifacts'].items():
@@ -635,6 +640,11 @@ def qualify(args, report):
         check('model_edit_survives_real_restart', contextual_reopened == contextual_job
               and get_json(restarted, contextual_job['artifacts']['manifest']) == contextual_manifest)
         write_json(downloads / 'restarted-contextual-job.json', contextual_reopened)
+        restarted_contextual_history = get_json(restarted, '/api/jobs?limit=20')
+        check('model_edit_history_survives_real_restart',
+              [item.get('model_edit') for item in restarted_contextual_history['jobs']
+               if item['id'] == contextual_job['id']] == [contextual_record])
+        write_json(downloads / 'restarted-contextual-history.json', restarted_contextual_history)
         abandoned = get_json(restarted, '/api/jobs/' + interrupted_id)
         check('interrupted_job_preserves_inputs_without_verified_outputs', abandoned['status'] == 'interrupted'
               and abandoned['request'] == saved_request and abandoned['design_source'] == source_record
@@ -758,6 +768,11 @@ def qualify(args, report):
         check('model_edit_survives_backup_restore', contextual_restored == contextual_job and code == 200
               and contextual_restored_bytes == contextual_downloads['three_mf']
               and get_json(restored_server, contextual_job['artifacts']['manifest']) == contextual_manifest)
+        restored_contextual_history = get_json(restored_server, '/api/jobs?limit=20')
+        check('model_edit_history_survives_backup_restore',
+              [item.get('model_edit') for item in restored_contextual_history['jobs']
+               if item['id'] == contextual_job['id']] == [contextual_record])
+        write_json(downloads / 'restored-contextual-history.json', restored_contextual_history)
         contextual_prepared = get_json(restored_server, '/api/slice', method='POST', token=restored_bootstrap['session_token'],
             payload={'job_id': contextual_job['id'], 'studio_settings_revision_id': revision_id, 'execute': False})
         contextual_prepared_job = get_json(restored_server, '/api/jobs/' + contextual_job['id'])

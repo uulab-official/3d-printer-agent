@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from print_agent import storage
 from print_agent.model_edits import model_edit_record
@@ -246,6 +247,71 @@ class ModelEditRecordTests(unittest.TestCase):
         job_id, _ = self.parent_job()
         self.assertNotIn('model_edit', self.store.get(job_id))
         self.assertNotIn('model_edit', json.loads(self.store.read_artifact(job_id, 'manifest')[1]))
+
+    def test_paginated_history_exposes_exact_validated_edit_and_keeps_legacy_summary(self):
+        legacy_id, _ = self.parent_job()
+        edited_id, folder = self.reserve_edit()
+        edited = self.store.finish(edited_id, self.result(folder, self.parameters))
+        expected_record = edited['model_edit']
+        summary_keys = {'id', 'created_at', 'title', 'template', 'status', 'user_outcome'}
+        summaries = {}
+        page = self.store.list_jobs_page(limit=1)
+        while True:
+            self.assertEqual(len(page['jobs']), 1)
+            item = page['jobs'][0]
+            summaries[item['id']] = item
+            if page['next_cursor'] is None:
+                break
+            page = self.store.list_jobs_page(limit=1, before=page['next_cursor'])
+        self.assertEqual(set(summaries), {legacy_id, edited_id})
+        self.assertEqual(summaries[edited_id].get('model_edit'), expected_record)
+        self.assertEqual(set(summaries[edited_id]), summary_keys | {'model_edit'})
+        self.assertEqual(set(summaries[legacy_id]), summary_keys)
+        summaries[edited_id]['model_edit']['selection']['request_text'] = 'mutated response'
+        reopened = storage.JobStore(self.root)
+        self.assertEqual(next(j for j in reopened.list_jobs() if j['id'] == edited_id)['model_edit'], expected_record)
+
+    def test_history_reads_only_displayed_page_records_and_retains_cursor(self):
+        for _ in range(3):
+            job_id, folder = self.reserve_edit()
+            self.store.finish(job_id, self.result(folder, self.parameters))
+        with patch.object(self.store, '_read', wraps=self.store._read) as read:
+            page = self.store.list_jobs_page(limit=1)
+            self.assertEqual(read.call_count, 1)
+            self.assertEqual(read.call_args.args, (page['jobs'][0]['id'],))
+        first_id = page['jobs'][0]['id']
+        self.assertIsNotNone(page['next_cursor'])
+        with patch.object(self.store, '_read', wraps=self.store._read) as read:
+            next_page = self.store.list_jobs_page(limit=1, before=page['next_cursor'])
+            self.assertEqual(read.call_count, 1)
+        self.assertNotEqual(next_page['jobs'][0]['id'], first_id)
+        self.assertEqual(next_page['jobs'][0]['model_edit'], page['jobs'][0]['model_edit'])
+
+    def test_history_marks_corrupt_missing_and_wrong_identity_records_unreadable(self):
+        edited_id, folder = self.reserve_edit()
+        self.store.finish(edited_id, self.result(folder, self.parameters))
+        path = folder / 'job.json'
+        original = path.read_bytes()
+        mutations = [lambda j: j['model_edit'].__setitem__('review_sha256', 'a' * 64),
+                     lambda j: j.__setitem__('model_edit', None),
+                     lambda j: j.__setitem__('id', 'f' * 32)]
+        for mutate in mutations:
+            path.write_bytes(original)
+            self.rewrite(folder, mutate)
+            corrupt_bytes = path.read_bytes()
+            with self.subTest(mutation=mutate):
+                item = self.store.list_jobs_page(limit=1)['jobs'][0]
+                self.assertEqual(item['id'], edited_id)
+                self.assertEqual(item['status'], 'unreadable')
+                self.assertEqual(item['diagnostic'], storage._UNREADABLE_MESSAGE)
+                self.assertNotIn('model_edit', item)
+                self.assertNotIn(str(self.root), json.dumps(item, ensure_ascii=False))
+                self.assertEqual(path.read_bytes(), corrupt_bytes)
+        path.unlink()
+        item = self.store.list_jobs_page(limit=1)['jobs'][0]
+        self.assertEqual(item['status'], 'unreadable')
+        self.assertNotIn('model_edit', item)
+        self.assertFalse(path.exists())
 
 
 if __name__ == '__main__':

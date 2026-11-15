@@ -217,6 +217,55 @@ class ModelEditsAPITests(unittest.TestCase):
                 self.assertEqual(self.client.get('/api/jobs').json()['jobs'], [])
                 self.assertEqual(list((self.root / 'jobs').iterdir()), [])
 
+    def test_paginated_history_returns_generated_edit_record_and_legacy_summary(self):
+        parent = self.generate()
+        plan = self.ready(parent_job_id=parent['id'])
+        edited = self.generate({**plan['review']['parameters'], 'model_edit': plan['review']['selection']})
+        record = edited['model_edit']
+        summaries = {}
+        url = '/api/jobs?limit=1'
+        while url:
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200, response.text)
+            page = response.json()
+            self.assertEqual(len(page['jobs']), 1)
+            item = page['jobs'][0]
+            summaries[item['id']] = item
+            url = '/api/jobs?limit=1&before=' + page['next_cursor'] if page['next_cursor'] else None
+        self.assertEqual(set(summaries), {parent['id'], edited['id']})
+        self.assertEqual(summaries[edited['id']].get('model_edit'), record)
+        self.assertEqual(summaries[edited['id']]['model_edit']['selection']['request_text'], '높이를 5mm 늘려줘')
+        summary_keys = {'id', 'created_at', 'title', 'template', 'status', 'user_outcome'}
+        self.assertEqual(set(summaries[parent['id']]), summary_keys)
+        self.assertEqual(set(summaries[edited['id']]), summary_keys | {'model_edit'})
+        self.assertNotIn(str(self.root), json.dumps(summaries, ensure_ascii=False))
+        self.client.close()
+        with TestClient(create_app(self.root, test_mode=True)) as reopened:
+            page = reopened.get('/api/jobs?limit=20').json()
+            restored = next(j for j in page['jobs'] if j['id'] == edited['id'])
+            self.assertEqual(restored['model_edit'], record)
+
+    def test_history_does_not_publish_tampered_or_missing_edit_record(self):
+        plan = self.ready()
+        edited = self.generate({**plan['review']['parameters'], 'model_edit': plan['review']['selection']})
+        path = self.root / 'jobs' / edited['id'] / 'job.json'
+        job = json.loads(path.read_bytes())
+        job['model_edit']['selection']['request_text'] = 'tampered request without matching review hash'
+        path.write_text(json.dumps(job, ensure_ascii=False), encoding='utf-8')
+        original = path.read_bytes()
+        for missing in (False, True):
+            if missing:
+                path.unlink()
+            response = self.client.get('/api/jobs?limit=1')
+            self.assertEqual(response.status_code, 200, response.text)
+            summary = response.json()['jobs'][0]
+            self.assertEqual(summary['id'], edited['id'])
+            self.assertEqual(summary['status'], 'unreadable')
+            self.assertNotIn('model_edit', summary)
+            self.assertNotIn(str(self.root), response.text)
+            if not missing:
+                self.assertEqual(path.read_bytes(), original)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -505,13 +505,25 @@ class JobStore:
         args.append(limit + 1)
         with self.lock, closing(self._connect()) as db:
             rows = db.execute(query, args).fetchall()
-        jobs = []
-        for row in rows[:limit]:
-            item = dict(row)
-            item['user_outcome'] = json.loads(item['user_outcome'])
-            if item['status'] == 'unreadable':
-                item['diagnostic'] = _UNREADABLE_MESSAGE
-            jobs.append(item)
+            jobs = []
+            for row in rows[:limit]:
+                item = dict(row)
+                item['user_outcome'] = json.loads(item['user_outcome'])
+                if item['status'] != 'unreadable':
+                    # The index owns pagination; only displayed canonical
+                    # records supply edit provenance. Never expose the full
+                    # job, artifact paths or unvalidated saved selections.
+                    try:
+                        job = self._read(item['id'])
+                    except (JobRecordError, KeyError):
+                        item.update(status='unreadable', title='읽을 수 없는 작업 기록',
+                                    template=None, user_outcome=None)
+                    else:
+                        if 'model_edit' in job:
+                            item['model_edit'] = copy.deepcopy(job['model_edit'])
+                if item['status'] == 'unreadable':
+                    item['diagnostic'] = _UNREADABLE_MESSAGE
+                jobs.append(item)
         next_cursor = self._cursor(jobs[-1]['created_at'], jobs[-1]['id']) if len(rows) > limit else None
         return {'jobs': jobs, 'next_cursor': next_cursor}
 

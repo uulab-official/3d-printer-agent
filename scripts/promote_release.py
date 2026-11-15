@@ -70,6 +70,8 @@ REQUIRED_CHECKS = frozenset({
     'model_edit_step_matches_requested_dimensions', 'model_edit_3mf_matches_requested_dimensions',
     'model_edit_survives_real_restart', 'model_edit_survives_backup_restore',
     'model_edit_fresh_studio_preparation_after_restore', 'model_edit_restored_job_is_a_verified_new_parent',
+    'model_edit_history_lists_verified_record', 'model_edit_history_survives_real_restart',
+    'model_edit_history_survives_backup_restore',
 })
 MAX_JSON = 8 * 1024 * 1024
 MAX_ZIP_BYTES = 64 * 1024 * 1024
