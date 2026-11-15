@@ -72,6 +72,9 @@ REQUIRED_CHECKS = frozenset({
     'model_edit_fresh_studio_preparation_after_restore', 'model_edit_restored_job_is_a_verified_new_parent',
     'model_edit_history_lists_verified_record', 'model_edit_history_survives_real_restart',
     'model_edit_history_survives_backup_restore',
+    'print_volume_rejects_oversized_before_staging',
+    'print_volume_review_bound_to_verified_cad_and_settings',
+    'print_volume_review_survives_restart_and_restore',
 })
 MAX_JSON = 8 * 1024 * 1024
 MAX_ZIP_BYTES = 64 * 1024 * 1024

@@ -452,8 +452,22 @@ def _build_argv(executable: str, job_dir: Path, input_path: Path, output: Path, 
             "--export-3mf", output.name, str(input_path)]
 
 
+def _bundle_print_volume(model_bytes: bytes, bundle: dict) -> dict:
+    """Review the application's generated CAD using unambiguous machine geometry.
+
+    Native profile loading is broader than this role-based adapter. Do not guess
+    precedence when another role supplies a competing machine geometry field.
+    """
+    keys = {'printable_area', 'printable_height', 'bed_exclude_area',
+            'extruder_printable_area', 'extruder_printable_height', 'wrapping_exclude_area'}
+    for profile in (bundle['process'], *bundle['filaments']):
+        if keys.intersection(profile):
+            raise ValueError('출력 영역 설정은 machine 파일에서만 확인할 수 있습니다. 다른 종류의 파일에 있는 중복 영역 설정을 확인하세요.')
+    return studio_project.review_generated_print_volume(model_bytes, bundle['machine'])
+
+
 def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executable_path: str | None = None, *,
-                  input_bytes: bytes | None = None) -> dict:
+                  input_bytes: bytes | None = None, require_volume_review: bool = False) -> dict:
     """Stage immutable inputs and a fixed argv plan. Does not launch Studio."""
     plan = {"ready": False, "argv": [], "output_path": None, "job_dir": str(job_dir),
             "expected_settings": {}, "diagnostics": []}
@@ -467,6 +481,13 @@ def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executab
             raise ValueError("허용 크기 이내의 비어 있지 않은 STL 또는 3MF 파일이 필요합니다.")
         model_bytes = _input_snapshot(source, input_bytes, _MAX_ARCHIVE_BYTES)
         validated = _validate_bundle(config_bundle)
+        if require_volume_review:
+            if source.suffix.lower() != '.3mf':
+                raise ValueError('출력 크기 검토에는 앱에서 생성한 3MF가 필요합니다.')
+            plan['print_volume'] = _bundle_print_volume(model_bytes, validated['bundle'])
+            if not plan['print_volume']['can_prepare']:
+                plan['diagnostics'].extend(item['message'] for item in plan['print_volume']['issues'])
+                return plan
         if source.suffix.lower() == ".3mf":
             input_settings, _ = _inspect_archive(io.BytesIO(model_bytes), require_gcode=False)
             if input_settings:
@@ -492,7 +513,10 @@ def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executab
         bundle = validated["bundle"]
         profiles = [("machine.json", bundle["machine"]), ("process.json", bundle["process"])]
         profiles.extend((f"filament-{index + 1}.json", item) for index, item in enumerate(bundle["filaments"]))
-        profiles.append(("selection.json", {"source": bundle["source"], "plate_type": bundle["plate_type"]}))
+        selection = {"source": bundle["source"], "plate_type": bundle["plate_type"]}
+        if require_volume_review:
+            selection['requires_print_volume_review'] = True
+        profiles.append(("selection.json", selection))
         fingerprints = {}
         for filename, profile in profiles:
             path = config_dir / filename
@@ -520,7 +544,7 @@ def _project_argv(executable: str, project: Path, output: Path) -> list[str]:
 
 
 def _project_public_source(snapshot: dict, source_id: str | None) -> dict:
-    public = studio_project.public_snapshot(snapshot)
+    public = studio_project.source_display_snapshot(snapshot)
     if source_id is not None:
         if not isinstance(source_id, str) or not re.fullmatch(r"[0-9a-f]{32}", source_id):
             raise ValueError("서버가 저장한 Studio 원본 ID가 필요합니다.")
@@ -560,7 +584,7 @@ def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str,
             "project_path": None, "project_sha256": None, "project_receipt": None,
             "project_source": None, "settings_revision": None, "settings_review": None,
             "argv": [], "output_path": None,
-            "job_dir": str(job_dir), "expected_settings": {}, "diagnostics": []}
+            "job_dir": str(job_dir), "expected_settings": {}, "diagnostics": [], "print_volume": None}
     created_project = None
     try:
         snapshot = studio_project.inspect_studio_project(source_filename, source_content)
@@ -577,6 +601,7 @@ def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str,
         model_bytes = _input_snapshot(original_model, input_bytes, studio_project.MAX_ARCHIVE_BYTES)
         derived, receipt = studio_project.build_project_3mf(
             model_bytes, snapshot, settings_revision=settings_revision, source_id=source_id)
+        plan['print_volume'] = receipt['print_volume']
         requested_job = Path(job_dir).expanduser()
         if requested_job.is_symlink():
             raise ValueError("준비 작업 폴더는 링크일 수 없습니다.")
@@ -638,6 +663,10 @@ def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str,
             plan["diagnostics"].extend(environment["diagnostics"] if environment is not None else ["Bambu Studio 실행 파일이 없거나 실행 권한이 없습니다."])
             plan["diagnostics"].append("준비한 프로젝트는 다운로드할 수 있습니다. native 슬라이싱은 실행하지 않았습니다.")
         return plan
+    except studio_project.PrintVolumeReviewError as exc:
+        plan['print_volume'] = exc.report
+        plan['diagnostics'].extend(item['message'] for item in exc.report['issues'])
+        return plan
     except (OSError, ValueError, TypeError, KeyError, RecursionError, RuntimeError, zipfile.BadZipFile) as exc:
         if created_project is not None and not plan["project_prepared"]:
             try:
@@ -693,6 +722,7 @@ def _validate_project_plan(plan: dict, *, output_must_be_new: bool = True) -> tu
     derived, receipt = studio_project.build_project_3mf(
         payload[model], snapshot, settings_revision=revision, source_id=preparation["source_id"])
     if (payload[project] != derived or json.loads(payload[receipt_path]) != receipt or plan["project_receipt"] != receipt
+            or plan.get('print_volume') != receipt['print_volume']
             or plan["project_sha256"] != receipt["project_sha256"]
             or plan["expected_settings"] != effective["expected_settings"]
             or plan["project_source"] != _project_public_source(snapshot, preparation["source_id"])
@@ -1004,7 +1034,9 @@ def _validate_plan(plan: dict) -> tuple[Path, Path, Path, dict, list[str]]:
     if not isinstance(plan["expected_settings"], dict) or not plan["expected_settings"]:
         raise ValueError("검증할 설정이 없는 실행 계획입니다.")
     selection = json.loads(selection_path.read_text(encoding="utf-8"))
-    if not isinstance(selection, dict) or set(selection) != {"source", "plate_type"}:
+    if (not isinstance(selection, dict) or set(selection) not in (
+            {'source', 'plate_type'}, {'source', 'plate_type', 'requires_print_volume_review'})
+            or ('requires_print_volume_review' in selection and selection['requires_print_volume_review'] is not True)):
         raise ValueError("준비한 플레이트 선택 정보가 유효하지 않습니다. 다시 준비하세요.")
     bundle = {
         **selection,
@@ -1014,6 +1046,14 @@ def _validate_plan(plan: dict) -> tuple[Path, Path, Path, dict, list[str]]:
                       for index in range(plan["filament_count"])],
     }
     validated = _validate_bundle(bundle)
+    if selection.get('requires_print_volume_review') is True:
+        if source.suffix.lower() != '.3mf':
+            raise ValueError('출력 크기 검토의 원본 CAD 형식이 변경되었습니다.')
+        report = _bundle_print_volume(_project_read_file(source, _MAX_ARCHIVE_BYTES), validated['bundle'])
+        if not report['can_prepare'] or plan.get('print_volume') != report:
+            raise ValueError('출력 크기 검토가 현재 CAD 또는 설정과 다릅니다. 다시 준비하세요.')
+    elif plan.get('print_volume') is not None:
+        raise ValueError('기록되지 않은 출력 크기 검토를 실행 계획에 추가할 수 없습니다.')
     if plan.get("plate_type") != selection["plate_type"]:
         raise ValueError("실행 계획의 plate_type이 준비한 선택과 다릅니다. 다시 준비하세요.")
     if plan["expected_settings"] != validated["expected"]:

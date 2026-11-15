@@ -87,6 +87,42 @@ class StudioSettingsAPITests(unittest.TestCase):
         self.assertNotIn('settings_text', editor)
         self.assertEqual(self.client.get('/api/jobs').json()['jobs'], [])
 
+    def test_v07_source_receipt_and_revision_remain_readable_and_preparable(self):
+        saved = self.make_revision()
+        source_id = self.source['source_id']
+        receipt_path = self.root / 'studio-projects' / source_id / 'receipt.json'
+        receipt = json.loads(receipt_path.read_bytes())
+        # Version 0.7 persisted this canonical inspection without display-only
+        # volume fields. Upgrading must not reinterpret it as changed evidence.
+        for key in ('printable_area', 'printable_height'):
+            receipt['inspection']['summary'].pop(key, None)
+        receipt_path.write_text(json.dumps(receipt), encoding='utf-8')
+        original_receipt = receipt_path.read_bytes()
+        revision_id = saved['revision']['revision_id']
+        revision_path = self.root / 'studio-settings-revisions' / revision_id / 'revision.json'
+        original_revision = revision_path.read_bytes()
+
+        with TestClient(create_app(self.root, test_mode=True)) as reopened:
+            source_response = reopened.get('/api/studio-projects/' + source_id)
+            self.assertEqual(source_response.status_code, 200, source_response.text)
+            source = source_response.json()
+            self.assertEqual(source['summary']['printable_height'], '256')
+            self.assertEqual(reopened.get(source['archive_url']).content, self.raw)
+            revision_response = reopened.get('/api/studio-settings-revisions/' + revision_id)
+            self.assertEqual(revision_response.status_code, 200, revision_response.text)
+            self.assertEqual(revision_response.json()['revision'], saved['revision'])
+            job = self.make_job()
+            headers = {'X-Session-Token': reopened.get('/api/bootstrap').json()['session_token']}
+            prepared = self.prepare(job['id'], revision_id, reopened, headers)
+            self.assertEqual(prepared.status_code, 200, prepared.text)
+            plan = prepared.json()['plan']
+            self.assertTrue(plan['project_prepared'], plan['diagnostics'])
+            self.assertTrue(plan['print_volume']['can_prepare'])
+            self.assertEqual(plan['project_source']['summary'], source['summary'])
+
+        self.assertEqual(receipt_path.read_bytes(), original_receipt)
+        self.assertEqual(revision_path.read_bytes(), original_revision)
+
     def test_review_create_read_preserve_original_and_explicit_user_changes(self):
         response = self.client.post(self.prefix + '/review', json=self.proposal, headers=self.headers)
         self.assertEqual(response.status_code, 200, response.text)

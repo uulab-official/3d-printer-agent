@@ -25,7 +25,7 @@ MAX_ENTRIES = 4096
 MAX_SETTINGS_BYTES = MAX_MODEL_XML_BYTES = 2 * 1024 * 1024
 MAX_IMPORT_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_SETTINGS_DEPTH = 32
-MODIFIER = '3D Printer Agent 0.7.0'
+MODIFIER = '3D Printer Agent 0.8.0'
 CORE = 'http://schemas.microsoft.com/3dmanufacturing/core/2015/02'
 SETTINGS_PATH = 'Metadata/project_settings.config'
 MODEL_PATH = '3D/3dmodel.model'
@@ -311,25 +311,31 @@ def inspect_studio_project(filename: str,content: bytes)->dict:
 
 
 def public_snapshot(snapshot):
+    """Canonical persisted inspection; preserve the schema of existing receipts."""
     return copy.deepcopy({key:value for key,value in snapshot.items() if key not in ('settings_text','expected_settings')})
 
 
-def build_project_3mf(model_bytes: bytes,snapshot: dict, *, settings_revision=None, source_id=None)->tuple[bytes,dict]:
-    original_snapshot=snapshot
-    review=None
-    if settings_revision is not None:
-        # Import here keeps the settings policy dependent on the bounded parser,
-        # without importing that policy during ordinary source inspection.
-        from .studio_settings import verify_revision
-        snapshot,review=verify_revision(original_snapshot,settings_revision,source_id=source_id)
-    settings_bytes=snapshot['settings_text'].encode('utf-8')
-    settings,_=_settings(settings_bytes)
-    issues,expected,_=_assess(settings,snapshot['producer'])
-    if (issues or not snapshot.get('supported') or _hash(settings_bytes)!=snapshot['settings_sha256']
-            or expected!=snapshot['expected_settings']):
-        raise ValueError('지원하는 검증된 원본 설정 snapshot이 필요합니다.')
-    source_hash=snapshot['source']['sha256']
-    if not isinstance(source_hash,str) or not re.fullmatch('[0-9a-f]{64}',source_hash): raise ValueError('원본 해시가 필요합니다.')
+def source_display_snapshot(snapshot):
+    """Enrich a copied response without changing the immutable inspection."""
+    public = public_snapshot(snapshot)
+    settings = snapshot['expected_settings']
+    public['summary']['printable_area'] = copy.deepcopy(settings.get('printable_area'))
+    height = settings.get('printable_height')
+    public['summary']['printable_height'] = copy.deepcopy(
+        height[0] if isinstance(height, list) and len(height) == 1 else height)
+    return public
+
+
+class PrintVolumeReviewError(ValueError):
+    """A valid generated model needs a different or better-understood volume."""
+    def __init__(self, report):
+        self.report = copy.deepcopy(report)
+        super().__init__(' '.join(item['message'] for item in report['issues'])
+                         or '기록된 출력 영역과 현재 CAD의 크기를 다시 확인해 주세요.')
+
+
+def _generated_model(model_bytes: bytes):
+    """Parse only the application's untransformed mm mesh; preserve exact bytes."""
     payload=_members(model_bytes)
     if set(payload)!={'[Content_Types].xml','_rels/.rels',MODEL_PATH}:
         raise ValueError('앱이 생성한 최소 3MF 모델만 사용할 수 있습니다.')
@@ -368,6 +374,45 @@ def build_project_3mf(model_bytes: bytes,snapshot: dict, *, settings_revision=No
         indices=[tuple(int(t.attrib[k]) for k in ('v1','v2','v3')) for t in triangles]
         if not coords or not indices or any(not all(math.isfinite(n) for n in p) for p in coords) or any(n<0 or n>=len(coords) for t in indices for n in t): raise ValueError()
     except (KeyError,TypeError,ValueError,OverflowError) as exc: raise ValueError('유효한 생성 CAD 메시가 필요합니다.') from exc
+    return payload, root, objects, items, components, mesh, mesh_before, vertices, triangles, coords
+
+
+def _print_volume_review(coords, settings, model_bytes, settings_sha256):
+    from .print_volume import review_print_volume
+    report = review_print_volume(coords, settings)
+    report.update(model_sha256=_hash(model_bytes), settings_sha256=settings_sha256)
+    return report
+
+
+def review_generated_print_volume(model_bytes: bytes, settings: dict) -> dict:
+    """Review a generated 3MF against supplied settings without changing either."""
+    parsed = _generated_model(model_bytes)
+    settings_bytes = json.dumps(settings, ensure_ascii=False, allow_nan=False,
+                                sort_keys=True, separators=(',', ':')).encode('utf-8')
+    return _print_volume_review(parsed[-1], settings, model_bytes, _hash(settings_bytes))
+
+
+def build_project_3mf(model_bytes: bytes,snapshot: dict, *, settings_revision=None, source_id=None)->tuple[bytes,dict]:
+    original_snapshot=snapshot
+    review=None
+    if settings_revision is not None:
+        # Import here keeps the settings policy dependent on the bounded parser,
+        # without importing that policy during ordinary source inspection.
+        from .studio_settings import verify_revision
+        snapshot,review=verify_revision(original_snapshot,settings_revision,source_id=source_id)
+    settings_bytes=snapshot['settings_text'].encode('utf-8')
+    settings,_=_settings(settings_bytes)
+    issues,expected,_=_assess(settings,snapshot['producer'])
+    if (issues or not snapshot.get('supported') or _hash(settings_bytes)!=snapshot['settings_sha256']
+            or expected!=snapshot['expected_settings']):
+        raise ValueError('지원하는 검증된 원본 설정 snapshot이 필요합니다.')
+    source_hash=snapshot['source']['sha256']
+    if not isinstance(source_hash,str) or not re.fullmatch('[0-9a-f]{64}',source_hash): raise ValueError('원본 해시가 필요합니다.')
+    payload, root, objects, items, components, mesh, mesh_before, vertices, triangles, coords = _generated_model(model_bytes)
+    q=lambda name:'{'+CORE+'}'+name
+    volume_review = _print_volume_review(coords, settings, model_bytes, snapshot['settings_sha256'])
+    if not volume_review['can_prepare']:
+        raise PrintVolumeReviewError(volume_review)
     objects[0].set('id','1'); objects[1].set('id','2'); components[0].set('objectid','1'); items[0].set('objectid','2')
     metadata={'Application':snapshot['producer']['application'],'BambuStudio:3mfVersion':'1',
               '3DPrinterAgent:ModifiedBy':MODIFIER,'3DPrinterAgent:SourceProjectSHA256':source_hash,
@@ -407,7 +452,7 @@ def build_project_3mf(model_bytes: bytes,snapshot: dict, *, settings_revision=No
                     'producer':copy.deepcopy(snapshot['producer']),'modifier':MODIFIER,'geometry':geometry,
                     'settings_preserved':True,'application_policy':'preserve supplied source-template marker; explicit modifier identifies derivative',
                     'application_origin':'source project root Application metadata; not newly asserted Studio authorship',
-                    'qualification_version':QUALIFIED_VERSION}
+                    'qualification_version':QUALIFIED_VERSION,'print_volume':volume_review}
     if review is not None:
         receipt.update(settings_preserved=False,
                        original_settings_sha256=original_snapshot['settings_sha256'],

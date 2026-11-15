@@ -6,6 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
+names.push('renderPrintVolumeReview');
 const editNames = ['modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -137,6 +138,15 @@ function editFixture() {
   return c;
 }
 const editReply=(parent=null)=>({status:'ready',engine:'template_rules',capability:'current_template_parameters_only',message:'review',questions:[],assumptions:[],review:{schema_version:1,selection:{schema_version:1,request_text:'높이를 5mm 늘려줘',base_parameters:editBase(),operations:[{field:'height',op:'add',value:5}],parent},base_sha256:'1'.repeat(64),parameters:{...editBase(),height:35},parameters_sha256:'2'.repeat(64),changes:[{field:'height',before:30,after:35}],review_sha256:'3'.repeat(64)}});
+const printVolumeReport = (overrides={}) => ({
+  schema_version:1,status:'needs_review',can_prepare:false,scope:'upright_bounding_box_0_90',
+  model_dimensions_mm:[120,80,35],recorded_volume_mm:[100,100,200],
+  orientations:[{rotation_degrees:0,fits:false},{rotation_degrees:90,fits:false}],
+  placement_mm:null,rotation_degrees:null,placement_applied:false,
+  issues:[{code:'placement_unconfirmed',message:'가로 120 mm인 현재 CAD의 0°·90° 배치를 기록된 100 × 100 mm 공간에서 확인하지 못했습니다.'}],
+  limitations:['브림과 서포트에 필요한 공간은 비교하지 않았습니다.'],tolerance_mm:0.000001,
+  model_sha256:'a'.repeat(64),settings_sha256:'b'.repeat(64),...overrides,
+});
 (async()=>{
   let failed=0,passed=0;
   async function check(name,test) {
@@ -145,6 +155,102 @@ const editReply=(parent=null)=>({status:'ready',engine:'template_rules',capabili
     catch(error) { failed++; console.log('FAIL',name,error.message); }
     finally { clearTimeout(deadline); }
   }
+  await check('Blocked size preparation displays the actual CAD, recorded volume and limited orientation results',()=>{
+    const c=fixture(),report=printVolumeReport();
+    c.renderSliceResult({kind:'studio_project',ready:false,project_prepared:false,print_volume:report,diagnostics:[]});
+    const review=findElement(c.$('slice-result'),element=>element.id==='print-volume-review');
+    assert(review,'The preparation result exposes its size review');
+    assert.match(review.textContent,/현재 CAD와 기록된 출력 크기/);
+    assert.match(review.textContent,/배치 추가 확인 필요/);
+    assert.match(review.textContent,/현재 CAD.*120.*80.*35/);
+    assert.match(review.textContent,/설정에 기록된 출력 공간.*100.*100.*200/);
+    assert.match(review.textContent,/0°.*범위 내 배치 미확인/);
+    assert.match(review.textContent,/90°.*범위 내 배치 미확인/);
+    assert.match(review.textContent,/가로 120 mm인 현재 CAD/);
+    assert.match(review.textContent,/다른 각도의 배치는 확인하지 않았습니다/);
+    assert.match(review.textContent,/브림과 서포트/);
+  });
+  await check('Passing 90-degree size review also renders for manual settings without claiming an applied placement',()=>{
+    const c=fixture(),report=printVolumeReport({status:'fits',can_prepare:true,recorded_volume_mm:[90,130,200],
+      orientations:[{rotation_degrees:0,fits:false},{rotation_degrees:90,fits:true}],placement_mm:[5,5,0],rotation_degrees:90,issues:[]});
+    c.renderSliceResult({ready:true,print_volume:report,diagnostics:[]});
+    const review=findElement(c.$('slice-result'),element=>element.id==='print-volume-review');
+    assert(review,'Manual full-config preparation exposes the same size review');
+    assert.match(review.textContent,/기록된 출력 공간과 크기 비교 완료/);
+    assert.match(review.textContent,/90°.*크기 비교 통과/);
+    assert.match(review.textContent,/회전이나 배치를 적용하지 않았습니다/);
+    assert.match(review.textContent,/실물 출력/);
+    assert.doesNotMatch(review.textContent,/출력 성공|출력 가능 확정|배치 적용 완료/);
+  });
+  await check('Height overflow and unknown recorded dimensions stay distinguishable from zero or a successful fit',()=>{
+    const c=fixture();
+    c.renderSliceResult({ready:false,print_volume:printVolumeReport({status:'height_exceeded',recorded_volume_mm:[null,null,30],orientations:[],
+      issues:[{code:'height_exceeded',message:'현재 CAD 높이 35 mm가 기록된 출력 높이 30 mm를 초과합니다.'}]})});
+    const review=findElement(c.$('slice-result'),element=>element.id==='print-volume-review');
+    assert(review,'A height rejection keeps the numeric comparison visible');
+    assert.match(review.textContent,/기록된 출력 높이 초과/);
+    assert.match(review.textContent,/설정에 기록된 출력 공간.*미확인.*미확인.*30/);
+    assert.match(review.textContent,/높이 35 mm.*높이 30 mm/);
+    assert.doesNotMatch(review.textContent,/0°.*크기 비교 통과|90°.*크기 비교 통과/);
+  });
+  await check('Current and recorded size reviews preserve height differences at the comparison tolerance',()=>{
+    for(const recorded of [false,true])for(const [height,display] of [[11.999,'11.999'],[11.999998999,'11.999998999']]) {
+      const c=fixture();c.numberFormat=new Intl.NumberFormat('ko-KR',{maximumFractionDigits:2});
+      c.renderSliceResult({ready:false,print_volume:printVolumeReport({status:'height_exceeded',model_dimensions_mm:[120,80,12],
+        recorded_volume_mm:[200,200,height],orientations:[],issues:[{code:'height_exceeded',message:'기록된 출력 높이를 초과합니다.'}]})},null,recorded);
+      const review=findElement(c.$('slice-result'),element=>element.id==='print-volume-review');
+      const modelRow=findElement(review,element=>element.children?.[0]?.textContent===(recorded?'기록된 CAD':'현재 CAD'));
+      const volumeRow=findElement(review,element=>element.children?.[0]?.textContent==='설정에 기록된 출력 공간');
+      assert.equal(modelRow.children[3].textContent,'12');
+      assert.equal(volumeRow.children[3].textContent,display,'The compared height must not round up to the model height');
+      assert.match(review.textContent,/기록된 출력 높이 초과/);
+      assert.equal(c.numberFormat.format(height),'12','Other display formatting keeps its existing precision');
+    }
+  });
+  await check('The size-review action focuses dimension editing without replacing current CAD, selected settings or notes',()=>{
+    const c=fixture();c.renderJob(job());studioApplied(c);
+    c.$('parameter-width').value='0120.0';c.$('outcome-notes').value=' keep this note\n';c.$('slicer-json').value='{ unfinished';
+    const before=plain({job:c.state.job,source:c.state.studioApplied,width:c.$('parameter-width').value,notes:c.$('outcome-notes').value,json:c.$('slicer-json').value});
+    let focused=false,scrolled=false;
+    c.$('parameter-heading').focus=()=>{focused=true;};
+    c.$('parameter-heading').scrollIntoView=()=>{scrolled=true;};
+    c.renderSliceResult({ready:false,print_volume:printVolumeReport()});
+    const action=findElement(c.$('slice-result'),element=>element.textContent==='현재 치수 수정하기');
+    assert(action,'A current size review provides a direct path to the existing dimension editor');
+    action.listeners.click();
+    assert.equal(focused,true);assert.equal(scrolled,true);
+    assert.deepEqual(plain({job:c.state.job,source:c.state.studioApplied,width:c.$('parameter-width').value,notes:c.$('outcome-notes').value,json:c.$('slicer-json').value}),before);
+  });
+  await check('History labels its size review as recorded and never presents the current-edit action',()=>{
+    const c=fixture(),archived={...job(),latest_slice:{phase:'complete',plan:{kind:'studio_project',ready:false,project_prepared:false,
+      project_source:studioInspection(),print_volume:printVolumeReport(),diagnostics:[]},execution:null}};
+    c.renderJob(archived);
+    const review=findElement(c.$('slice-result'),element=>element.id==='print-volume-review');
+    assert(review,'History retains its recorded size comparison');
+    assert.match(review.textContent,/이 작업에 기록된 출력 크기 비교/);
+    assert.match(review.textContent,/현재 입력을 다시 비교한 결과가 아닙니다/);
+    assert.equal(findElement(review,element=>element.textContent==='현재 치수 수정하기'),undefined);
+    assert.equal(c.state.studioApplied,null);assert.equal(c.$('execute-studio-project').disabled,true);
+  });
+  await check('Changing CAD, manual settings or selected Studio source clears a current size review and prepared downloads',()=>{
+    for(const change of ['cad','manual','source']) {
+      const c=fixture();c.state.job={...job(),artifacts:{prepared_three_mf:'/api/jobs/job-a/files/prepared_three_mf'}};studioApplied(c);
+      c.renderSliceResult({kind:'studio_project',ready:true,project_prepared:true,print_volume:printVolumeReport({status:'fits',can_prepare:true,issues:[]}),diagnostics:[]});
+      assert(findElement(c.$('slice-result'),element=>element.id==='print-volume-review'),`${change} starts with a visible review`);
+      if(change==='cad')c.invalidateCurrentJob('CAD changed');
+      else if(change==='manual')c.manualSlicerChanged();
+      else {c.state.studioCandidate=studioInspection('b'.repeat(32));c.state.studioCandidateEpoch=c.state.connectionEpoch;c.state.studioCandidateStorage=null;c.applyStudioCandidate();}
+      assert.equal(findElement(c.$('slice-result'),element=>element.id==='print-volume-review'),undefined,`${change} clears stale size evidence`);
+      assert.equal(c.state.job?.artifacts.prepared_three_mf,undefined);assert.equal(c.state.studioSlicePrepared,false);
+    }
+  });
+  await check('Studio summary exposes recorded height while keeping raw area points separate from derived dimensions',()=>{
+    const c=fixture(),inspection=studioInspection();inspection.summary.printable_height='180';inspection.summary.printable_area=['5x8','115x8','115x208','5x208'];
+    c.renderStudioSource(c.$('studio-project-candidate'),inspection,'Candidate');
+    assert.match(c.$('studio-project-candidate').textContent,/기록된 출력 높이.*180/);
+    assert.match(c.$('studio-project-candidate').textContent,/5x8/);
+    assert.doesNotMatch(c.$('studio-project-candidate').textContent,/110 × 200/);
+  });
   await check('Contextual proposal leaves exact draft and source untouched until explicit apply, then sends selection provenance',async()=>{
     const c=editFixture();assert.equal(typeof c.planModelEdit,'function');c.$('parameter-width').value='0150.0';const source=c.state.projectSource;let body;c.api=async(path,payload)=>{body=plain(payload);return editReply();};await c.planModelEdit();
     assert.equal(c.$('parameter-width').value,'0150.0');assert.equal(c.$('parameter-height').value,'30');assert.equal(c.state.modelEditCandidate.review.parameters.height,35);assert.match(c.$('model-edit-changes').textContent,/30.*35/);

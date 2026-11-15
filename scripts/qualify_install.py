@@ -389,6 +389,30 @@ def qualify(args, report):
                            'source': job.get('design_source')})
         report['models'] = models
 
+        # A supported source format is not a sufficient build-volume review.
+        # Exercise actual installed HTTP boundaries and verify that no partial
+        # attempt directory or prepared download is published for an oversized CAD.
+        small_settings = {**json.loads(settings_bytes), 'printable_height': '11'}
+        small_stream = io.BytesIO()
+        with zipfile.ZipFile(small_stream, 'w', zipfile.ZIP_DEFLATED) as fixture:
+            fixture.writestr('Metadata/project_settings.config', json.dumps(small_settings))
+            fixture.writestr('3D/3dmodel.model', fixture_xml)
+        small_source = get_json(server, '/api/studio-projects/import', method='POST', token=token, expected=201,
+            payload={'filename': '합성 높이 초과 검사.3mf',
+                     'content_base64': base64.b64encode(small_stream.getvalue()).decode('ascii')})
+        oversized = get_json(server, '/api/slice', method='POST', token=token,
+            payload={'job_id': models[1]['id'], 'studio_project_id': small_source['source_id'], 'execute': True})
+        oversized_job = get_json(server, '/api/jobs/' + models[1]['id'])
+        check('print_volume_rejects_oversized_before_staging', small_source['supported'] is True
+              and oversized['plan']['ready'] is False and oversized['plan']['project_prepared'] is False
+              and oversized['execution'] is None
+              and oversized['plan']['print_volume']['status'] == 'height_exceeded'
+              and oversized['plan']['print_volume']['model_dimensions_mm'] == [80, 18, 12]
+              and oversized['plan']['print_volume']['recorded_volume_mm'][2] == 11
+              and not Path(oversized['plan']['job_dir']).exists()
+              and 'prepared_three_mf' not in oversized_job['artifacts'])
+        write_json(downloads / 'print-volume-rejected.json', oversized)
+
         prepared = get_json(server, '/api/slice', method='POST', token=token,
                             payload={'job_id': models[1]['id'], 'studio_project_id': imported['source_id'],
                                      'execute': False})
@@ -396,6 +420,13 @@ def qualify(args, report):
         check('studio_preparation_without_native', plan['kind'] == 'studio_project'
               and plan['project_prepared'] is True and plan['ready'] is False and prepared['execution'] is None
               and plan['project_source']['source_id'] == imported['source_id'])
+        volume_review = plan['print_volume']
+        check('print_volume_review_bound_to_verified_cad_and_settings', volume_review['status'] == 'fits'
+              and volume_review['can_prepare'] is True and volume_review['placement_applied'] is False
+              and volume_review['model_dimensions_mm'] == [80, 18, 12]
+              and volume_review['model_sha256'] == models[1]['artifacts']['three_mf']['sha256']
+              and volume_review['settings_sha256'] == sha256(settings_bytes)
+              and plan['project_receipt']['print_volume'] == volume_review)
         prepared_job = get_json(server, '/api/jobs/' + models[1]['id'])
         check('studio_history_has_distinct_prepared_download', 'prepared_three_mf' in prepared_job['artifacts']
               and 'sliced_three_mf' not in prepared_job['artifacts']
@@ -725,6 +756,9 @@ def qualify(args, report):
         check('studio_source_and_preparation_survive_backup_restore', restored_source == imported
               and restored_project == prepared_job and source_code == prepared_code == 200
               and restored_source_bytes == source_bytes and restored_prepared_bytes == prepared_bytes)
+        check('print_volume_review_survives_restart_and_restore',
+              project_reopened['latest_slice']['plan']['print_volume'] == volume_review
+              and restored_project['latest_slice']['plan']['print_volume'] == volume_review)
         restored_revision = get_json(restored_server, revision_path)
         restored_edited = get_json(restored_server, '/api/jobs/' + models[2]['id'])
         code, restored_edited_bytes, _ = request(restored_server.base, edited_url)
