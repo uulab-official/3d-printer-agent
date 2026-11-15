@@ -3,20 +3,8 @@ name: Native Bambu CLI qualification
 on:
   push:
     branches: [main, qualification/bambu-2.9]
-    paths:
-      - "print_agent/**"
-      - "examples/**"
-      - "scripts/qualify_bambu.py"
-      - ".github/workflows/native-bambu.yml"
-      - "tests/test_slicer.py"
-      - "tests/test_project_slicer.py"
-      - "tests/test_studio_project.py"
-      - "tests/studio_project_fixtures.py"
-      - "tests/fixtures/studio_project_*"
-      # Release changes require all three gates on the same main commit.
-      - "scripts/promote_release.py"
-      - "tests/test_release_promotion.py"
-      - ".github/workflows/release.yml"
+    # Promotion requires all three gates on the same main push, including
+    # browser/qualification-only fixes. Match CI and package push coverage.
   pull_request:
     paths:
       - "print_agent/**"
