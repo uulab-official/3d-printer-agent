@@ -1,6 +1,6 @@
 # Studio Setup Library Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Rediscover and reuse Studio inputs without CAD, preserve exact unfinished drafts, and close two demonstrated integrity gaps.
 
@@ -70,9 +70,17 @@
 
 **Interfaces:** Wire Task 1 store after compatibility check and root lease, strict payloads and 409 integrity codes. Use Task 2 verified snapshot on all `/api/slice` branches. Preserve every existing gate and native-case requirement.
 
-- [ ] Write failing API behavior tests for zero-job named save/open, security/strict bodies, conflicts, source/revision failure with no fallback, corrupt profile GET 409, and verified CAD mutation boundary.
-- [ ] Integrate stores/routes/error handling and snapshot-byte handoff. Run focused API tests.
-- [ ] Extend installed-wheel qualification: discover old originals/revisions, save original/edited/invalid-draft workspaces before CAD, restart and list/open them, backup and restore to another root, preserve exact draft/IDs, and prepare new CAD from reopened edited settings. Assert catalog metadata is not a current review and named delete retains originals/recipes.
-- [ ] Update version to 0.6.0 and public capability/limitation/upgrade docs. Run full Python and Node checks, build/install shared wheel outside checkout, and verify installed qualification.
-- [ ] Obtain fresh task and whole-change review, resolve concrete findings, then commit/push authorized main with compare-and-swap and exact tree comparison.
-- [ ] Inspect exact-source CI/browser, three-platform shared-wheel, four-case native and promotion artifacts, including screenshots and archive/model/settings/backup evidence. Verify all public release bytes and immutable tag independently. Update docs with actual evidence in a docs-only follow-up commit and finish with a concise Korean outcome/limits report.
+- [x] Write failing API behavior tests for zero-job named save/open, security/strict bodies, conflicts, source/revision failure with no fallback, corrupt profile GET 409, and verified CAD mutation boundary.
+- [x] Integrate stores/routes/error handling and snapshot-byte handoff. Run focused API tests.
+- [x] Extend installed-wheel qualification: discover old originals/revisions, save original/edited/invalid-draft workspaces before CAD, restart and list/open them, backup and restore to another root, preserve exact draft/IDs, and prepare new CAD from reopened edited settings. Assert catalog metadata is not a current review and named delete retains originals/recipes.
+- [x] Update version to 0.6.0 and public capability/limitation/upgrade docs. Run full Python and Node checks, build/install shared wheel outside checkout, and verify installed qualification.
+- [x] Obtain fresh task and whole-change review, resolve concrete findings, then commit/push authorized main with compare-and-swap and exact tree comparison.
+- [x] Inspect exact-source CI/browser, three-platform shared-wheel, four-case native and promotion artifacts, including screenshots and archive/model/settings/backup evidence. Verify all public release bytes and immutable tag independently. Update docs with actual evidence in a docs-only follow-up commit and finish with a concise Korean outcome/limits report.
+
+## Completion record — 2026-11-15
+
+Implemented and independently reviewed all four tasks. Feature source `1cae4ba` was followed by the actual CI harness correction `34b5fd6` and same-source native trigger correction `020b552`; no production CSP or release gate was weakened. Final release source is `020b5520e90e450b401ae4a912ef8b8ad1dc8228`.
+
+Actual final-source gates: CI 43690192580 (554 Python, 167 controller, 46 Chromium); package 43690192608 (235 checks on each of three operating systems); native 43690192597 (four synthetic cases), all successful on attempt 1. Promotion 43690554701 published v0.6.0 / release 445886425 at 2026-11-15T07:35:04Z. Fresh public download/readback passed 67 checks for all seven assets and the exact source tag. Browser/package/native retained-data reviews passed 306 / 383 / 247 checks respectively; the 247 native assertions comprise 238 independent data checks and nine record consistency checks. Six new component PNGs were visually inspected.
+
+The documentation follow-up records these actual observations and current catalog refresh behavior. It leaves the qualified app bytes and release tag unchanged. Detailed diagnosis and evidence limits, including native stdout diagnostics and physical-print exclusions, are in docs/VERIFICATION.md.

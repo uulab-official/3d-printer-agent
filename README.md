@@ -24,7 +24,7 @@
 
 권장 실행 경로는 **Python 3.12 가상환경**입니다. Linux·macOS·Windows의 설치 패키지 검증과 native Bambu 실행 검증은 분리합니다. 플랫폼별로 실제 통과한 커밋과 범위는 [검증 기록](docs/VERIFICATION.md)을 확인하세요. 이 앱은 자신의 PC에서 사용하는 단일 사용자 앱이며 공개 서버로 배포하는 구성은 제공하지 않습니다.
 
-현재 공개된 패키지는 [검증된 v0.5.0 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.5.0)와 [설치·릴리스 안내](docs/RELEASES.md)를 확인하세요. 같은 wheel의 Ubuntu·macOS·Windows 설치 검사는 각각 183개, 실제 데스크톱·모바일 Chromium 검사는 총 42개를 통과했습니다. 실제 Linux Studio의 네 가지 합성 슬라이싱 경로도 통과했으며, 공개 파일 7개를 내려받아 검증에 사용한 바이트와 대조했습니다. 정확한 소스와 범위는 [검증 기록](docs/VERIFICATION.md)에 남깁니다. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
+현재 공개된 패키지는 [검증된 v0.6.0 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.6.0)와 [설치·릴리스 안내](docs/RELEASES.md)를 확인하세요. 같은 wheel의 Ubuntu·macOS·Windows 설치 검사는 각각 235개, 실제 데스크톱·모바일 Chromium 검사는 총 46개를 통과했습니다. Studio 설정 보관함의 CAD 생성 전 저장, 정확한 미완성 입력, 실제 재시작·백업·복원과 복원된 설정의 재사용을 포함합니다. 실제 Linux Studio의 네 가지 합성 슬라이싱 경로도 통과했으며, 공개 파일 7개를 다시 내려받아 검증에 사용한 바이트와 대조했습니다. 정확한 소스와 진단·검증 범위는 [검증 기록](docs/VERIFICATION.md)에 남깁니다. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
 
 저장소를 받은 다음 프로젝트 폴더로 이동합니다.
 

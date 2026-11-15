@@ -1,24 +1,26 @@
 # 검증된 패키지의 릴리스 배포
 
-**[v0.5.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.5.0)**가
-2026-11-15 01:00:35 UTC에 게시됐습니다. 소스와 tag는
-[`c88b4eec5c35c3a44274388ec9d16846a3acb3b2`](https://github.com/uulab-official/3d-printer-agent/commit/c88b4eec5c35c3a44274388ec9d16846a3acb3b2)이며,
+**[v0.6.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.6.0)**가
+2026-11-15 07:35:04 UTC에 게시됐습니다. 소스와 tag는
+[`020b5520e90e450b401ae4a912ef8b8ad1dc8228`](https://github.com/uulab-official/3d-printer-agent/commit/020b5520e90e450b401ae4a912ef8b8ad1dc8228)이며,
 아래 세 검증을 통과한 원본 wheel과 검증 보고서 등 7개 자산을 포함합니다.
-[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/43660942959)과
+[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/43690554701)과
 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
 릴리스 파일은 Actions의 단기 보관 산출물과 구분합니다.
 
-배포 wheel은 `3d_printer_agent_local-0.5.0-py3-none-any.whl`, **187,976바이트**이며
-SHA-256은 `862ba6c21f7d7dcb24489a802d2fd3358002b727f166a34bee334cf56846afdf`입니다.
+배포 wheel은 `3d_printer_agent_local-0.6.0-py3-none-any.whl`, **201,143바이트**이며
+SHA-256은 `b7f47a55f3ddcd7592205ad0078b98d0cac458e1c2d628e11c1fd818374767e6`입니다.
 이 값은 릴리스 내부 wheel의 해시이며 Actions가 묶은 외부 ZIP의 해시와 다릅니다.
 
 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 실제 검사
-**183개씩** 통과했습니다. [필라멘트 설정 변경](STUDIO_SETTINGS.md)은 여섯 항목의
-검토·적용, 원본 보관, 현재 CAD 준비, 실제 재시작·백업·복원과 복원된 위치에서의
-새 준비를 포함합니다. 실제 Chromium은 데스크톱·모바일 화면 크기 각 21개,
+**235개씩** 통과했습니다. [Studio 설정 보관함](STUDIO_LIBRARY.md)의 원본·편집값·
+정확한 미완성 입력을 CAD 생성 전에 저장하고 실제 재시작·백업·복원 뒤 다시 여는
+검사와, 복원된 위치에서 현재 CAD를 새로 준비하는 검사를 포함합니다.
+실제 Chromium은 데스크톱·모바일 화면 크기 각 23개,
 Linux Studio `02.09.01.70`은 별도 native CI의 네 합성 경로를 통과했습니다.
 공개 뒤에는 자산 7개를 인증 없이 다시 내려받아 실제 파일 크기와 해시, 검증에 쓴
-원본과의 일치를 독립 확인했습니다. 이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
+원본과의 일치를 독립 확인했습니다. Native 로그에 남은 진단과 합성 검증의 한도는
+[검증 기록](VERIFICATION.md)에 명시합니다. 이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
 
 ## 게시 조건
 
@@ -29,6 +31,8 @@ Linux Studio `02.09.01.70`은 별도 native CI의 네 합성 경로를 통과했
 - `Installed desktop package qualification`: 공통 wheel 하나의 Linux·macOS·Windows 실제 설치·CAD·HTTP·백업·복원.
 - `Native Bambu CLI qualification`: 고정한 Studio 버전의 Linux native 회귀.
 
+세 workflow는 모두 `main` push를 검사합니다. 브라우저 검사만 고친 커밋도 native
+검증에서 빠지지 않으며, PR의 native 경로 필터는 별도로 유지합니다.
 각 workflow 완료가 승격 검사를 시작하지만 아직 다른 검사가 끝나지 않았다면
 게시하지 않습니다. 다른 브랜치, PR/fork, 이전 main 커밋이나 서로 다른 소스의
 보고서를 조합해 게시하지 않습니다. 소스 버전은 `pyproject.toml`의 명시적인 버전이며,
@@ -59,7 +63,7 @@ SHA256SUMS 또는 영수증을 함께 받고 실제 wheel의 SHA-256을 비교�
 Python 3.12 가상환경에서 다음과 같이 설치할 수 있습니다.
 
 ```bash
-python -m pip install ./3d_printer_agent_local-0.5.0-py3-none-any.whl
+python -m pip install ./3d_printer_agent_local-0.6.0-py3-none-any.whl
 printer-agent --version
 printer-agent doctor
 printer-agent
