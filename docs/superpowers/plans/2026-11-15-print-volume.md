@@ -54,16 +54,16 @@ Consumes the report contract from Task 2, preserving existing request identity g
 - [x] Add failing controller checks, then dimensions/status/rotation/reasons and return-to-edit action.
 - [x] Invalidate report with existing result state; distinguish historical reports.
 - [x] Fix noninteractive toast pointer interception.
-- [ ] Exercise blocked source → fitting source → changed-source invalidation in desktop/mobile browsers.
+- [x] Exercise blocked source → fitting source → changed-source invalidation in desktop/mobile browsers.
 
 ### Task 4: Qualify and record
 
 Files: package qualification script, README, changelog, status and feature guide.
 
 - [x] Extend installed qualification with a passing report and rejected undersized source.
-- [ ] Run complete required tests, package/install checks and fresh independent code review.
-- [ ] Commit and push, run same-source CI/package/native gates, resolve failures, and integrate to main under existing authorization.
-- [ ] Record exact completed scope and remaining hardware/product qualifications; publish only after the existing release gate accepts the same source.
+- [x] Run complete required tests, package/install checks and fresh independent code review.
+- [x] Commit and push, run same-source CI/package/native gates, resolve failures, and integrate to main under existing authorization.
+- [x] Record exact completed scope and remaining hardware/product qualifications; publish only after the existing release gate accepts the same source.
 
 ## Execution notes
 
@@ -82,3 +82,21 @@ Browser execution is deferred to the required CI gate because this workspace's
 Chromium launch is blocked by its IPC policy. Browser discovery finds four new
 cases (two workflows on desktop/mobile). Native and three-platform installed
 qualification must complete on the exact release source before promotion.
+
+
+Final main source `ac35c089ee441190b381f7531e60c7d921616352` passed application
+CI `43720570098` (646 Python, 191 UI, 54 real Chromium cases), installed package
+CI `43720570141` (287 checks on each of three platforms) and native
+CI `43720570129` (four synthetic Studio paths), all on attempt 1.
+Promotion `43721011244` published v0.8.0 at 2026-11-15 13:50:01 UTC.
+The two final comparison screenshots and exact source/wheel bytes were checked.
+
+The extra volume fixture exposed an outdated two-source expected catalog in the
+installed qualification harness; the correction verifies preservation of existing
+rows before refreshing the three-source snapshot. Fresh final-source evidence is
+recorded in `docs/VERIFICATION.md`; earlier incomplete results are not combined.
+
+All seven public release assets were downloaded without authentication. Six
+reference files match the qualified originals byte for byte; release evidence
+identifies the exact final source, three gate IDs, attempts and success states.
+The immutable public tag was independently checked against the source commit.
