@@ -175,6 +175,20 @@
             <div id="studio-project-candidate-actions" class="button-row" hidden><button id="studio-project-apply" class="button button-secondary" type="button" disabled>이 프로젝트 설정 선택</button><button id="studio-project-cancel" class="text-button" type="button" disabled>후보 취소 · 기존 입력 유지</button></div>
             <div id="studio-project-applied" class="studio-source" hidden></div>
             <div class="button-row"><button id="studio-project-revalidate" class="text-button" type="button" hidden disabled>선택한 원본 다시 확인</button></div>
+            <div id="studio-settings-replace-choice" class="notice notice-warning" hidden><p>편집 중인 Studio 설정이 있습니다. 새 후보를 선택하려면 이 초안을 버릴지 직접 선택하세요.</p><div class="button-row"><button id="studio-settings-keep" class="button button-secondary" type="button">기존 초안 유지 · 후보 취소</button><button id="studio-settings-replace" class="button button-secondary" type="button">초안 버리고 새 후보 선택</button></div></div>
+            <div class="button-row"><button id="studio-settings-open" class="button button-secondary" type="button" hidden>필라멘트 설정 편집</button><button id="studio-settings-reset" class="text-button" type="button" hidden>원본 설정으로 돌아가기</button></div>
+            <section id="studio-settings-editor" class="studio-settings-editor" aria-labelledby="studio-settings-heading" hidden>
+              <h4 id="studio-settings-heading">현재 CAD에 사용할 필라멘트 설정</h4>
+              <p id="studio-settings-plate" class="field-help"></p>
+              <p class="field-help">직접 입력한 값은 사용자 선택값입니다. 아래 범위는 지원하는 입력 형식입니다. 장비 한계나 재료 권장값을 확인한 결과가 아닙니다. 부호·지수·미완성 소수는 사용할 수 없습니다.</p>
+              <div id="studio-settings-fields" class="studio-settings-fields"></div>
+              <div class="button-row"><button id="studio-settings-review" class="button button-secondary" type="button">입력값과 차이 검토</button><button id="studio-settings-apply" class="button button-primary" type="button" disabled>검토한 차이 적용</button><button id="studio-settings-cancel" class="text-button" type="button">편집 취소 · 적용값 유지</button></div>
+              <div id="studio-settings-differences" class="studio-settings-differences" hidden></div>
+            </section>
+            <div id="studio-settings-feedback" class="notice" role="status" hidden></div>
+            <div id="studio-settings-candidate" class="studio-settings-differences" hidden></div>
+            <div id="studio-settings-applied" class="studio-settings-differences" hidden></div>
+            <div id="studio-settings-recorded" class="studio-settings-differences" hidden></div>
             <p id="studio-project-next" class="field-help">프로젝트를 확인한 뒤 사용할 설정을 직접 선택합니다. 수동 JSON과 재료 편집 내용은 유지됩니다.</p>
             <div class="button-row studio-project-actions"><button id="prepare-studio-project" class="button button-primary" type="button" disabled>현재 CAD에 설정 담기</button><button id="execute-studio-project" class="button button-secondary" type="button" disabled>이 프로젝트로 슬라이싱</button><a id="studio-project-prepared-download" class="button button-secondary" download hidden>설정 포함 3MF 다운로드 <span aria-hidden="true">↓</span></a></div>
             <p class="field-help">설정 포함 3MF는 Studio가 없어도 만들 수 있습니다. 실제 슬라이싱은 지원되는 설치 버전 확인과 별도 실행이 필요합니다.</p>

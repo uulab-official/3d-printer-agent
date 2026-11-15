@@ -9,7 +9,7 @@ import sqlite3
 import threading
 import uuid
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Query
@@ -34,6 +34,8 @@ from .schemas import GeometryRequest
 from .slicer import detect_environment, execute_slice, prepare_slice, prepare_project_slice, probe_environment
 from .storage import ArtifactIntegrityError, JobRecordError, JobStore
 from .studio_project import MAX_ARCHIVE_BYTES, MAX_IMPORT_REQUEST_BYTES
+from .studio_revisions import StudioSettingsRevisionStore, StudioRevisionIntegrityError
+from .studio_settings import settings_editor, derive_settings
 from .studio_sources import StudioProjectStore, StudioSourceIntegrityError
 from .workspaces import ProfileWorkspaceStore, WorkspaceConflict
 
@@ -197,18 +199,30 @@ class SlicePayload(StrictPayload):
     job_id: str
     config_bundle: dict | None = None
     studio_project_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
+    studio_settings_revision_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
     execute: bool = False
 
     @model_validator(mode='after')
     def one_source(self):
-        if (self.config_bundle is None) == (self.studio_project_id is None):
-            raise ValueError('전체 설정 묶음 또는 Studio 프로젝트 원본 중 하나만 선택하세요.')
+        if sum(value is not None for value in (self.config_bundle, self.studio_project_id,
+                                               self.studio_settings_revision_id)) != 1:
+            raise ValueError('전체 설정 묶음, Studio 프로젝트 원본, 설정 변경 기록 중 하나만 선택하세요.')
         return self
 
 
 class StudioProjectPayload(StrictPayload):
     filename: str = Field(min_length=1, max_length=240)
     content_base64: str = Field(min_length=1, max_length=4 * ((MAX_ARCHIVE_BYTES + 2) // 3))
+
+
+class StudioSettingsProposalPayload(StrictPayload):
+    source_sha256: str = Field(min_length=64, max_length=64, pattern=r'^[a-f0-9]{64}$')
+    settings_sha256: str = Field(min_length=64, max_length=64, pattern=r'^[a-f0-9]{64}$')
+    values: dict[str, Annotated[str, Field(strict=True, max_length=32)]] = Field(max_length=6)
+
+
+class StudioSettingsCreatePayload(StudioSettingsProposalPayload):
+    review_sha256: str = Field(min_length=64, max_length=64, pattern=r'^[a-f0-9]{64}$')
 
 
 class SlicerProbePayload(StrictPayload):
@@ -229,10 +243,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     store = JobStore(data_root) if test_mode else None
     workspaces = ProfileWorkspaceStore(data_root) if test_mode else None
     studio_sources = StudioProjectStore(data_root) if test_mode else None
+    studio_revisions = StudioSettingsRevisionStore(data_root, studio_sources) if test_mode else None
 
     @asynccontextmanager
     async def lifespan(application):
-        nonlocal store, workspaces, studio_sources, recovery
+        nonlocal store, workspaces, studio_sources, studio_revisions, recovery
         if test_mode:
             yield
             return
@@ -241,10 +256,12 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             store = JobStore(data_root)
             workspaces = ProfileWorkspaceStore(data_root)
             studio_sources = StudioProjectStore(data_root)
+            studio_revisions = StudioSettingsRevisionStore(data_root, studio_sources)
             recovery = store.recover()
             application.state.store = store
             application.state.workspaces = workspaces
             application.state.studio_sources = studio_sources
+            application.state.studio_revisions = studio_revisions
             yield
 
     token = secrets.token_urlsafe(32)
@@ -252,6 +269,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     app.state.store = store
     app.state.workspaces = workspaces
     app.state.studio_sources = studio_sources
+    app.state.studio_revisions = studio_revisions
     app.add_middleware(LocalSessionMiddleware, token=token)
     hosts = ['localhost','127.0.0.1'] + (['testserver'] if test_mode else [])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
@@ -267,6 +285,10 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.exception_handler(StudioSourceIntegrityError)
     async def studio_source_integrity(_request, exception):
         return JSONResponse({'detail': str(exception), 'code': 'studio_source_integrity'}, status_code=409)
+
+    @app.exception_handler(StudioRevisionIntegrityError)
+    async def studio_revision_integrity(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'studio_settings_revision_integrity'}, status_code=409)
 
     @app.exception_handler(OSError)
     @app.exception_handler(sqlite3.Error)
@@ -439,6 +461,25 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         return Response(content, media_type='model/3mf',
                         headers={'Content-Disposition': "attachment; filename*=utf-8''" + quote(filename)})
 
+    @app.get('/api/studio-projects/{source_id}/settings')
+    def get_studio_settings_editor(source_id: str):
+        snapshot, _ = studio_sources.read(source_id)
+        return {**settings_editor(snapshot), 'source_id': source_id}
+
+    @app.post('/api/studio-projects/{source_id}/settings/review')
+    def review_studio_settings(source_id: str, payload: StudioSettingsProposalPayload):
+        snapshot, _ = studio_sources.read(source_id)
+        _, review = derive_settings(snapshot, payload.model_dump())
+        return {**review, 'source_id': source_id}
+
+    @app.post('/api/studio-projects/{source_id}/settings/revisions', status_code=201)
+    def create_studio_settings_revision(source_id: str, payload: StudioSettingsCreatePayload):
+        return studio_revisions.create(source_id, payload.model_dump(exclude={'review_sha256'}), payload.review_sha256)
+
+    @app.get('/api/studio-settings-revisions/{revision_id}')
+    def get_studio_settings_revision(revision_id: str):
+        return studio_revisions.get(revision_id)
+
     @app.post('/api/slice')
     def slice_model(payload: SlicePayload):
         job = store.get(payload.job_id)
@@ -452,7 +493,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             began = True
             input_path = store.artifact_path(payload.job_id,'three_mf')
             work_dir = store.directory(payload.job_id) / 'slices' / uuid.uuid4().hex
-            if payload.studio_project_id is not None:
+            if payload.studio_settings_revision_id is not None:
+                snapshot, source_content, revision = studio_revisions.read(payload.studio_settings_revision_id)
+                plan = prepare_project_slice(input_path, work_dir, snapshot['source']['filename'], source_content,
+                                             source_id=revision['source_id'], settings_revision=revision)
+            elif payload.studio_project_id is not None:
                 snapshot, source_content = studio_sources.read(payload.studio_project_id)
                 plan = prepare_project_slice(input_path, work_dir, snapshot['source']['filename'], source_content,
                                              source_id=payload.studio_project_id)

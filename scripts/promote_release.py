@@ -51,6 +51,14 @@ REQUIRED_CHECKS = frozenset({
     'restored_job_and_workspace_identity', 'restored_verified_downloads',
     'backup_existing_destination_rejected', 'backup_corrupt_archive_rejected',
     'restored_server_releases_data_directory',
+    'studio_source_and_preparation_survive_backup_restore',
+    'studio_editor_six_original_bound_fields', 'studio_review_six_independent_changes',
+    'studio_changed_review_does_not_publish', 'studio_saved_revision_matches_review',
+    'studio_revision_preparation_without_native', 'studio_revision_download_matches_receipt',
+    'studio_revision_complete_effective_settings', 'studio_revision_metadata_and_current_cad',
+    'studio_revision_bundle_retains_current_cad', 'studio_revision_original_archive_unchanged',
+    'studio_revision_survives_real_restart', 'studio_revision_survives_backup_restore',
+    'studio_revision_fresh_preparation_after_restore', 'studio_revision_restored_preparation_uses_new_directory',
 })
 MAX_JSON = 8 * 1024 * 1024
 MAX_ZIP_BYTES = 64 * 1024 * 1024

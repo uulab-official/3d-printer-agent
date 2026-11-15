@@ -202,3 +202,61 @@ class StudioProjectTests(unittest.TestCase):
                 for name,content in payload.items(): archive.writestr(name,content)
             with self.subTest(change=change), self.assertRaises(ValueError):
                 build_project_3mf(stream.getvalue(),self.inspect())
+
+    def test_edited_composition_embeds_effective_settings_and_truthful_original_identity(self):
+        from print_agent.studio_settings import derive_settings, make_revision
+        model = (Path(__file__).parents[1]/'examples/cable_comb/model.3mf').read_bytes()
+        snapshot = self.inspect(settings_overrides={'unknown_custom_setting': ['untouched']})
+        before = json.loads(snapshot['settings_text'])
+        proposal = {'source_sha256': snapshot['source']['sha256'], 'settings_sha256': snapshot['settings_sha256'],
+                    'values': {'nozzle_temperature': '230', 'bed_temperature': '60'}}
+        effective, review = derive_settings(snapshot, proposal)
+        revision = make_revision(snapshot, proposal, source_id='1'*32, revision_id='2'*32,
+                                 created_at='2026-11-15T10:00:00Z', review_sha256=review['review_sha256'])
+        content, receipt = build_project_3mf(model, snapshot, settings_revision=revision, source_id='1'*32)
+        self.assertEqual((content, receipt), build_project_3mf(model, snapshot, settings_revision=revision, source_id='1'*32))
+        self.assertFalse(receipt['settings_preserved'])
+        self.assertEqual(receipt['settings_revision_id'], '2'*32)
+        self.assertEqual(receipt['review_sha256'], review['review_sha256'])
+        self.assertEqual(receipt['original_settings_sha256'], snapshot['settings_sha256'])
+        self.assertEqual(receipt['effective_settings_sha256'], effective['settings_sha256'])
+        self.assertEqual(receipt['settings_sha256'], effective['settings_sha256'])
+        self.assertEqual(receipt['source_sha256'], snapshot['source']['sha256'])
+        self.assertEqual(receipt['changes'], review['changes'])
+        self.assertEqual(receipt['modifier'], '3D Printer Agent 0.5.0')
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            self.assertEqual(archive.read('Metadata/project_settings.config'), effective['settings_text'].encode())
+            actual = json.loads(archive.read('Metadata/project_settings.config'))
+            expected = dict(before, nozzle_temperature=['230'], hot_plate_temp=['60'])
+            self.assertEqual(actual, expected)
+            root = ET.fromstring(archive.read('3D/3dmodel.model'))
+            metadata = {item.get('name'): item.text for item in root.findall('{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}metadata')}
+            self.assertEqual(metadata['3DPrinterAgent:SourceProjectSHA256'], snapshot['source']['sha256'])
+            self.assertEqual(metadata['3DPrinterAgent:OriginalSettingsSHA256'], snapshot['settings_sha256'])
+            self.assertEqual(metadata['3DPrinterAgent:EffectiveSettingsSHA256'], effective['settings_sha256'])
+            self.assertEqual(metadata['3DPrinterAgent:SettingsRevisionID'], revision['revision_id'])
+            self.assertEqual(metadata['3DPrinterAgent:ReviewSHA256'], review['review_sha256'])
+        self.assertEqual(json.loads(snapshot['settings_text']), before)
+        original_content, original_receipt = build_project_3mf(model, snapshot)
+        self.assertEqual(receipt['geometry'], original_receipt['geometry'])
+        with zipfile.ZipFile(io.BytesIO(original_content)) as archive:
+            self.assertEqual(archive.read('Metadata/project_settings.config'), snapshot['settings_text'].encode())
+        self.assertTrue(original_receipt['settings_preserved'])
+        self.assertNotIn('settings_revision_id', original_receipt)
+
+    def test_composition_reverifies_recipe_against_original_source_and_source_id(self):
+        import copy
+        from print_agent.studio_settings import derive_settings, make_revision
+        model = (Path(__file__).parents[1]/'examples/cable_comb/model.3mf').read_bytes()
+        snapshot = self.inspect()
+        proposal = {'source_sha256': snapshot['source']['sha256'], 'settings_sha256': snapshot['settings_sha256'], 'values': {'bed_temperature': '60'}}
+        effective, review = derive_settings(snapshot, proposal)
+        revision = make_revision(snapshot, proposal, source_id='1'*32, revision_id='2'*32,
+                                 created_at='2026-11-15T10:00:00Z', review_sha256=review['review_sha256'])
+        for source_id in (None, '3'*32):
+            with self.subTest(source_id=source_id), self.assertRaises(ValueError):
+                build_project_3mf(model, snapshot, settings_revision=revision, source_id=source_id)
+        corrupt = copy.deepcopy(revision)
+        corrupt['changes'][0]['native_key'] = 'cool_plate_temp'
+        with self.assertRaises(ValueError): build_project_3mf(model, snapshot, settings_revision=corrupt, source_id='1'*32)
+        with self.assertRaises(ValueError): build_project_3mf(model, effective, settings_revision=revision, source_id='1'*32)

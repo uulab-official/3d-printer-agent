@@ -1,10 +1,12 @@
 # Development status
 
-Date: 2026-11-14 (Asia/Seoul).
+Date: 2026-11-15 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.4 is a local single-user application; the exact desktop, browser and native qualification is recorded below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.5 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.5 adds guided review and application of six filament settings within a supported Studio project. Immutable revisions retain the original source and exact changed-only recipe; every read and preparation rederives the effective settings. The UI preserves invalid drafts, separates original/applied/recorded values, and restores edited history through its revision. Installed qualification covers actual restart, backup restoration and fresh preparation under the restored root. A fourth synthetic native case retains all previous cases. See [STUDIO_SETTINGS.md](STUDIO_SETTINGS.md); this source's actual CI and publication are pending until an observed entry is recorded.
 
 Version 0.4 adds a single-file Studio-project settings source, immutable verified originals, separate prepared-project downloads without Studio, and a version-specific native path. Candidate/application state, current CAD identity and recorded history stay distinct. The exact qualified wheel is published in [v0.4.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.4.0), after application, package and native qualification passed on the same source commit. See [STUDIO_PROJECTS.md](STUDIO_PROJECTS.md) for supported scope and the observed evidence below.
 

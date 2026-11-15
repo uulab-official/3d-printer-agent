@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
-const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice'];
+const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
 class Element {
   constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
@@ -40,7 +40,7 @@ function fixture() {
   }
   // Load actual offer event wiring as well as its controller functions.
   vm.runInContext(source.slice(source.indexOf('  function renderOfferRows()'),source.indexOf('  function dateTime(')),context);
-  Object.assign(context.state,{studioRequest:0,studioRevision:0,studioPending:false,studioCandidate:null,studioCandidateEpoch:null,studioCandidateStorage:null,studioApplied:null,studioAppliedEpoch:null,studioAppliedStorage:null,studioRecorded:null,studioSlicePrepared:false,studioPreparedSignature:null,studioSavedIdentity:null});
+  Object.assign(context.state,{studioSettingsOpen:false,studioSettingsDescriptor:null,studioSettingsDraft:null,studioSettingsReview:null,studioSettingsReviewContext:null,studioSettingsPending:false,studioSettingsApplied:null,studioSettingsCandidate:null,studioSettingsRecorded:null,studioSettingsRecordedReview:null,studioRequest:0,studioRevision:0,studioPending:false,studioCandidate:null,studioCandidateEpoch:null,studioCandidateStorage:null,studioApplied:null,studioAppliedEpoch:null,studioAppliedStorage:null,studioRecorded:null,studioSlicePrepared:false,studioPreparedSignature:null,studioSavedIdentity:null});
   return context;
 }
 function profileFixture() {
@@ -119,6 +119,9 @@ const studioInput = (name='Studio 원본.3mf') => ({files:[{name,size:3,arrayBuf
 function studioApplied(c, inspection=studioInspection()) {
   c.state.studioApplied=inspection;c.state.studioAppliedEpoch=c.state.connectionEpoch;c.state.studioAppliedStorage=c.state.storage?.path || null;
 }
+const studioDescriptor=()=>({schema_version:1,source_id:'a'.repeat(32),source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),source_summary:studioInspection().summary,warnings:[],fields:['nozzle_temperature','nozzle_temperature_initial_layer','filament_flow_ratio','filament_max_volumetric_speed','bed_temperature','bed_temperature_initial_layer'].map(key=>({key,native_key:key,label:key,unit:'',kind:'integer',original:studioInspection().summary[key],value:studioInspection().summary[key],minimum:1,maximum:360,exclusive_minimum:false}))});
+const studioReview=()=>({schema_version:1,source_id:'a'.repeat(32),source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),effective_settings_sha256:'f'.repeat(64),review_sha256:'1'.repeat(64),values:{nozzle_temperature:'216'},changes:[{field:'nozzle_temperature',native_key:'nozzle_temperature',before:['215'],after:['216']}],changed_count:1,provenance:'user_selected',effective_summary:{...studioInspection().summary,nozzle_temperature:'216'}});
+const studioEnvelope=(id='e'.repeat(32))=>({source:studioInspection(),review:studioReview(),revision:{schema_version:1,revision_id:id,source_id:'a'.repeat(32),effective_settings_sha256:'f'.repeat(64),review_sha256:'1'.repeat(64),proposal:{source_sha256:'c'.repeat(64),settings_sha256:'d'.repeat(64),values:{nozzle_temperature:'216'}},changes:studioReview().changes,provenance:'user_selected'}});
 (async()=>{
   let failed=0,passed=0;
   async function check(name,test) {
@@ -127,6 +130,102 @@ function studioApplied(c, inspection=studioInspection()) {
     catch(error) { failed++; console.log('FAIL',name,error.message); }
     finally { clearTimeout(deadline); }
   }
+  await check('Studio six-field editor retains exact invalid strings and never partially applies',async()=>{
+    const c=fixture();studioApplied(c);c.state.job=job();const descriptor=studioDescriptor();c.api=async()=>descriptor;
+    await c.openStudioSettings();assert.equal(c.state.studioSettingsDraft.nozzle_temperature,'215');
+    c.editStudioSetting('nozzle_temperature',' 216 ');c.editStudioSetting('filament_flow_ratio','1.');
+    c.api=async()=>{throw new Error('Invalid decimal');};await c.reviewStudioSettings();
+    assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,'1.');assert.equal(c.state.studioSettingsDraft.nozzle_temperature,' 216 ');
+    assert.equal(c.state.studioSettingsReview,null);assert.equal(c.state.studioSettingsApplied,null);assert.equal(c.$('prepare-studio-project').disabled,true);assert.equal(c.hasPendingWork(),true);
+    c.cancelStudioSettings();assert.equal(c.state.studioSettingsOpen,false);assert.equal(c.state.studioSettingsApplied,null);
+  });
+  await check('Studio review requires explicit apply and preparation binds its immutable revision',async()=>{
+    const c=fixture();studioApplied(c);c.state.job=job();c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('nozzle_temperature','216');
+    const review=studioReview();c.api=async()=>review;await c.reviewStudioSettings();assert.equal(c.state.studioSettingsApplied,null);
+    let created;c.api=async(path,body)=>{created={path,body};return studioEnvelope();};await c.applyStudioSettings();
+    assert.equal(created.body.review_sha256,review.review_sha256);assert.equal(c.state.studioSettingsApplied.revision.revision_id,'e'.repeat(32));
+    let sent;c.api=async(path,body)=>{if(body){sent=body;return {plan:{kind:'studio_project',project_prepared:true,ready:false,project_source:studioInspection(),settings_revision:studioEnvelope().revision,settings_review:review}};}return job();};
+    await c.runStudioSlice(false);assert.deepEqual(plain(sent),{job_id:'job-a',studio_settings_revision_id:'e'.repeat(32),execute:false});
+    c.resetStudioSettings();assert.equal(c.state.studioSettingsApplied,null);assert.equal(c.$('studio-project-prepared-download').hidden,true);
+  });
+  await check('Late Studio descriptor review create and revalidation are inert after context changes',async()=>{
+    for(const operation of ['descriptor','review','create','revalidate'])for(const change of [c=>c.cancelStudioSettings(),c=>c.editStudioSetting('nozzle_temperature','217'),c=>{c.state.connectionEpoch++;},c=>{c.state.storage={path:'/new'};},c=>{c.state.job={...job(),id:'different'};},c=>{c.state.studioSettingsApplied=studioEnvelope('f'.repeat(32));},c=>studioApplied(c,studioInspection('b'.repeat(32)))])for(const fail of [false,true]){
+      const c=fixture();studioApplied(c);c.state.job=job();c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('nozzle_temperature','216');
+      c.state.studioSettingsReview=studioReview();c.state.studioSettingsReviewContext=c.studioContext();
+      if(operation==='revalidate') {c.state.studioSettingsApplied=studioEnvelope();c.state.connectionEpoch++;}
+      let settle;c.api=()=>new Promise((resolve,reject)=>{settle=fail?reject:resolve;});
+      const pending=operation==='descriptor'?c.openStudioSettings():operation==='review'?c.reviewStudioSettings():operation==='create'?c.applyStudioSettings():c.revalidateStudioProject();
+      assert(settle,operation+' starts request');change(c);const expected=c.studioSettingsIdentity(c.state.studioSettingsApplied);c.$('studio-settings-feedback').textContent='Current feedback';c.$('studio-project-feedback').textContent='Current source';
+      settle(fail?new Error('Old error'):operation==='descriptor'?studioDescriptor():operation==='review'?studioReview():studioEnvelope());await pending;
+      assert.equal(c.studioSettingsIdentity(c.state.studioSettingsApplied),expected);assert.equal(c.$('studio-settings-feedback').textContent,'Current feedback');assert.equal(c.$('studio-project-feedback').textContent,'Current source');
+    }
+  });
+  await check('Studio source replacement requires explicit draft discard and cancel keeps applied revision',async()=>{
+    const c=fixture();studioApplied(c);c.state.studioSettingsApplied=studioEnvelope();c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio',' 1. ');
+    c.state.studioCandidate=studioInspection('b'.repeat(32));c.state.studioCandidateEpoch=0;c.state.studioCandidateStorage=null;c.applyStudioCandidate();
+    assert.equal(c.state.studioApplied.source_id,'a'.repeat(32));assert.equal(c.$('studio-settings-replace-choice').hidden,false);
+    c.cancelStudioCandidate();assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,' 1. ');assert.equal(c.state.studioSettingsApplied.revision.revision_id,'e'.repeat(32));
+    c.state.studioCandidate=studioInspection('b'.repeat(32));c.state.studioCandidateEpoch=0;c.state.studioCandidateStorage=null;c.applyStudioCandidate(true);
+    assert.equal(c.state.studioApplied.source_id,'b'.repeat(32));assert.equal(c.state.studioSettingsDraft,null);assert.equal(c.state.studioSettingsApplied,null);
+  });
+  await check('Edited history revalidation stages full revision and never silently adopts original',async()=>{
+    const c=fixture();const envelope=studioEnvelope();c.renderJob({...job(),latest_slice:{phase:'complete',plan:{kind:'studio_project',project_source:studioInspection(),settings_revision:envelope.revision,settings_review:envelope.review}}});
+    let path;c.api=async url=>{path=url;return envelope;};await c.revalidateStudioProject(true);
+    assert.equal(path,'/api/studio-settings-revisions/'+'e'.repeat(32));assert.equal(c.state.studioSettingsApplied,null);assert.equal(c.state.studioSettingsCandidate.revision.revision_id,'e'.repeat(32));
+    c.applyStudioCandidate();assert.equal(c.state.studioSettingsApplied.revision.revision_id,'e'.repeat(32));assert.equal(c.state.studioSlicePrepared,false);
+  });
+  await check('All six Studio text controls expose original values and preserve the complete submitted draft',async()=>{
+    const c=fixture();studioApplied(c);const descriptor=studioDescriptor();c.api=async()=>descriptor;await c.openStudioSettings();
+    const inputs=c.$('studio-settings-fields').children.map(label=>label.children.find(child=>child.dataset.studioSetting));assert.equal(inputs.length,6);
+    const values=[' 216 ','221','1.010000','13.00','56','57'];
+    inputs.forEach((input,index)=>{assert.equal(input.type,'text');assert.equal(input.maxLength,undefined);assert.equal(input.value,descriptor.fields[index].value);input.value=values[index];input.listeners.input();});
+    let sent;c.api=async(path,body)=>{sent=body;return studioReview();};await c.reviewStudioSettings();
+    assert.deepEqual(plain(sent.values),Object.fromEntries(descriptor.fields.map((field,index)=>[field.key,values[index]])));
+    assert.equal(c.state.studioSettingsApplied,null);assert.match(c.$('studio-settings-fields').textContent,/원본/);
+  });
+  await check('Rejected overlong and partial Studio text remains exact without truncation',async()=>{
+    const c=fixture();studioApplied(c);c.api=async()=>studioDescriptor();await c.openStudioSettings();
+    for(const invalid of [' ', '1.', '1e2', '+1', '9'.repeat(33), 'NaN']) {c.editStudioSetting('filament_flow_ratio',invalid);c.api=async()=>{throw new Error('Unsupported input');};await c.reviewStudioSettings();assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,invalid);assert.equal(c.state.studioSettingsReview,null);assert.equal(c.state.studioSettingsApplied,null);}
+  });
+  await check('Numerically unchanged Studio review returns explicitly to original without creating a record',async()=>{
+    const c=fixture();studioApplied(c);c.state.studioSettingsApplied=studioEnvelope();c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('nozzle_temperature',' 215 ');
+    c.api=async()=>({...studioReview(),values:{},changes:[],changed_count:0,effective_settings_sha256:'d'.repeat(64)});await c.reviewStudioSettings();
+    assert.equal(c.state.studioSettingsApplied.revision.revision_id,'e'.repeat(32));let creates=0;c.api=async()=>{creates++;throw new Error('No create allowed');};await c.applyStudioSettings();
+    assert.equal(creates,0);assert.equal(c.state.studioSettingsApplied,null);assert.equal(c.state.studioSettingsOpen,false);
+  });
+  await check('Any Studio text edit detaches prepared and native results; cancel preserves applied settings',async()=>{
+    const c=fixture();studioApplied(c);c.state.job={...job(),artifacts:{prepared_three_mf:'/api/jobs/job-a/files/prepared_three_mf',sliced_three_mf:'/api/jobs/job-a/files/sliced_three_mf'},latest_slice:{phase:'complete',plan:{kind:'studio_project',project_prepared:true,project_source:studioInspection(),settings_revision:studioEnvelope().revision}}};
+    c.state.studioSettingsApplied=studioEnvelope();c.state.studioSlicePrepared=true;c.state.studioPreparedSignature=c.studioContext();c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio','1e');
+    assert.equal(c.state.studioSlicePrepared,false);assert.equal(c.$('studio-project-prepared-download').hidden,true);assert.doesNotMatch(c.$('download-links').textContent,/설정 포함|슬라이스 3MF/);
+    c.cancelStudioSettings();assert.equal(c.state.studioSettingsApplied.revision.revision_id,'e'.repeat(32));assert.equal(c.$('prepare-studio-project').disabled,false);assert.equal(c.$('execute-studio-project').disabled,true);
+  });
+  await check('Studio pending unapplied and reviewed drafts protect page exit and replacement confirmation',async()=>{
+    const c=offersFixture();studioApplied(c);c.state.studioSettingsApplied=studioEnvelope();c.state.studioSavedIdentity=JSON.stringify([c.studioSourceIdentity(c.state.studioApplied),c.studioSettingsIdentity(c.state.studioSettingsApplied)]);assert.equal(c.studioHasUnsavedChanges(),false);
+    c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio','1.');assert.equal(c.exitIsProtected(),true);
+    const signature=c.replacementSignature();c.editStudioSetting('filament_flow_ratio','1.0');assert.notEqual(c.replacementSignature(),signature);
+    c.cancelStudioSettings();assert.equal(c.studioHasUnsavedChanges(),false);c.state.studioSettingsPending=true;assert.equal(c.exitIsProtected(),true);
+  });
+  await check('Reconnection retains Studio exact draft and revision without replay; revalidation cannot fall back',async()=>{
+    const c=fixture();studioApplied(c);c.state.job=job();c.state.studioSettingsApplied=studioEnvelope();c.api=async()=>studioDescriptor();await c.openStudioSettings();c.editStudioSetting('filament_flow_ratio',' 1. ');
+    const requests=[];c.api=async(path,body)=>{requests.push({path,body});if(path==='/api/bootstrap')return {session_token:'new-token',storage:null,templates:c.state.templates,environment:{available:false},provider:{}};return {};};
+    await c.bootstrap();assert(requests.every(request=>request.body===undefined));assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,' 1. ');assert.equal(c.state.studioSettingsApplied.revision.revision_id,'e'.repeat(32));assert.equal(c.$('prepare-studio-project').disabled,true);
+    c.api=async()=>{throw new Error('Stored revision is missing');};await c.revalidateStudioProject();assert.equal(c.state.studioSettingsApplied.revision.revision_id,'e'.repeat(32));assert.equal(c.state.studioSettingsDraft.filament_flow_ratio,' 1. ');assert.equal(c.$('prepare-studio-project').disabled,true);
+    c.api=async()=>studioEnvelope();await c.revalidateStudioProject();assert.equal(c.$('prepare-studio-project').disabled,true);c.cancelStudioSettings();assert.equal(c.$('prepare-studio-project').disabled,false);assert.equal(c.$('execute-studio-project').disabled,true);
+  });
+  await check('Malformed edited history and contradictory reviews never fall back to bare original',async()=>{
+    const incomplete={...studioEnvelope().revision};delete incomplete.review_sha256;
+    for(const revision of [incomplete,{},false,0,'','broken',null])for(const withReview of [false,true]) {
+      if(revision===null&&!withReview)continue;
+      const c=fixture();const review=withReview?studioReview():null;
+      c.renderJob({...job(),latest_slice:{phase:'complete',plan:{kind:'studio_project',project_source:studioInspection(),settings_revision:revision,settings_review:review}}});
+      const requests=[];c.api=async path=>{requests.push(path);return studioInspection();};await c.revalidateStudioProject(true);
+      assert.deepEqual(requests,[]);assert.equal(c.state.studioCandidate,null);assert.equal(c.state.studioApplied,null);assert.equal(c.$('prepare-studio-project').disabled,true);assert.match(c.$('studio-project-feedback').textContent,/설정.*기록|기록.*설정/);
+      assert.deepEqual(plain(c.state.studioSettingsRecorded),revision);
+    }
+    for(const invalid of [false,0,'',{},'broken']){const invalidContext=fixture();studioApplied(invalidContext);invalidContext.state.studioSettingsApplied=invalid;assert.equal(invalidContext.studioSourceCurrent(),false);}
+    const c=fixture();studioApplied(c);c.state.studioSettingsApplied={revision:incomplete,review:studioReview()};const requests=[];c.api=async path=>{requests.push(path);return studioInspection();};await c.revalidateStudioProject();assert.deepEqual(requests,[]);assert.equal(c.studioSourceCurrent(),false);
+    c.state.studioCandidate=studioInspection();c.state.studioCandidateEpoch=0;c.state.studioCandidateStorage=null;c.state.studioSettingsCandidate={revision:incomplete,review:studioReview()};c.applyStudioCandidate();assert.equal(c.state.studioSettingsApplied.revision.review_sha256,undefined);assert.equal(c.$('prepare-studio-project').disabled,true);
+  });
   await check('Studio import stages a candidate without replacing manual JSON or unfinished material text',async()=>{
     const c=profileFixture();c.$('slicer-json').value=' { "manual": "unchanged" }\n';c.$('profile-json').value='{ unfinished  ';
     let request;c.api=async(path,body)=>{request={path,body};return studioInspection();};
@@ -192,7 +291,7 @@ function studioApplied(c, inspection=studioInspection()) {
     await c.runSlice(false);assert.equal(c.$('execute-slice').disabled,false);assert.equal(c.$('execute-studio-project').disabled,true);
   });
   await check('Late project preparation cannot render into a different source model or connection',async()=>{
-    for(const change of [c=>{c.state.job={...job(),id:'new-job'};},c=>{studioApplied(c,studioInspection('b'.repeat(32)));},c=>{c.state.connectionEpoch++;}])for(const fail of [false,true]){
+    for(const change of [c=>{c.state.job={...job(),id:'new-job'};},c=>{studioApplied(c,studioInspection('b'.repeat(32)));},c=>{c.state.connectionEpoch++;},c=>{c.state.studioSettingsApplied=studioEnvelope();}])for(const fail of [false,true]){
       const c=fixture();c.state.job=job();studioApplied(c);let settle;c.api=()=>new Promise((resolve,reject)=>{settle=fail?reject:resolve;});
       const pending=c.runStudioSlice(false);change(c);c.$('slice-feedback').textContent='Current feedback';
       settle(fail?new Error('Old preparation failed'):{plan:{kind:'studio_project',ready:true,project_prepared:true,diagnostics:['Old plan']}});await pending;
@@ -229,7 +328,7 @@ function studioApplied(c, inspection=studioInspection()) {
     }
   });
   await check('Late manual preparation cannot replace a changed project source model draft or connection',async()=>{
-    const changes=[c=>{c.state.job={...job(),id:'new-job'};},c=>{studioApplied(c,studioInspection('b'.repeat(32)));},c=>{c.state.connectionEpoch++;},c=>{c.$('slicer-json').value=' { "newer": true }\n';}];
+    const changes=[c=>{c.state.job={...job(),id:'new-job'};},c=>{studioApplied(c,studioInspection('b'.repeat(32)));},c=>{c.state.connectionEpoch++;},c=>{c.state.studioSettingsApplied=studioEnvelope();},c=>{c.$('slicer-json').value=' { "newer": true }\n';}];
     for(const change of changes)for(const fail of [false,true]) {
       const c=fixture();c.state.job=job();studioApplied(c);c.$('slicer-json').value=' { "submitted": true }\n';let settle;
       c.api=path=>path==='/api/slice'?new Promise((resolve,reject)=>{settle=fail?reject:resolve;}):Promise.resolve(job());

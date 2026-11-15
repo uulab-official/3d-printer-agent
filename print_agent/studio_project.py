@@ -25,7 +25,7 @@ MAX_ENTRIES = 4096
 MAX_SETTINGS_BYTES = MAX_MODEL_XML_BYTES = 2 * 1024 * 1024
 MAX_IMPORT_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_SETTINGS_DEPTH = 32
-MODIFIER = '3D Printer Agent 0.4.0'
+MODIFIER = '3D Printer Agent 0.5.0'
 CORE = 'http://schemas.microsoft.com/3dmanufacturing/core/2015/02'
 SETTINGS_PATH = 'Metadata/project_settings.config'
 MODEL_PATH = '3D/3dmodel.model'
@@ -278,16 +278,7 @@ def _assess(settings,producer):
     return issues,expected,bed_fields
 
 
-def inspect_studio_project(filename: str,content: bytes)->dict:
-    if not isinstance(filename,str) or '/' in filename or '\\' in filename or not filename.lower().endswith('.3mf'):
-        raise ValueError('원본 .3mf 파일 이름이 필요합니다.')
-    _safe_name(filename)
-    members=_members(content)
-    if SETTINGS_PATH not in members or MODEL_PATH not in members:
-        raise ValueError('프로젝트 전역 설정과 루트 모델 XML이 필요합니다.')
-    settings,text=_settings(members[SETTINGS_PATH]); metadata=_metadata(_xml(members[MODEL_PATH]))
-    producer={'application':metadata['Application'],'format_version':metadata['BambuStudio:3mfVersion'],'settings_version':settings.get('version')}
-    issues,expected,beds=_assess(settings,producer)
+def _summary(settings,beds):
     def scalar(key):
         value=settings.get(key)
         return copy.deepcopy(value[0] if isinstance(value,list) and len(value)==1 else value)
@@ -298,6 +289,20 @@ def inspect_studio_project(filename: str,content: bytes)->dict:
              'filament_max_volumetric_speed':'filament_max_volumetric_speed'}
     summary={key:scalar(field) for key,field in mapping.items()}
     summary.update(bed_temperature=scalar(beds[0]) if beds else None,bed_temperature_initial_layer=scalar(beds[1]) if beds else None)
+    return summary
+
+
+def inspect_studio_project(filename: str,content: bytes)->dict:
+    if not isinstance(filename,str) or '/' in filename or '\\' in filename or not filename.lower().endswith('.3mf'):
+        raise ValueError('원본 .3mf 파일 이름이 필요합니다.')
+    _safe_name(filename)
+    members=_members(content)
+    if SETTINGS_PATH not in members or MODEL_PATH not in members:
+        raise ValueError('프로젝트 전역 설정과 루트 모델 XML이 필요합니다.')
+    settings,text=_settings(members[SETTINGS_PATH]); metadata=_metadata(_xml(members[MODEL_PATH]))
+    producer={'application':metadata['Application'],'format_version':metadata['BambuStudio:3mfVersion'],'settings_version':settings.get('version')}
+    issues,expected,beds=_assess(settings,producer)
+    summary=_summary(settings,beds)
     return {'schema_version':1,'source':{'filename':filename,'bytes':len(content),'sha256':_hash(content)},
             'producer':producer,'settings_text':text,'settings_sha256':_hash(members[SETTINGS_PATH]),
             'summary':summary,'expected_settings':expected,'supported':not issues,'issues':issues,
@@ -309,7 +314,14 @@ def public_snapshot(snapshot):
     return copy.deepcopy({key:value for key,value in snapshot.items() if key not in ('settings_text','expected_settings')})
 
 
-def build_project_3mf(model_bytes: bytes,snapshot: dict)->tuple[bytes,dict]:
+def build_project_3mf(model_bytes: bytes,snapshot: dict, *, settings_revision=None, source_id=None)->tuple[bytes,dict]:
+    original_snapshot=snapshot
+    review=None
+    if settings_revision is not None:
+        # Import here keeps the settings policy dependent on the bounded parser,
+        # without importing that policy during ordinary source inspection.
+        from .studio_settings import verify_revision
+        snapshot,review=verify_revision(original_snapshot,settings_revision,source_id=source_id)
     settings_bytes=snapshot['settings_text'].encode('utf-8')
     settings,_=_settings(settings_bytes)
     issues,expected,_=_assess(settings,snapshot['producer'])
@@ -360,6 +372,11 @@ def build_project_3mf(model_bytes: bytes,snapshot: dict)->tuple[bytes,dict]:
     metadata={'Application':snapshot['producer']['application'],'BambuStudio:3mfVersion':'1',
               '3DPrinterAgent:ModifiedBy':MODIFIER,'3DPrinterAgent:SourceProjectSHA256':source_hash,
               '3DPrinterAgent:ModelSHA256':_hash(model_bytes)}
+    if review is not None:
+        metadata.update({'3DPrinterAgent:SettingsRevisionID':settings_revision['revision_id'],
+                         '3DPrinterAgent:ReviewSHA256':review['review_sha256'],
+                         '3DPrinterAgent:OriginalSettingsSHA256':original_snapshot['settings_sha256'],
+                         '3DPrinterAgent:EffectiveSettingsSHA256':snapshot['settings_sha256']})
     for item in list(root.findall(q('metadata'))):
         if item.get('name') in metadata: root.remove(item)
     for name,value in reversed(list(metadata.items())):
@@ -385,9 +402,16 @@ def build_project_3mf(model_bytes: bytes,snapshot: dict)->tuple[bytes,dict]:
     geometry={'preserved':True,'vertices':len(vertices),'triangles':len(triangles),
               'dimensions_mm':[max(p[i] for p in coords)-min(p[i] for p in coords) for i in range(3)],
               'mesh_sha256':_hash(mesh_before),'source_geometry_copied':False}
-    return content,{'schema_version':1,'source_sha256':source_hash,'settings_sha256':snapshot['settings_sha256'],
+    receipt={'schema_version':1,'source_sha256':source_hash,'settings_sha256':snapshot['settings_sha256'],
                     'model_sha256':_hash(model_bytes),'project_sha256':_hash(content),'project_bytes':len(content),
                     'producer':copy.deepcopy(snapshot['producer']),'modifier':MODIFIER,'geometry':geometry,
                     'settings_preserved':True,'application_policy':'preserve supplied source-template marker; explicit modifier identifies derivative',
                     'application_origin':'source project root Application metadata; not newly asserted Studio authorship',
                     'qualification_version':QUALIFIED_VERSION}
+    if review is not None:
+        receipt.update(settings_preserved=False,
+                       original_settings_sha256=original_snapshot['settings_sha256'],
+                       effective_settings_sha256=snapshot['settings_sha256'],
+                       settings_revision_id=settings_revision['revision_id'],
+                       review_sha256=review['review_sha256'],changes=copy.deepcopy(review['changes']))
+    return content,receipt

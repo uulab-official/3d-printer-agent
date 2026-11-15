@@ -9,6 +9,8 @@ network access; native execution is local, not network-isolated. Only the standa
 library is required. Evidence excludes the large downloaded runtime image.
 The project adapter check applies a newly native-produced synthetic cube's exact
 settings snapshot to different generated CAD through the public production path.
+A fourth adapter case changes all six supported fields through an immutable recipe
+and independently compares the complete effective settings and current CAD mesh.
 """
 from __future__ import annotations
 
@@ -412,14 +414,14 @@ def compare_native_geometry(expected_path, actual_path):
             "maximum_translated_vertex_error_mm": delta, "triangle_connectivity_matches": topology}
 
 
-def project_adapter_smoke(executable, evidence, env, adapter_report, report):
+def project_adapter_smoke(executable, evidence, env, adapter_report, report, *, edited=False):
     """Qualify the production project path separately from the earlier spike."""
     from print_agent.slicer import execute_slice, prepare_project_slice
 
     report.update(status="running", source="native_export_of_handwritten_synthetic_ci_fixture",
                   manufacturer_preset=False, hardware_qualified=False, uses_native_defaults=True,
                   source_geometry="original 10 x 10 x 2 mm cube", current_geometry="committed cable comb 80 x 18 x 12 mm")
-    folder = evidence / "project-adapter"
+    folder = evidence / ("edited-project-adapter" if edited else "project-adapter")
     folder.mkdir()
     old_xdg = {key: os.environ.get(key) for key in ("XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME")}
     os.environ.update({key: env[key] for key in old_xdg})
@@ -434,15 +436,55 @@ def project_adapter_smoke(executable, evidence, env, adapter_report, report):
         (folder / "original-native-synthetic-project.3mf").write_bytes(original_bytes)
         with zipfile.ZipFile(source) as archive:
             before_bytes = archive.read("Metadata/project_settings.config")
+        original_settings_bytes = before_bytes
+        original_settings = json.loads(before_bytes)
         before = json.loads(before_bytes)
         (folder / "source-project-settings.json").write_bytes(before_bytes)
         _, expected = synthetic_fixture()
         (folder / "independent-core-expectations.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
+        revision, review, independent_updates = None, None, {}
+        preparation_keywords = {}
+        if edited:
+            from print_agent import studio_project, studio_settings
+            # Fixed synthetic values form an independent expectation. Do not use
+            # a derivation/composer result as the expected complete snapshot.
+            if original_settings.get("curr_bed_type") != "High Temp Plate":
+                raise ValueError("The edited case requires the original synthetic High Temp Plate selection.")
+            values = {"nozzle_temperature": "231", "nozzle_temperature_initial_layer": "233",
+                      "filament_flow_ratio": "0.97", "filament_max_volumetric_speed": "11.5",
+                      "bed_temperature": "61", "bed_temperature_initial_layer": "63"}
+            independent_updates = {"nozzle_temperature": ["231"], "nozzle_temperature_initial_layer": ["233"],
+                                   "filament_flow_ratio": ["0.97"], "filament_max_volumetric_speed": ["11.5"],
+                                   "hot_plate_temp": ["61"], "hot_plate_temp_initial_layer": ["63"]}
+            if any(original_settings.get(key) == value for key, value in independent_updates.items()):
+                raise ValueError("Every edited synthetic setting must differ from the original source.")
+            before.update(independent_updates)
+            # Expected serialization is retained independently; JSON value equality
+            # checks every touched and untouched setting, not just six fields.
+            before_bytes = (json.dumps(before, ensure_ascii=False, allow_nan=False, sort_keys=True,
+                                       separators=(",", ":")) + "\n").encode()
+            snapshot = studio_project.inspect_studio_project("native-synthetic-cube.3mf", original_bytes)
+            proposal = {"source_sha256": source_hash, "settings_sha256": hashlib.sha256(original_settings_bytes).hexdigest(),
+                        "values": values}
+            _, review = studio_settings.derive_settings(snapshot, proposal)
+            revision = studio_settings.make_revision(snapshot, proposal, source_id="a" * 32, revision_id="b" * 32,
+                created_at=datetime.now(timezone.utc).isoformat(), review_sha256=review["review_sha256"])
+            preparation_keywords = {"source_id": "a" * 32, "settings_revision": revision}
+            expected.update(independent_updates)
+            for name, record in (("proposal.json", proposal), ("settings-review.json", review), ("settings-revision.json", revision)):
+                (folder / name).write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            (folder / "original-source-project-settings.json").write_bytes(original_settings_bytes)
+            (folder / "independent-effective-project-settings.json").write_bytes(before_bytes)
+            (folder / "independent-core-expectations.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
+            report.update(settings_revision=revision, settings_review=review, synthetic_changes=independent_updates,
+                          provenance="user_selected", recipe_sha256=sha256(folder / "settings-revision.json"),
+                          settings_engine_source_sha256=sha256(REPO_ROOT / "print_agent/studio_settings.py"))
         plan = prepare_project_slice(model, folder / "job", "native-synthetic-cube.3mf", original_bytes,
-                                     executable_path=str(executable))
+                                     executable_path=str(executable), **preparation_keywords)
         (folder / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         report.update(source_archive_sha256=source_hash, current_model_sha256=model_hash,
-                      source_settings_sha256=hashlib.sha256(before_bytes).hexdigest(),
+                      source_settings_sha256=hashlib.sha256(original_settings_bytes).hexdigest(),
+                      effective_settings_sha256=plan.get("project_receipt", {}).get("settings_sha256"),
                       source_settings_key_count=len(before), adapter_source_sha256=sha256(REPO_ROOT / "print_agent/slicer.py"),
                       project_composer_source_sha256=sha256(REPO_ROOT / "print_agent/studio_project.py"),
                       project_source=plan.get("project_source"), project_receipt=plan.get("project_receipt"), argv=plan.get("argv"))
@@ -510,7 +552,9 @@ def project_adapter_smoke(executable, evidence, env, adapter_report, report):
             "zero_exit_code": result.get("exit_code") == 0,
             "all_adapter_checks_pass": bool(result.get("checks")) and all(check.get("passed") is True for check in result["checks"]),
             "independent_30_core_settings_match": len(inspection["independent_core_checks"]) == 30 and all(check["passed"] for check in inspection["independent_core_checks"]),
-            "exact_snapshot_bytes_prepared": derived_settings == before_bytes,
+            "exact_snapshot_bytes_prepared": derived_settings == original_settings_bytes if not edited else
+                hashlib.sha256(derived_settings).hexdigest() == revision["effective_settings_sha256"],
+            "complete_prepared_settings_match_independent_expectation": json.loads(derived_settings) == before,
             "current_cad_preserved_in_project": report["derived_geometry"]["passed"],
             "source_and_current_geometry_differ": report["source_vs_current_geometry"]["passed"] is False,
             "native_output_contains_current_cad": report["native_geometry"]["passed"],
@@ -528,6 +572,30 @@ def project_adapter_smoke(executable, evidence, env, adapter_report, report):
             "printer_not_checked": result.get("printer_status") == "not_checked",
             "print_not_started": result.get("print_status") == "not_started",
         }
+        if edited:
+            staged_revision = Path(plan["job_dir"]) / "settings-revision.json"
+            report["qualification_checks"].update({
+                "all_six_synthetic_values_changed": review["changed_count"] == 6
+                    and {item["native_key"] for item in review["changes"]} == set(independent_updates),
+                "original_to_effective_changes_exact": {key for key in original_settings if original_settings[key] != before[key]}
+                    == set(independent_updates) and original_settings.keys() == before.keys(),
+                "revision_and_review_match_plan": plan.get("settings_revision") == revision and plan.get("settings_review") == review,
+                "recipe_retained_unchanged": json.loads(staged_revision.read_bytes()) == revision
+                    and json.loads((folder / "settings-revision.json").read_bytes()) == revision
+                    and sha256(folder / "settings-revision.json") == report["recipe_sha256"]
+                    and sha256(staged_revision) == plan["file_hashes"][str(staged_revision)],
+                "original_settings_unchanged": hashlib.sha256(original_settings_bytes).hexdigest()
+                    == plan["project_source"]["settings_sha256"],
+                "native_revision_metadata_retained": metadata.get("3DPrinterAgent:SettingsRevisionID") == revision["revision_id"]
+                    and metadata.get("3DPrinterAgent:ReviewSHA256") == review["review_sha256"]
+                    and metadata.get("3DPrinterAgent:OriginalSettingsSHA256") == proposal["settings_sha256"]
+                    and metadata.get("3DPrinterAgent:EffectiveSettingsSHA256") == revision["effective_settings_sha256"],
+                "effective_receipt_identity": plan["project_receipt"].get("settings_preserved") is False
+                    and plan["project_receipt"].get("settings_revision_id") == revision["revision_id"]
+                    and plan["project_receipt"].get("review_sha256") == review["review_sha256"]
+                    and plan["project_receipt"].get("original_settings_sha256") == proposal["settings_sha256"]
+                    and plan["project_receipt"].get("effective_settings_sha256") == revision["effective_settings_sha256"],
+            })
         report["status"] = "passed" if all(report["qualification_checks"].values()) else "failed"
     except Exception as exc:
         report.update(status="failed", error=f"{type(exc).__name__}: {exc}")
@@ -538,7 +606,7 @@ def project_adapter_smoke(executable, evidence, env, adapter_report, report):
             else:
                 os.environ[key] = previous
         (folder / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(f"Production Studio project adapter: {report['status']} (native status {report.get('adapter_status')}).", flush=True)
+        print(f"Production Studio {'edited ' if edited else ''}project adapter: {report['status']} (native status {report.get('adapter_status')}).", flush=True)
     if report["status"] != "passed":
         raise RuntimeError("Production Studio project adapter native qualification failed; inspect retained source, plan, result and readback evidence.")
 
@@ -558,7 +626,8 @@ def main():
         "schema_version": 2, "started_at": datetime.now(timezone.utc).isoformat(),
         "scope": "native_bootstrap_synthetic_adapter_and_project_adapter_smoke", "status": "running",
         "native_bootstrap": {"status": "not_run"}, "native_adapter_smoke": {"status": "not_run"},
-        "native_project_smoke": {"status": "not_run"}, "adapter_qualified": False, "project_adapter_qualified": False,
+        "native_project_smoke": {"status": "not_run"}, "native_edited_project_smoke": {"status": "not_run"},
+        "adapter_qualified": False, "project_adapter_qualified": False, "edited_project_adapter_qualified": False,
         "raw_preset_resolution_qualified": False, "printer_connected": False, "physical_print_verified": False,
         "declared_release_version": VERSION, "release_commit": RELEASE_COMMIT, "reported_version": None,
         "platform": platform.platform(), "python": platform.python_version(),
@@ -624,13 +693,18 @@ def main():
         project_adapter_smoke(executable, evidence, env, manifest["native_adapter_smoke"], manifest["native_project_smoke"])
         manifest["project_adapter_qualified"] = True
         manifest["project_qualification_scope"] = "Pinned version; native synthetic cube snapshot transferred through the public project adapter to original generated cable-comb CAD. Exact prepared snapshot bytes, 30 native core settings, complete settings differences, mesh topology and G-code verified; manufacturer presets and physical printing remain unqualified."
+        print("Original three native cases passed. Running the fourth, edited production Studio-project path.", flush=True)
+        project_adapter_smoke(executable, evidence, env, manifest["native_adapter_smoke"], manifest["native_edited_project_smoke"], edited=True)
+        manifest["edited_project_adapter_qualified"] = True
+        manifest["edited_project_qualification_scope"] = "Same native synthetic source and different current CAD; six user-selected synthetic edits; independently reconstructed complete effective settings, unedited values, qualified native normalizations, mesh topology and G-code. No manufacturer or physical validation."
         manifest["status"] = "passed"
-        print("Native bootstrap, both original adapter cases and the production project adapter passed. No manufacturer preset or physical printing was qualified.", flush=True)
+        print("Native bootstrap and all four adapter cases passed. No manufacturer preset or physical printing was qualified.", flush=True)
     except Exception as exc:
         manifest["status"] = "failed"
         manifest["adapter_qualified"] = manifest["native_adapter_smoke"]["status"] == "passed"
         manifest["project_adapter_qualified"] = manifest["native_project_smoke"]["status"] == "passed"
-        for stage in ("native_bootstrap", "native_adapter_smoke", "native_project_smoke"):
+        manifest["edited_project_adapter_qualified"] = manifest["native_edited_project_smoke"]["status"] == "passed"
+        for stage in ("native_bootstrap", "native_adapter_smoke", "native_project_smoke", "native_edited_project_smoke"):
             if manifest[stage]["status"] == "running":
                 manifest[stage]["status"] = "failed"
         for case in manifest["native_adapter_smoke"].get("cases", []):

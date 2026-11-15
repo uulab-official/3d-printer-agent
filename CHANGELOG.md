@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-11-15
+
+- Edit six supported Studio project filament settings with original values, units, pinned format bounds, explicit difference review and separate application to the current CAD.
+- Preserve the original project and every untouched setting; record immutable user-selected revisions with original, review and effective-setting identities. Numeric no-ops preserve the original representation and do not publish empty revisions.
+- Reconstruct each effective configuration from its original and recorded proposal at read, preparation and native execution boundaries. Keep original and edited receipts distinct and compare the complete effective configuration after native slicing.
+- Preserve exact invalid drafts, ignore obsolete asynchronous responses, require a choice before replacing active edits, and reopen edited history through its recorded revision without reverting silently to original settings.
+- Carry original, revision, current CAD and prepared artifacts through actual restart and whole-workspace restoration; freshly prepare in the restored directory without reusing old paths.
+- Extend installed-package qualification on all three desktop platforms and retain the three previous native cases with a fourth six-edit case. Actual observed qualification and release publication are recorded separately in `docs/VERIFICATION.md`.
+
 ## 0.4.0 — 2026-11-14
 
 - Import a single supported Bambu Studio project, show its recorded printer/nozzle/material/plate/process, and explicitly apply its global settings to the current app-generated CAD.

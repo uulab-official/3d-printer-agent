@@ -6,11 +6,13 @@
 
 **An open-source local workspace for parameterized CAD, filament profile review, and Bambu Studio preparation.**
 
-한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **로컬 작업 공간 v0.4**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
+한국어 요청으로 치수가 있는 모델을 만들고, 필라멘트 설정의 근거를 확인하며, Bambu Studio 슬라이싱을 준비하는 **로컬 작업 공간 v0.5**입니다. [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent)에서 개발합니다. API 키 없이 로컬 CAD 생성과 설정 검토를 사용할 수 있습니다.
 
 이 버전은 `수납함`, `열린 케이블 받침`, `원형 인셋 프레임` 세 가지 파라메트릭 모델을 실제 CAD로 생성합니다. 일반적인 자유형 모델링, MakerWorld 검색·리믹스, 실시간 쇼핑 수집, 프린터 직접 제어는 후속 개발 범위입니다. [현재 개발 상태](docs/STATUS.md), [로컬 검증 기록](docs/VERIFICATION.md), [기여 안내](CONTRIBUTING.md)를 함께 확인하세요.
 
 **Studio 프로젝트 하나로 출력 설정을 가져올 수 있습니다.** 기록된 프린터·노즐·재료·플레이트를 확인하고, 현재 생성한 CAD에 적용한 3MF를 준비합니다. Studio가 없어도 준비 파일을 내려받을 수 있으며 실제 슬라이싱은 별도 실행합니다. 지원 버전과 범위는 [Studio 프로젝트 설정 가져오기](docs/STUDIO_PROJECTS.md)를 확인하세요.
+
+**가져온 프로젝트의 필라멘트 설정도 화면에서 바꿀 수 있습니다.** 노즐·베드의 일반/첫 레이어 온도, 유량 비율, 최대 체적 속도 여섯 항목을 편집하고 원본과 차이를 검토한 뒤 적용합니다. 원본은 보관하며 변경값과 현재 CAD를 담은 별도 3MF를 만듭니다. [필라멘트 설정 변경 안내](docs/STUDIO_SETTINGS.md)에 사용 순서, 지원 범위와 이력·복원 동작이 있습니다. 이 값은 사용자 선택값이며 장비·재료 권장값으로 표시하지 않습니다.
 
 ![실제 생성한 세 CAD 모델](examples/model-preview.png)
 
@@ -20,7 +22,7 @@
 
 권장 실행 경로는 **Python 3.12 가상환경**입니다. Linux·macOS·Windows의 설치 패키지 검증과 native Bambu 실행 검증은 분리합니다. 플랫폼별로 실제 통과한 커밋과 범위는 [검증 기록](docs/VERIFICATION.md)을 확인하세요. 이 앱은 자신의 PC에서 사용하는 단일 사용자 앱이며 공개 서버로 배포하는 구성은 제공하지 않습니다.
 
-패키지 설치는 [검증된 v0.4.0 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.4.0)와 [설치·릴리스 안내](docs/RELEASES.md)를 확인하세요. 같은 wheel의 Ubuntu·macOS·Windows 설치, CAD·HTTP·Studio 프로젝트 준비·백업·복원 검사는 운영체제마다 154개를 통과했습니다. 공개 파일도 검증한 원본과 바이트 단위로 대조했습니다. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
+현재 공개 검증이 완료된 패키지는 [v0.4.0 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.4.0)입니다. v0.5 소스의 새 설정 편집은 [검증 기록](docs/VERIFICATION.md)에 관측 결과를 추가한 뒤 같은 소스의 CI wheel을 게시합니다. [설치·릴리스 안내](docs/RELEASES.md)에서 게시된 버전과 파일 해시를 확인하세요. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
 
 저장소를 받은 다음 프로젝트 폴더로 이동합니다.
 

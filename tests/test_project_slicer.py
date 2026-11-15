@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import inspect
 import json
 from pathlib import Path
 import subprocess
@@ -48,12 +49,194 @@ class ProjectSlicerTests(unittest.TestCase):
         self.executable.chmod(0o700)
         slicer._PROBE_CACHE.clear()
 
-    def prepare(self, *, directory="new-attempt", source=None, executable=None):
+    def prepare(self, *, directory="new-attempt", source=None, executable=None, settings_revision=None):
         prepare = getattr(slicer, "prepare_project_slice", None)
         self.assertTrue(callable(prepare), "the project path must prepare a download independently of native slicing")
         return prepare(self.model, self.root / directory, self.source_name,
                        self.source if source is None else source, source_id=self.source_id,
-                       executable_path=str(self.executable if executable is None else executable))
+                       executable_path=str(self.executable if executable is None else executable),
+                       **({"settings_revision": settings_revision} if settings_revision is not None else {}))
+
+    def revision(self):
+        self.assertIn("settings_revision", inspect.signature(slicer.prepare_project_slice).parameters,
+                      "edited preparation must accept a verified immutable revision")
+        from print_agent import studio_project, studio_settings
+        snapshot = studio_project.inspect_studio_project(self.source_name, self.source)
+        values = {"nozzle_temperature": "231", "nozzle_temperature_initial_layer": "233",
+                  "filament_flow_ratio": "0.97", "filament_max_volumetric_speed": "11.5",
+                  "bed_temperature": "61", "bed_temperature_initial_layer": "63"}
+        proposal = {"source_sha256": snapshot["source"]["sha256"],
+                    "settings_sha256": snapshot["settings_sha256"], "values": values}
+        effective, review = studio_settings.derive_settings(snapshot, proposal)
+        revision = studio_settings.make_revision(snapshot, proposal, source_id=self.source_id,
+            revision_id="b" * 32, created_at="2026-11-15T00:00:00+00:00", review_sha256=review["review_sha256"])
+        return revision, effective, review
+
+    def test_edited_preparation_without_studio_stages_recipe_and_entire_effective_snapshot(self):
+        revision, effective, review = self.revision()
+        original = self.source
+        with patch.object(slicer.subprocess, "run", side_effect=AssertionError("preparation cannot launch native code")):
+            plan = self.prepare(settings_revision=revision, executable=self.root / "missing")
+        self.assertTrue(plan["project_prepared"], plan["diagnostics"])
+        self.assertFalse(plan["ready"])
+        self.assertEqual(plan["settings_revision"], revision)
+        self.assertEqual(plan["settings_review"], review)
+        self.assertEqual(plan["project_source"]["settings_sha256"], revision["proposal"]["settings_sha256"])
+        self.assertEqual(plan["expected_settings"], effective["expected_settings"])
+        staged = Path(plan["job_dir"]) / "settings-revision.json"
+        self.assertEqual(json.loads(staged.read_bytes()), revision)
+        self.assertIn(str(staged), plan["file_hashes"])
+        self.assertEqual(Path(plan["source_path"]).read_bytes(), original)
+        self.assertEqual(self.source, original)
+        with zipfile.ZipFile(plan["project_path"]) as archive:
+            self.assertEqual(archive.read("Metadata/project_settings.config"), effective["settings_text"].encode())
+        self.assertFalse(plan["project_receipt"]["settings_preserved"])
+        self.assertEqual(plan["project_receipt"]["settings_revision_id"], revision["revision_id"])
+
+    def test_edited_execution_compares_every_native_value_to_effective_not_original(self):
+        revision, effective, _ = self.revision()
+        plan = self.prepare(settings_revision=revision)
+        result = self.run_fixture(plan)
+        self.assertEqual(result["status"], "sliced", result)
+        self.assertTrue(result["project_settings_readback"]["all_values_equal"])
+        self.assertEqual(result["project_settings_readback"]["before_key_count"], len(json.loads(effective["settings_text"])))
+        self.assertTrue(result["geometry_readback"]["passed"])
+
+    def test_edited_execution_rejects_each_wrong_changed_field_and_untouched_native_value(self):
+        revision, _, review = self.revision()
+        mutations = [(change["native_key"], change["before"]) for change in review["changes"]]
+        mutations.append(("filament_colour", ["#112233"]))
+        for index, (key, value) in enumerate(mutations):
+            with self.subTest(key=key):
+                plan = self.prepare(directory=f"wrong-value-{index}", settings_revision=revision)
+                result = self.run_fixture(plan, updates={key: value})
+                self.assertEqual(result["status"], "needs_review", result)
+                self.assertIn(key, {item["key"] for item in result["project_settings_readback"]["differences"]})
+
+    def test_edited_plan_and_all_staged_inputs_revalidated_before_and_after_probe(self):
+        revision, _, _ = self.revision()
+        mutations = {
+            "recipe": lambda plan: (Path(plan["job_dir"]) / "settings-revision.json").write_bytes(b"{}"),
+            "source": lambda plan: Path(plan["source_path"]).write_bytes(b"corrupt source"),
+            "current": lambda plan: Path(plan["input_path"]).write_bytes(b"corrupt CAD"),
+            "receipt": lambda plan: plan["project_receipt"].update(settings_sha256="0" * 64),
+            "argv": lambda plan: plan["argv"].insert(1, "--arbitrary"),
+            "hash": lambda plan: plan["file_hashes"].update({plan["source_path"]: "0" * 64}),
+            "review": lambda plan: plan["settings_review"].update(review_sha256="0" * 64),
+            "record": lambda plan: plan["settings_revision"].update(effective_settings_sha256="0" * 64),
+        }
+        for phase in ("before", "after"):
+            for name, mutate in mutations.items():
+                with self.subTest(phase=phase, name=name):
+                    slicer._PROBE_CACHE.clear()
+                    # Each plan owns its nested record, independent of prior mutation.
+                    record, _, _ = self.revision()
+                    plan = self.prepare(directory=f"tamper-{phase}-{name}", settings_revision=record)
+                    if phase == "before":
+                        mutate(plan)
+                    def probe_only(argv, **kwargs):
+                        if phase == "before" or argv[1:] != ["--help"]:
+                            self.fail("tampered plan must not launch native slicing")
+                        mutate(plan)
+                        return subprocess.CompletedProcess(argv, 0, PROJECT_HELP, "")
+                    with patch.object(slicer.subprocess, "run", side_effect=probe_only):
+                        result = slicer.execute_slice(plan)
+                    self.assertEqual(result["status"], "blocked", result)
+
+    def test_rehashed_recipe_still_must_rederive_original_effective_contract(self):
+        revision, _, _ = self.revision()
+        plan = self.prepare(settings_revision=revision)
+        staged = Path(plan["job_dir"]) / "settings-revision.json"
+        record = json.loads(staged.read_bytes())
+        record["proposal"]["values"]["nozzle_temperature"] = "251"
+        staged.write_text(json.dumps(record))
+        plan["file_hashes"][str(staged)] = hashlib.sha256(staged.read_bytes()).hexdigest()
+        plan["settings_revision"] = record
+        with patch.object(slicer.subprocess, "run", side_effect=AssertionError("rehashing does not authorize a recipe")):
+            result = slicer.execute_slice(plan)
+        self.assertEqual(result["status"], "blocked", result)
+
+    def test_missing_recipe_and_recipe_symlink_are_not_executable(self):
+        for kind in ("missing", "symlink"):
+            with self.subTest(kind=kind):
+                revision, _, _ = self.revision()
+                plan = self.prepare(directory=kind, settings_revision=revision)
+                staged = Path(plan["job_dir"]) / "settings-revision.json"
+                elsewhere = self.root / "other-recipe.json"
+                elsewhere.write_bytes(staged.read_bytes())
+                staged.unlink()
+                if kind == "symlink":
+                    staged.symlink_to(elsewhere)
+                with patch.object(slicer.subprocess, "run", side_effect=AssertionError("recipe must be local and present")):
+                    result = slicer.execute_slice(plan)
+                self.assertEqual(result["status"], "blocked", result)
+
+    def test_native_execution_cannot_reseal_recipe_and_promote_output(self):
+        revision, _, _ = self.revision()
+        plan = self.prepare(settings_revision=revision)
+        def change_recipe():
+            staged = Path(plan["job_dir"]) / "settings-revision.json"
+            record = json.loads(staged.read_bytes())
+            record["proposal"]["values"]["nozzle_temperature"] = "251"
+            staged.write_text(json.dumps(record))
+            plan["file_hashes"][str(staged)] = hashlib.sha256(staged.read_bytes()).hexdigest()
+            plan["settings_revision"] = record
+        result = self.run_fixture(plan, after_write=change_recipe)
+        self.assertEqual(result["status"], "failed", result)
+        self.assertIsNone(result["output_path"])
+
+    def test_invalid_revision_prepares_no_artifact(self):
+        revision, _, _ = self.revision()
+        revision["source_id"] = "c" * 32
+        plan = self.prepare(settings_revision=revision)
+        self.assertFalse(plan["project_prepared"])
+        self.assertIsNone(plan["project_path"])
+        self.assertFalse((self.root / "new-attempt").exists())
+
+    def test_fourth_qualification_uses_production_edited_path_with_independent_snapshot(self):
+        from scripts import qualify_bambu
+        self.assertIn("edited", inspect.signature(qualify_bambu.project_adapter_smoke).parameters,
+                      "qualification must retain the original case and add an edited production case")
+        root_xml = cube_model_xml().replace(b"<resources>",
+            b'<metadata name="Application">BambuStudio-02.09.01.70</metadata>'
+            b'<metadata name="BambuStudio:3mfVersion">1</metadata><resources>')
+        source = self.root / "synthetic-native-source.3mf"
+        original_bytes = project_bytes(root_xml=root_xml)
+        source.write_bytes(original_bytes)
+        evidence = self.root / "qualification-evidence"
+        evidence.mkdir()
+        adapter_report = {"example_source": {"sha256": hashlib.sha256(self.model.read_bytes()).hexdigest()},
+                          "cases": [{"name": "original-cube-stl", "status": "passed",
+                                     "independent_output_inspection": {"archive": {"path": str(source)}}}]}
+        env = {key: str(self.root / key) for key in ("XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME")}
+        report = {}
+        def fixture_invoke(argv, **kwargs):
+            if argv[1:] == ["--help"]:
+                return subprocess.CompletedProcess(argv, 0, PROJECT_HELP, "")
+            output = Path(kwargs["cwd"]) / argv[6]
+            with zipfile.ZipFile(argv[7]) as archive:
+                payload = {name: archive.read(name) for name in archive.namelist()}
+            payload["Metadata/plate_1.gcode"] = b"; synthetic only\nG1 X1 Y1 E1\n"
+            with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+                for name, content in payload.items():
+                    archive.writestr(name, content)
+            return subprocess.CompletedProcess(argv, 0, "fixture only", "")
+        with patch.object(slicer.subprocess, "run", side_effect=fixture_invoke):
+            qualify_bambu.project_adapter_smoke(self.executable, evidence, env, adapter_report, report, edited=True)
+        self.assertEqual(report["status"], "passed", report)
+        self.assertTrue(all(report["qualification_checks"].values()), report)
+        self.assertTrue(report["qualification_checks"].get("native_revision_metadata_retained"),
+                        "native output must retain the applied revision identity")
+        self.assertEqual(report["recipe_sha256"], hashlib.sha256(
+            (evidence / "edited-project-adapter/settings-revision.json").read_bytes()).hexdigest())
+        self.assertEqual(report["settings_review"]["changed_count"], 6)
+        self.assertEqual(report["independent_snapshot_readback"]["difference_count"], 0)
+        self.assertFalse(report["source_vs_current_geometry"]["passed"])
+        self.assertTrue(report["native_geometry"]["passed"])
+        self.assertEqual(source.read_bytes(), original_bytes)
+        self.assertTrue((evidence / "edited-project-adapter/settings-revision.json").is_file())
+        self.assertTrue((evidence / "edited-project-adapter/original-source-project-settings.json").is_file())
+        self.assertTrue((evidence / "edited-project-adapter/independent-effective-project-settings.json").is_file())
 
     def write_output(self, plan, *, updates=None, omit_settings=False, gcode=b"; synthetic toolpath\nG1 X1 Y1 E1\n"):
         with zipfile.ZipFile(plan["project_path"]) as archive:

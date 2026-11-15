@@ -38,7 +38,7 @@ import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 
-from . import studio_project
+from . import studio_project, studio_settings
 
 
 _REQUIRED_OPTIONS = ("--load-settings", "--load-filaments", "--slice", "--outputdir", "--export-3mf")
@@ -536,7 +536,8 @@ def _project_read_file(path: Path, maximum: int) -> bytes:
 
 
 def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str, source_content: bytes, *,
-                          source_id: str | None = None, executable_path: str | None = None) -> dict:
+                          source_id: str | None = None, executable_path: str | None = None,
+                          settings_revision: dict | None = None) -> dict:
     """Compose current generated CAD with an immutable recorded Studio snapshot.
 
     Composition requires no executable. The separate ready flag only permits a
@@ -545,7 +546,8 @@ def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str,
     """
     plan = {"kind": "studio_project", "ready": False, "project_prepared": False,
             "project_path": None, "project_sha256": None, "project_receipt": None,
-            "project_source": None, "argv": [], "output_path": None,
+            "project_source": None, "settings_revision": None, "settings_review": None,
+            "argv": [], "output_path": None,
             "job_dir": str(job_dir), "expected_settings": {}, "diagnostics": []}
     created_project = None
     try:
@@ -555,12 +557,15 @@ def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str,
         if not snapshot["supported"]:
             plan["diagnostics"].extend(issue["message"] for issue in snapshot["issues"])
             return plan
+        effective, review = (studio_settings.verify_revision(snapshot, settings_revision, source_id=source_id)
+                             if settings_revision is not None else (snapshot, None))
         original_model = Path(input_path).expanduser()
         if original_model.is_symlink() or original_model.suffix.lower() != ".3mf":
             raise ValueError("앱에서 생성한 원본 3MF 파일이 필요합니다.")
         model = original_model.resolve(strict=True)
         model_bytes = _project_read_file(model, studio_project.MAX_ARCHIVE_BYTES)
-        derived, receipt = studio_project.build_project_3mf(model_bytes, snapshot)
+        derived, receipt = studio_project.build_project_3mf(
+            model_bytes, snapshot, settings_revision=settings_revision, source_id=source_id)
         requested_job = Path(job_dir).expanduser()
         if requested_job.is_symlink():
             raise ValueError("준비 작업 폴더는 링크일 수 없습니다.")
@@ -588,6 +593,14 @@ def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str,
         payload = {staged_source: source_content, staged_model: model_bytes,
                    receipt_path: (json.dumps(receipt, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n").encode(),
                    preparation_path: (json.dumps(preparation, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n").encode()}
+        if settings_revision is not None:
+            revision_bytes = (json.dumps(settings_revision, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n").encode()
+            if len(revision_bytes) > 64 * 1024:
+                raise ValueError("설정 변경 기록이 허용 크기를 벗어났습니다.")
+            payload[job_dir / "settings-revision.json"] = revision_bytes
+            preparation.update(settings_revision_id=settings_revision["revision_id"],
+                               review_sha256=review["review_sha256"], effective_settings_sha256=effective["settings_sha256"])
+            payload[preparation_path] = (json.dumps(preparation, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n").encode()
         fingerprints = {}
         for path, content in payload.items():
             with path.open("xb") as handle:
@@ -602,10 +615,11 @@ def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str,
             raise ValueError("준비 프로젝트의 기록과 저장 바이트가 다릅니다.")
         fingerprints[str(project)] = receipt["project_sha256"]
         plan.update(project_prepared=True, project_path=str(project), project_sha256=receipt["project_sha256"],
-                    project_receipt=receipt, expected_settings=snapshot["expected_settings"], file_hashes=fingerprints,
+                    project_receipt=receipt, expected_settings=effective["expected_settings"], file_hashes=fingerprints,
+                    settings_revision=json.loads(revision_bytes) if settings_revision is not None else None, settings_review=review,
                     input_path=str(staged_model), source_path=str(staged_source), output_path=str(output),
                     plate_type=snapshot["summary"]["plate_type"], filament_count=1)
-        plan["diagnostics"].extend(snapshot["warnings"])
+        plan["diagnostics"].extend(effective["warnings"])
         if executable_available:
             plan.update(ready=True, executable_path=str(executable), argv=_project_argv(str(executable), project, output))
             plan["diagnostics"].append(f"프로젝트 파일을 준비했습니다. 실행 시 Studio {studio_project.QUALIFIED_VERSION}과 CLI 기능을 확인합니다.")
@@ -623,7 +637,7 @@ def prepare_project_slice(input_path: Path, job_dir: Path, source_filename: str,
         return plan
 
 
-def _validate_project_plan(plan: dict) -> tuple[Path, Path, Path, dict, list[str], dict]:
+def _validate_project_plan(plan: dict, *, output_must_be_new: bool = True) -> tuple[Path, Path, Path, dict, list[str], dict]:
     if plan.get("kind") != "studio_project" or plan.get("project_prepared") is not True or plan.get("ready") is not True:
         raise ValueError("완전히 준비한 Studio 프로젝트 실행 계획이 필요합니다.")
     job_dir = Path(plan["job_dir"])
@@ -632,7 +646,10 @@ def _validate_project_plan(plan: dict) -> tuple[Path, Path, Path, dict, list[str
     project = job_dir / "prepared-project.3mf"
     source, model = job_dir / "input/source.3mf", job_dir / "input/model.3mf"
     receipt_path, preparation_path = job_dir / "preparation-receipt.json", job_dir / "preparation.json"
+    revision_path = job_dir / "settings-revision.json"
     paths = (source, model, receipt_path, preparation_path, project)
+    if plan.get("settings_revision") is not None:
+        paths += (revision_path,)
     if (Path(plan["project_path"]) != project or Path(plan["source_path"]) != source or Path(plan["input_path"]) != model
             or (job_dir / "input").is_symlink() or not isinstance(plan.get("file_hashes"), dict)
             or set(plan["file_hashes"]) != {str(path) for path in paths}):
@@ -642,6 +659,8 @@ def _validate_project_plan(plan: dict) -> tuple[Path, Path, Path, dict, list[str
         if path.resolve(strict=True) != path:
             raise ValueError("준비 파일 경로에 링크가 있습니다.")
         limit = studio_project.MAX_ARCHIVE_BYTES if path.suffix == ".3mf" else studio_project.MAX_SETTINGS_BYTES
+        if path == revision_path:
+            limit = 64 * 1024
         payload[path] = _project_read_file(path, limit)
         if hashlib.sha256(payload[path]).hexdigest() != plan["file_hashes"][str(path)]:
             raise ValueError("준비 후 입력 또는 프로젝트 파일이 변경되었습니다. 다시 준비하세요.")
@@ -652,10 +671,19 @@ def _validate_project_plan(plan: dict) -> tuple[Path, Path, Path, dict, list[str
     snapshot = studio_project.inspect_studio_project(preparation["source_filename"], payload[source])
     if not snapshot["supported"]:
         raise ValueError("준비된 원본 프로젝트가 현재 지원 범위와 다릅니다.")
-    derived, receipt = studio_project.build_project_3mf(payload[model], snapshot)
+    revision = json.loads(payload[revision_path]) if revision_path in payload else None
+    effective, review = (studio_settings.verify_revision(snapshot, revision, source_id=preparation["source_id"])
+                         if revision is not None else (snapshot, None))
+    if (plan.get("settings_revision") != revision or plan.get("settings_review") != review
+            or preparation.get("settings_revision_id") != (revision["revision_id"] if revision is not None else None)
+            or preparation.get("review_sha256") != (review["review_sha256"] if review is not None else None)
+            or preparation.get("effective_settings_sha256") != (effective["settings_sha256"] if revision is not None else None)):
+        raise ValueError("설정 변경 기록과 재계산한 설정·검토가 다릅니다. 다시 준비하세요.")
+    derived, receipt = studio_project.build_project_3mf(
+        payload[model], snapshot, settings_revision=revision, source_id=preparation["source_id"])
     if (payload[project] != derived or json.loads(payload[receipt_path]) != receipt or plan["project_receipt"] != receipt
             or plan["project_sha256"] != receipt["project_sha256"]
-            or plan["expected_settings"] != snapshot["expected_settings"]
+            or plan["expected_settings"] != effective["expected_settings"]
             or plan["project_source"] != _project_public_source(snapshot, preparation["source_id"])
             or preparation["source_sha256"] != snapshot["source"]["sha256"]
             or preparation["model_sha256"] != receipt["model_sha256"]
@@ -668,12 +696,12 @@ def _validate_project_plan(plan: dict) -> tuple[Path, Path, Path, dict, list[str
         raise ValueError("준비한 Bambu Studio 실행 파일이 변경되었습니다.")
     output = Path(plan["output_path"])
     if (not re.fullmatch(r"sliced-[0-9a-f]{32}\.gcode\.3mf", preparation["output_name"])
-            or output != job_dir / preparation["output_name"] or output.exists() or output.is_symlink()):
+            or output != job_dir / preparation["output_name"] or (output_must_be_new and output.exists()) or output.is_symlink()):
         raise ValueError("출력 파일은 준비한 작업 디렉터리의 새 파일이어야 합니다.")
     argv = _project_argv(str(executable), project, output)
     if plan["argv"] != argv:
         raise ValueError("실행 계획의 CLI 인자가 변경되었습니다. 다시 준비하세요.")
-    return job_dir, executable, output, snapshot["expected_settings"], argv, snapshot
+    return job_dir, executable, output, effective["expected_settings"], argv, effective
 
 
 def _snapshot_readback(before_text: str, after: dict, after_bytes: bytes) -> dict:
@@ -900,19 +928,16 @@ def _execute_project_slice(plan: dict, timeout_seconds: int) -> dict:
     if completed.returncode != 0:
         return result
     try:
-        for filename, digest in plan["file_hashes"].items():
-            path = Path(filename)
-            limit = studio_project.MAX_ARCHIVE_BYTES if path.suffix == ".3mf" else studio_project.MAX_SETTINGS_BYTES
-            if (path.is_symlink() or path.resolve(strict=True) != path
-                    or hashlib.sha256(_project_read_file(path, limit)).hexdigest() != digest):
-                raise ValueError("native 실행 중 준비한 원본 또는 프로젝트가 변경되었습니다. 결과를 검증된 출력으로 사용할 수 없습니다.")
+        # Reconstruct original -> recipe -> effective settings -> exact archive
+        # again after native execution. A resealed hash alone grants no authority.
+        job_dir, executable, output, expected, argv, snapshot = _validate_project_plan(plan, output_must_be_new=False)
         if output.is_symlink() or not output.is_file() or not 0 < output.stat().st_size <= _MAX_ARCHIVE_BYTES:
             raise ValueError("이번 작업의 비어 있지 않은 출력 3MF를 확인하지 못했습니다.")
         _, plate_count = _inspect_archive(output, require_gcode=True)
         settings, settings_bytes = _project_output_settings(output)
         result["checks"].append(_check("sliced_archive", True, f"ZIP 무결성과 {plate_count}개 G-code 이동 명령을 확인했습니다."))
         result.update(output_path=str(output), output_sha256=_hash(output))
-    except (OSError, ValueError, RuntimeError, zipfile.BadZipFile, NotImplementedError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, RecursionError, RuntimeError, zipfile.BadZipFile, NotImplementedError) as exc:
         result["checks"].append(_check("sliced_archive", False, str(exc)))
         return result
     try:

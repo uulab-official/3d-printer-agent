@@ -54,7 +54,7 @@ print(base64.b64encode(content).decode())
 
 // Independent stdlib inspection of the actual browser downloads. This does not
 // call the production parser/composer and does not launch a native slicer.
-async function inspectPreparedDownload(sourceFile, modelFile, preparedFile) {
+async function inspectPreparedDownload(sourceFile, modelFile, preparedFile, editedValues = {}) {
   const script = String.raw`
 import hashlib, io, json, sys, zipfile
 import xml.etree.ElementTree as ET
@@ -76,7 +76,16 @@ model, _, vertices, triangles, dimensions, _ = unpack(sys.argv[2])
 prepared, members, prepared_vertices, prepared_triangles, prepared_dimensions, metadata = unpack(sys.argv[3])
 assert prepared_vertices == vertices and prepared_triangles == triangles
 assert prepared_dimensions == dimensions and source_dimensions == [7,7,7] and dimensions != source_dimensions
-assert members['Metadata/project_settings.config'] == source_members['Metadata/project_settings.config']
+original_settings = json.loads(source_members['Metadata/project_settings.config'])
+effective_settings = json.loads(members['Metadata/project_settings.config'])
+edited_values = json.loads(sys.argv[4])
+assert set(original_settings) == set(effective_settings)
+for key, value in original_settings.items():
+    assert effective_settings[key] == ([edited_values[key]] if key in edited_values else value), key
+if not edited_values:
+    assert members['Metadata/project_settings.config'] == source_members['Metadata/project_settings.config']
+else:
+    assert members['Metadata/project_settings.config'] != source_members['Metadata/project_settings.config']
 assert members['Metadata/model_settings.config'] != source_members['Metadata/model_settings.config']
 assert not any(name.lower().endswith('.gcode') for name in members)
 assert metadata['Application'] == source_metadata['Application']
@@ -87,10 +96,10 @@ assert metadata['3DPrinterAgent:ModelSHA256'] == digest(model)
 print(json.dumps({'source_sha256':digest(source),'model_sha256':digest(model),'project_sha256':digest(prepared),
     'settings_sha256':digest(members['Metadata/project_settings.config']),'source_dimensions_mm':source_dimensions,
     'current_dimensions_mm':dimensions,'vertices':len(vertices),'triangles':len(triangles),'members':sorted(members),
-    'settings_bytes_preserved':True,'generated_mesh_preserved':True,'source_geometry_copied':False,
+    'settings_bytes_preserved':not bool(edited_values),'changed_values':edited_values,'untouched_settings_preserved':True,'settings_key_count':len(original_settings),'generated_mesh_preserved':True,'source_geometry_copied':False,
     'source_overrides_copied':False,'source_gcode_copied':False,'modifier':metadata['3DPrinterAgent:ModifiedBy']}))
 `;
-  const result = await runFile('python', ['-c', script, sourceFile, modelFile, preparedFile], {
+  const result = await runFile('python', ['-c', script, sourceFile, modelFile, preparedFile, JSON.stringify(editedValues)], {
     cwd: path.resolve(__dirname, '../..'), timeout: 30000, maxBuffer: 100000,
   });
   return JSON.parse(result.stdout);
@@ -270,6 +279,139 @@ test('a recorded Studio project reaches current CAD, verified prepared download 
     { job_id: job.id, studio_project_id: source.source_id, execute: false },
   ]);
   await noHorizontalOverflow(page);
+});
+
+// Both configured Chromium viewport projects execute these real API/CAD flows.
+// Only response delivery is held in the recovery case; the server operations are real.
+test('six user-selected Studio settings survive verified download restart and explicit edited history reuse', async ({ page }, testInfo) => {
+  test.setTimeout(180000);
+  const runtime = await isolatedRuntime(testInfo);
+  try {
+    await runtime.start();await page.goto(runtime.url);await expect(page.locator('#generate-button')).toBeEnabled();
+    const upload = await studioProjectUpload('six-user-selected-settings.3mf');
+    const importResponse = page.waitForResponse(response => response.url().endsWith('/api/studio-projects/import'));
+    await page.locator('#studio-project-file').setInputFiles(upload);
+    const original = await (await importResponse).json();await page.locator('#studio-project-apply').click();
+    await page.locator('#parameter-width').fill('127');
+    const modelResponse = page.waitForResponse(response => response.url().endsWith('/api/models') && response.request().method() === 'POST');
+    await page.locator('#generate-button').click();const model = await (await modelResponse).json();
+    const descriptorResponse = page.waitForResponse(response => response.url().endsWith(`/api/studio-projects/${original.source_id}/settings`));
+    await page.locator('#studio-settings-open').click();const descriptor = await (await descriptorResponse).json();
+    expect(descriptor.fields).toHaveLength(6);await expect(page.locator('#studio-settings-plate')).toContainText('High Temp Plate');
+    const draft = {nozzle_temperature:' 211 ',nozzle_temperature_initial_layer:'216',filament_flow_ratio:'1.0100',filament_max_volumetric_speed:'14.000',bed_temperature:'51',bed_temperature_initial_layer:'56'};
+    const canonical = {nozzle_temperature:'211',nozzle_temperature_initial_layer:'216',filament_flow_ratio:'1.01',filament_max_volumetric_speed:'14',bed_temperature:'51',bed_temperature_initial_layer:'56'};
+    for(const [key,value] of Object.entries(draft)) await page.locator(`#studio-setting-${key}`).fill(value);
+    await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+    const reviewResponse = page.waitForResponse(response => response.url().endsWith('/settings/review'));
+    await page.locator('#studio-settings-review').click();const reviewHttp=await reviewResponse;const review=await reviewHttp.json();
+    expect(reviewHttp.request().postDataJSON()).toEqual({source_sha256:original.source.sha256,settings_sha256:original.settings_sha256,values:draft});
+    expect(review.changed_count).toBe(6);expect(review.values).toEqual(canonical);expect(review.provenance).toBe('user_selected');
+    await expect(page.locator('#studio-settings-differences')).toContainText('아직 적용하지 않았습니다');
+    const readback=await page.locator('[data-studio-setting]').evaluateAll(inputs=>Object.fromEntries(inputs.map(input=>[input.dataset.studioSetting,input.value])));
+    expect(readback).toEqual(draft);
+    await page.locator('#studio-settings-editor').scrollIntoViewIfNeeded();await page.locator('#studio-settings-editor').screenshot({path:testInfo.outputPath('edited-settings-reviewed.png'),scale:'css'});
+    await page.locator('#studio-settings-differences').scrollIntoViewIfNeeded();await page.locator('#studio-settings-differences').screenshot({path:testInfo.outputPath('edited-settings-review-differences.png'),scale:'css'});
+    const revisionResponse=page.waitForResponse(response=>response.url().endsWith('/settings/revisions'));
+    await page.locator('#studio-settings-apply').click();const revisionHttp=await revisionResponse;expect(revisionHttp.status()).toBe(201);const envelope=await revisionHttp.json();
+    expect(revisionHttp.request().postDataJSON()).toEqual({...reviewHttp.request().postDataJSON(),review_sha256:review.review_sha256});
+    expect(envelope.review).toMatchObject({values:canonical,review_sha256:review.review_sha256});
+    await expect(page.locator('#studio-settings-applied')).toContainText('사용자 선택값');
+    const firstResponse=page.waitForResponse(response=>response.url().endsWith('/api/slice'));
+    const firstJobResponse=page.waitForResponse(response=>response.url().endsWith('/api/jobs/'+model.id));
+    await page.locator('#prepare-studio-project').click();const firstHttp=await firstResponse;const first=await firstHttp.json();const saved=await (await firstJobResponse).json();
+    expect(firstHttp.request().postDataJSON()).toEqual({job_id:model.id,studio_settings_revision_id:envelope.revision.revision_id,execute:false});
+    expect(first.plan.settings_revision).toEqual(envelope.revision);expect(first.plan.settings_review).toMatchObject({review_sha256:review.review_sha256,values:canonical});
+    expect(first.plan.project_source.settings_sha256).toBe(original.settings_sha256);
+    await expect(page.locator('#studio-project-prepared-download')).toBeVisible();await expect(page.locator('#execute-studio-project')).toBeDisabled();
+    const sourceFile=testInfo.outputPath('edited-original.3mf'),modelFile=testInfo.outputPath('edited-current-cad.3mf'),preparedFile=testInfo.outputPath('edited-prepared.3mf');
+    const sourceDownload=page.waitForEvent('download');await page.locator('#studio-project-applied a[download]').click();await (await sourceDownload).saveAs(sourceFile);
+    expect((await fs.readFile(sourceFile)).equals(upload.buffer)).toBe(true);
+    await fs.writeFile(modelFile,await (await page.request.get(runtime.url+model.artifacts.three_mf)).body());
+    const preparedDownload=page.waitForEvent('download');await page.locator('#studio-project-prepared-download').click();await (await preparedDownload).saveAs(preparedFile);
+    const nativeValues=Object.fromEntries(descriptor.fields.map(field=>[field.native_key,canonical[field.key]]));
+    const inspection=await inspectPreparedDownload(sourceFile,modelFile,preparedFile,nativeValues);
+    expect(inspection.settings_bytes_preserved).toBe(false);expect(inspection.untouched_settings_preserved).toBe(true);
+    expect(inspection.settings_sha256).toBe(review.effective_settings_sha256);expect(inspection.current_dimensions_mm[0]).toBe(127);
+    await page.locator('#studio-settings-applied').scrollIntoViewIfNeeded();await page.locator('#studio-settings-applied').screenshot({path:testInfo.outputPath('edited-settings-applied.png'),scale:'css'});
+    await runtime.stop();await runtime.start();await page.reload();await expect(page.locator('#generate-button')).toBeEnabled();
+    await openView(page,'history');await page.locator('.history-item').filter({hasText:model.title}).first().getByRole('button',{name:'열기'}).click();
+    await expect(page.locator('#studio-settings-recorded')).toContainText('원본 → 적용값');await expect(page.locator('#studio-settings-applied')).toBeHidden();
+    await expect(page.locator('#prepare-studio-project')).toBeDisabled();await expect(page.locator('#execute-studio-project')).toBeDisabled();
+    const reopened=await (await page.request.get(runtime.url+'/api/jobs/'+model.id)).json();expect(reopened.latest_slice.plan.settings_revision).toEqual(envelope.revision);
+    const revisionGet=page.waitForResponse(response=>response.url().endsWith('/api/studio-settings-revisions/'+envelope.revision.revision_id));
+    await page.locator('#studio-project-history-source').click();const reverified=await (await revisionGet).json();expect(reverified.revision).toEqual(envelope.revision);
+    await expect(page.locator('#studio-settings-candidate')).toContainText('선택 전');await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+    await page.locator('#studio-project-apply').click();await expect(page.locator('#studio-settings-applied')).toContainText('211');
+    const againResponse=page.waitForResponse(response=>response.url().endsWith('/api/slice'));
+    const againJobResponse=page.waitForResponse(response=>response.url().endsWith('/api/jobs/'+model.id));
+    await page.locator('#prepare-studio-project').click();const againHttp=await againResponse;const again=await againHttp.json();const preparedHistory=await (await againJobResponse).json();
+    expect(againHttp.request().postDataJSON()).toEqual(firstHttp.request().postDataJSON());expect(again.plan.project_sha256).toBe(first.plan.project_sha256);
+    expect(again.plan.settings_revision).toEqual(envelope.revision);await expect(page.locator('#studio-project-prepared-download')).toBeVisible();
+    const againDownload=page.waitForEvent('download');await page.locator('#studio-project-prepared-download').click();const againFile=testInfo.outputPath('edited-reprepared.3mf');await (await againDownload).saveAs(againFile);
+    expect((await fs.readFile(againFile)).equals(await fs.readFile(preparedFile))).toBe(true);
+    await page.locator('#studio-settings-applied').scrollIntoViewIfNeeded();await page.locator('#studio-settings-applied').screenshot({path:testInfo.outputPath('edited-history-selected.png'),scale:'css'});
+    for(const [name,body] of Object.entries({original,descriptor,draft_readback:readback,review,envelope,first_preparation:first,first_history:saved,reopened_history:reopened,reverified,reprepared:again,reprepared_history:preparedHistory,download_inspection:inspection})) await fs.writeFile(testInfo.outputPath(`edited-${name}.json`),JSON.stringify(body,null,2));
+    await noHorizontalOverflow(page);
+  } finally {await runtime.stop();}
+});
+
+test('Studio setting drafts recover from invalid and late replies through actual restart without replay', async ({ page }, testInfo) => {
+  test.setTimeout(180000);
+  const runtime=await isolatedRuntime(testInfo),releases=[];
+  try {
+    await runtime.start();await page.goto(runtime.url);await expect(page.locator('#generate-button')).toBeEnabled();
+    const manual=' { "manual unfinished": ',material=' { "material unfinished":  ',draftReadbacks=[],heldBodies=[];
+    await page.locator('#slicer-details > summary').click();await page.locator('#slicer-json').fill(manual);
+    await openView(page,'profiles');await page.locator('#profile-json').fill(material);await openView(page,'models');
+    const importedResponse=page.waitForResponse(response=>response.url().endsWith('/api/studio-projects/import'));
+    await page.locator('#studio-project-file').setInputFiles(await studioProjectUpload('settings-recovery-original.3mf'));const original=await (await importedResponse).json();await page.locator('#studio-project-apply').click();
+    const generatedResponse=page.waitForResponse(response=>response.url().endsWith('/api/models')&&response.request().method()==='POST');await page.locator('#generate-button').click();const model=await (await generatedResponse).json();
+    await page.locator('#studio-settings-open').click();await expect(page.locator('[data-studio-setting]')).toHaveCount(6);
+    await page.locator('#studio-setting-nozzle_temperature').fill('212');const reviewed=page.waitForResponse(response=>response.url().endsWith('/settings/review'));await page.locator('#studio-settings-review').click();const initialReview=await (await reviewed).json();
+    const created=page.waitForResponse(response=>response.url().endsWith('/settings/revisions'));await page.locator('#studio-settings-apply').click();const applied=await (await created).json();
+    await page.locator('#studio-settings-open').click();await expect(page.locator('#studio-setting-nozzle_temperature')).toHaveValue('212');
+    const exact=' 1. ';await page.locator('#studio-setting-filament_flow_ratio').fill(exact);
+    page.__expectedHttpFailures.push({path:`/api/studio-projects/${original.source_id}/settings/review`,status:422});
+    const invalidResponse=page.waitForResponse(response=>response.url().endsWith('/settings/review'));await page.locator('#studio-settings-review').click();const invalidHttp=await invalidResponse;expect(invalidHttp.status()).toBe(422);const invalid=await invalidHttp.json();
+    await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(exact);await expect(page.locator('#studio-settings-apply')).toBeDisabled();await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+    draftReadbacks.push(await page.locator('[data-studio-setting]').evaluateAll(inputs=>Object.fromEntries(inputs.map(input=>[input.dataset.studioSetting,input.value]))));
+    await page.locator('#studio-settings-editor').scrollIntoViewIfNeeded();await page.locator('#studio-settings-editor').screenshot({path:testInfo.outputPath('settings-invalid-exact-draft.png'),scale:'css'});
+    // Hold actual success and 422 review replies, then edit before delivery.
+    for(const fail of [false,true]) {
+      let release,entered;const held=new Promise(resolve=>release=resolve),fetched=new Promise(resolve=>entered=resolve);releases.push(release);
+      await page.locator('#studio-setting-filament_flow_ratio').fill(fail?'1.':'1.02');
+      await page.route(runtime.url+`/api/studio-projects/${original.source_id}/settings/review`,async route=>{const actual=await route.fetch();expect(actual.status()).toBe(fail?422:200);heldBodies.push({kind:'review',status:actual.status(),body:await actual.json()});entered();await held;await route.fulfill({response:actual});},{times:1});
+      const late=page.waitForResponse(response=>response.url().endsWith('/settings/review'));await page.locator('#studio-settings-review').click();await fetched;
+      const newer=fail?' 1.03 ':' 1.04 ';await page.locator('#studio-setting-filament_flow_ratio').fill(newer);release();await (await late).finished();
+      await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(newer);await expect(page.locator('#studio-settings-differences')).toBeHidden();await expect(page.locator('#studio-settings-apply')).toBeDisabled();
+      draftReadbacks.push(await page.locator('[data-studio-setting]').evaluateAll(inputs=>Object.fromEntries(inputs.map(input=>[input.dataset.studioSetting,input.value]))));
+    }
+    // A real immutable create can finish after cancellation; do not select or replay it.
+    const nextReview=page.waitForResponse(response=>response.url().endsWith('/settings/review'));await page.locator('#studio-settings-review').click();await nextReview;
+    let releaseCreate,enteredCreate;const heldCreate=new Promise(resolve=>releaseCreate=resolve),fetchedCreate=new Promise(resolve=>enteredCreate=resolve);releases.push(releaseCreate);
+    await page.route(runtime.url+`/api/studio-projects/${original.source_id}/settings/revisions`,async route=>{const actual=await route.fetch();expect(actual.status()).toBe(201);heldBodies.push({kind:'create',status:actual.status(),body:await actual.json()});enteredCreate();await heldCreate;await route.fulfill({response:actual});},{times:1});
+    const lateCreate=page.waitForResponse(response=>response.url().endsWith('/settings/revisions'));await page.locator('#studio-settings-apply').click();await fetchedCreate;await page.locator('#studio-settings-cancel').click();releaseCreate();await (await lateCreate).finished();
+    await expect(page.locator('#studio-settings-applied')).toContainText('212');await expect(page.locator('#studio-settings-applied')).not.toContainText('1.03');
+    await page.locator('#studio-settings-open').click();await page.locator('#studio-setting-filament_flow_ratio').fill(exact);
+    const replacementResponse=page.waitForResponse(response=>response.url().endsWith('/api/studio-projects/import'));await page.locator('#studio-project-file').setInputFiles(await studioProjectUpload('replacement-keeps-settings-draft.3mf'));await replacementResponse;
+    await page.locator('#studio-project-apply').click();await expect(page.locator('#studio-settings-replace-choice')).toBeVisible();await page.locator('#studio-settings-keep').click();
+    await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(exact);
+    await runtime.stop();const restarted=await runtime.start();
+    page.__expectedHttpFailures.push({path:'/api/discovery',status:403});expect((await findProjects(page)).status()).toBe(403);
+    const writes=[];const countWrites=request=>{if(!['GET','HEAD'].includes(request.method()))writes.push({url:request.url(),body:request.postData()});};page.on('request',countWrites);
+    const reconnect=page.waitForResponse(response=>response.url().endsWith('/api/bootstrap'));await page.locator('#reconnect-button').click();const bootstrap=await (await reconnect).json();expect(bootstrap.session_token).toBe(restarted.session_token);
+    await expect(page.locator('#studio-project-revalidate')).toBeEnabled();expect(writes).toEqual([]);await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(exact);await expect(page.locator('#prepare-studio-project')).toBeDisabled();
+    const reverify=page.waitForResponse(response=>response.url().endsWith('/api/studio-settings-revisions/'+applied.revision.revision_id));await page.locator('#studio-project-revalidate').click();const reverified=await (await reverify).json();expect(reverified.revision).toEqual(applied.revision);
+    expect(writes).toEqual([]);page.off('request',countWrites);await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(exact);
+    draftReadbacks.push(await page.locator('[data-studio-setting]').evaluateAll(inputs=>Object.fromEntries(inputs.map(input=>[input.dataset.studioSetting,input.value]))));
+    await page.locator('#studio-settings-cancel').click();await expect(page.locator('#prepare-studio-project')).toBeEnabled();
+    const preparedResponse=page.waitForResponse(response=>response.url().endsWith('/api/slice'));const historyResponse=page.waitForResponse(response=>response.url().endsWith('/api/jobs/'+model.id));await page.locator('#prepare-studio-project').click();const preparedHttp=await preparedResponse;const preparation=await preparedHttp.json();const history=await (await historyResponse).json();
+    expect(preparedHttp.request().postDataJSON()).toEqual({job_id:model.id,studio_settings_revision_id:applied.revision.revision_id,execute:false});expect(preparation.plan.settings_revision).toEqual(applied.revision);
+    await expect(page.locator('#slicer-json')).toHaveValue(manual);await expect(page.locator('#profile-json')).toHaveValue(material);await expect(page.locator('#execute-studio-project')).toBeDisabled();await expect(page.locator('#studio-project-prepared-download')).toBeVisible();
+    await page.locator('#studio-settings-applied').scrollIntoViewIfNeeded();await page.locator('#studio-settings-applied').screenshot({path:testInfo.outputPath('settings-reconnected-applied.png'),scale:'css'});
+    for(const [name,body] of Object.entries({original,initialReview,applied,invalid,held_replies:heldBodies,draft_readbacks:draftReadbacks,reverified,preparation,history,replay_writes:writes,separate_drafts:{manual:await page.locator('#slicer-json').inputValue(),material:await page.locator('#profile-json').inputValue()}}))await fs.writeFile(testInfo.outputPath(`settings-recovery-${name}.json`),JSON.stringify(body,null,2));
+    await noHorizontalOverflow(page);
+  } finally {releases.forEach(release=>release());await runtime.stop();}
 });
 
 test('Studio candidates preserve exact drafts through unsupported and late imports and a real reconnect', async ({ page }, testInfo) => {

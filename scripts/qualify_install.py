@@ -298,6 +298,98 @@ def qualify(args, report):
                                     'prepared_bytes': len(prepared_bytes)}
         write_json(downloads / 'studio-source-inspection.json', imported)
         write_json(downloads / 'studio-preparation.json', prepared)
+
+        # Exercise all six user-selected fields through the installed HTTP API.
+        # These literal synthetic values are independent of the derivation engine.
+        editor_path = '/api/studio-projects/' + imported['source_id'] + '/settings'
+        editor = get_json(server, editor_path)
+        values = {'nozzle_temperature': '225', 'nozzle_temperature_initial_layer': '230',
+                  'filament_flow_ratio': '0.98', 'filament_max_volumetric_speed': '7.5',
+                  'bed_temperature': '60', 'bed_temperature_initial_layer': '65'}
+        native_values = {'nozzle_temperature': ['225'], 'nozzle_temperature_initial_layer': ['230'],
+                         'filament_flow_ratio': ['0.98'], 'filament_max_volumetric_speed': ['7.5'],
+                         'hot_plate_temp': ['60'], 'hot_plate_temp_initial_layer': ['65']}
+        check('studio_editor_six_original_bound_fields', editor['source_id'] == imported['source_id']
+              and {field['key'] for field in editor['fields']} == set(values)
+              and {field['native_key'] for field in editor['fields']} == set(native_values)
+              and editor['settings_sha256'] == sha256(settings_bytes))
+        proposal = {'source_sha256': sha256(source_bytes), 'settings_sha256': sha256(settings_bytes),
+                    'values': values}
+        review = get_json(server, editor_path + '/review', method='POST', token=token, payload=proposal)
+        expected_settings = {**json.loads(settings_bytes), **native_values}
+        core_keys = {'printer_settings_id', 'print_settings_id', 'filament_settings_id', 'printer_model',
+                     'printer_technology', 'nozzle_diameter', 'printable_area', 'printable_height',
+                     'machine_start_gcode', 'machine_end_gcode', 'layer_height', 'initial_layer_print_height',
+                     'wall_loops', 'top_shell_layers', 'bottom_shell_layers', 'sparse_infill_density',
+                     'outer_wall_speed', 'inner_wall_speed', 'sparse_infill_speed', 'initial_layer_speed',
+                     'curr_bed_type', 'filament_type', 'filament_diameter', 'filament_density',
+                     'filament_flow_ratio', 'filament_max_volumetric_speed', 'nozzle_temperature',
+                     'nozzle_temperature_initial_layer', 'hot_plate_temp', 'hot_plate_temp_initial_layer'}
+        expected_core = {key: expected_settings[key] for key in core_keys}
+        effective_bytes = json.dumps(expected_settings, sort_keys=True, separators=(',', ':'),
+                                    ensure_ascii=False, allow_nan=False).encode('utf-8')
+        check('studio_review_six_independent_changes', review['changed_count'] == 6
+              and review['provenance'] == 'user_selected'
+              and {change['native_key']: change['after'] for change in review['changes']} == native_values
+              and all(change['before'] == json.loads(settings_bytes)[change['native_key']]
+                      for change in review['changes'])
+              and review['effective_settings_sha256'] == sha256(effective_bytes))
+        get_json(server, editor_path + '/revisions', method='POST', token=token, expected=422,
+                 payload={**proposal, 'review_sha256': '0' * 64})
+        check('studio_changed_review_does_not_publish', not list((data / 'studio-settings-revisions').glob('*/revision.json')))
+        revision = get_json(server, editor_path + '/revisions', method='POST', token=token, expected=201,
+                            payload={**proposal, 'review_sha256': review['review_sha256']})
+        revision_id = revision['revision']['revision_id']
+        revision_path = '/api/studio-settings-revisions/' + revision_id
+        check('studio_saved_revision_matches_review', get_json(server, revision_path) == revision
+              and revision['source'] == imported and revision['revision']['proposal'] == proposal
+              and revision['review'] == {key: value for key, value in review.items() if key != 'source_id'})
+        edited = get_json(server, '/api/slice', method='POST', token=token,
+                          payload={'job_id': models[2]['id'], 'studio_settings_revision_id': revision_id,
+                                   'execute': False})
+        edited_plan = edited['plan']
+        check('studio_revision_preparation_without_native', edited['execution'] is None
+              and edited_plan['project_prepared'] is True and edited_plan['ready'] is False
+              and edited_plan['project_source'] == imported
+              and edited_plan['settings_revision'] == revision['revision']
+              and edited_plan['settings_review'] == revision['review']
+              and edited_plan['expected_settings'] == expected_core
+              and edited_plan['project_receipt']['settings_preserved'] is False)
+        edited_job = get_json(server, '/api/jobs/' + models[2]['id'])
+        edited_url = edited_job['artifacts']['prepared_three_mf']
+        code, edited_bytes, _ = request(server.base, edited_url)
+        check('studio_revision_download_matches_receipt', code == 200
+              and sha256(edited_bytes) == edited_plan['project_sha256']
+              and edited_job['latest_slice']['plan'] == edited_plan
+              and 'sliced_three_mf' not in edited_job['artifacts'])
+        with zipfile.ZipFile(io.BytesIO(edited_bytes)) as derivative, zipfile.ZipFile(downloads / 'magnet_frame-model.3mf') as cad:
+            check('studio_revision_complete_effective_settings', derivative.testzip() is None
+                  and derivative.read('Metadata/project_settings.config') == effective_bytes)
+            model = ET.fromstring(derivative.read('3D/3dmodel.model'))
+            metadata = {item.attrib['name']: item.text for item in model.findall('{*}metadata')}
+            check('studio_revision_metadata_and_current_cad',
+                  metadata['3DPrinterAgent:SettingsRevisionID'] == revision_id
+                  and metadata['3DPrinterAgent:ReviewSHA256'] == review['review_sha256']
+                  and metadata['3DPrinterAgent:OriginalSettingsSHA256'] == sha256(settings_bytes)
+                  and metadata['3DPrinterAgent:EffectiveSettingsSHA256'] == sha256(effective_bytes)
+                  and mesh_values(model.find('.//{*}mesh')) == mesh_values(ET.fromstring(cad.read('3D/3dmodel.model')).find('.//{*}mesh')))
+        code, edited_bundle, _ = request(server.base, edited_job['bundle_url'])
+        with zipfile.ZipFile(io.BytesIO(edited_bundle)) as bundle:
+            check('studio_revision_bundle_retains_current_cad', code == 200
+                  and bundle.read('prepared-project.3mf') == edited_bytes
+                  and bundle.read('model.3mf') == (downloads / 'magnet_frame-model.3mf').read_bytes())
+        code, original_after_edit, _ = request(server.base, imported['archive_url'])
+        check('studio_revision_original_archive_unchanged', code == 200 and original_after_edit == source_bytes)
+        for name, value in (('settings-editor', editor), ('settings-review', review), ('settings-revision', revision),
+                            ('edited-preparation', edited), ('edited-job', edited_job)):
+            write_json(downloads / (name + '.json'), value)
+        (downloads / 'edited-project.3mf').write_bytes(edited_bytes)
+        (downloads / 'edited-job-bundle.zip').write_bytes(edited_bundle)
+        write_json(downloads / 'edited-effective-expectations.json', expected_settings)
+        report['studio_settings_revision'] = {'revision': revision, 'review': review, 'preparation': edited,
+            'job_id': models[2]['id'], 'native_values': native_values,
+            'effective_settings_sha256': sha256(effective_bytes), 'prepared_sha256': sha256(edited_bytes),
+            'prepared_bytes': len(edited_bytes), 'provenance': 'user_selected synthetic qualification values'}
         source_record = models[0]['source']
         check('customized_original_is_recorded', source_record['recipe']['parameters']['width'] == 90
               and source_record['changed_parameters'] == ['width'] and source_record['customized'] is True)
@@ -364,6 +456,13 @@ def qualify(args, report):
         code, reopened_bytes, _ = request(restarted.base, prepared_url)
         check('studio_source_and_prepared_download_survive_restart', source_reopened == imported
               and project_reopened == prepared_job and code == 200 and reopened_bytes == prepared_bytes)
+        revision_reopened = get_json(restarted, revision_path)
+        edited_reopened = get_json(restarted, '/api/jobs/' + models[2]['id'])
+        code, edited_reopened_bytes, _ = request(restarted.base, edited_url)
+        check('studio_revision_survives_real_restart', revision_reopened == revision and edited_reopened == edited_job
+              and code == 200 and edited_reopened_bytes == edited_bytes)
+        write_json(downloads / 'restarted-settings-revision.json', revision_reopened)
+        write_json(downloads / 'restarted-edited-job.json', edited_reopened)
         retained_job = get_json(restarted, '/api/jobs/' + models[0]['id'])
         check('generation_source_survives_restart', retained_job['design_source'] == source_record
               and retained_job['result']['parameters']['width'] == 92)
@@ -447,6 +546,33 @@ def qualify(args, report):
         check('studio_source_and_preparation_survive_backup_restore', restored_source == imported
               and restored_project == prepared_job and source_code == prepared_code == 200
               and restored_source_bytes == source_bytes and restored_prepared_bytes == prepared_bytes)
+        restored_revision = get_json(restored_server, revision_path)
+        restored_edited = get_json(restored_server, '/api/jobs/' + models[2]['id'])
+        code, restored_edited_bytes, _ = request(restored_server.base, edited_url)
+        check('studio_revision_survives_backup_restore', restored_revision == revision and restored_edited == edited_job
+              and code == 200 and restored_edited_bytes == edited_bytes)
+        fresh_edited = get_json(restored_server, '/api/slice', method='POST', token=restored_bootstrap['session_token'],
+                               payload={'job_id': models[2]['id'], 'studio_settings_revision_id': revision_id,
+                                        'execute': False})
+        fresh_job = get_json(restored_server, '/api/jobs/' + models[2]['id'])
+        code, fresh_bytes, _ = request(restored_server.base, fresh_job['artifacts']['prepared_three_mf'])
+        fresh_plan = fresh_edited['plan']
+        check('studio_revision_fresh_preparation_after_restore', fresh_plan['project_prepared'] is True
+              and fresh_plan['settings_revision'] == revision['revision']
+              and fresh_plan['settings_review'] == revision['review']
+              and fresh_plan['expected_settings'] == expected_core
+              and fresh_plan['project_sha256'] == edited_plan['project_sha256']
+              and code == 200 and fresh_bytes == edited_bytes)
+        check('studio_revision_restored_preparation_uses_new_directory',
+              Path(fresh_plan['project_path']).is_relative_to(restored_data)
+              and not Path(fresh_plan['project_path']).is_relative_to(data)
+              and fresh_plan['project_path'] != edited_plan['project_path'])
+        for name, value in (('restored-settings-revision', restored_revision), ('restored-edited-job', restored_edited),
+                            ('restored-fresh-preparation', fresh_edited), ('restored-fresh-job', fresh_job)):
+            write_json(downloads / (name + '.json'), value)
+        (downloads / 'restored-fresh-project.3mf').write_bytes(fresh_bytes)
+        report['studio_settings_revision']['restored_preparation'] = fresh_edited
+        report['studio_settings_revision']['restored_prepared_sha256'] = sha256(fresh_bytes)
         check('backup_source_bytes_unchanged', original_bytes == data_hashes())
         report['backup'] = {'created': created_backup, 'inspected': inspected_backup, 'restored': restored_backup,
                             'source_files': original_bytes, 'restored_before_start_files': restored_bytes,
