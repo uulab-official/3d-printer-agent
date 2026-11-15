@@ -1990,14 +1990,22 @@ async function selectStudioRecordByTitle(page, title) {
 }
 
 async function focusedStudioScreenshot(page, selector, filename, testInfo) {
-  // Only the capture removes sticky chrome. Restore the real page immediately.
-  // Locator captures on narrow viewports otherwise include a fixed header or
-  // a focused skip link over the input evidence.
-  const style = await page.addStyleTag({ content: '.topbar { position: static !important; } .skip-link { visibility: hidden !important; }' });
+  // The shipped [hidden] rule removes sticky chrome without inline styles or
+  // changing CSP. Restore each exact original hidden attribute after capture.
+  const chrome = await page.locator('.topbar, .skip-link').elementHandles();
+  const originalHidden = await Promise.all(chrome.map(element => element.getAttribute('hidden')));
   try {
+    for (const element of chrome) await element.evaluate(node => node.setAttribute('hidden', ''));
     await page.locator(selector).scrollIntoViewIfNeeded();
     await page.locator(selector).screenshot({ path: testInfo.outputPath(filename), scale: 'css' });
-  } finally { await style.evaluate(element => element.remove()); }
+  } finally {
+    for (const [index, element] of chrome.entries()) {
+      await element.evaluate((node, value) => {
+        if (value === null) node.removeAttribute('hidden');
+        else node.setAttribute('hidden', value);
+      }, originalHidden[index]);
+    }
+  }
 }
 
 test('Studio library saves before CAD and reopens original edited and exact unfinished drafts after restart', async ({ page }, testInfo) => {
@@ -2043,6 +2051,7 @@ test('Studio library saves before CAD and reopens original edited and exact unfi
     await expect(page.locator('#studio-workspace-candidate pre')).toContainText(' 1. ');await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(source.summary.filament_flow_ratio);
     await page.locator('#studio-project-apply').click();await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(' 1. ');
     await expect(page.locator('#studio-workspace-status')).toContainText('저장됨');await expect(page.locator('#studio-settings-differences')).toBeHidden();await expect(page.locator('#studio-project-prepared-download')).toBeHidden();
+    page.__expectedHttpFailures.push({path:`/api/studio-projects/${source.source_id}/settings/review`,status:422});
     const invalidReview = page.waitForResponse(response => response.url().endsWith('/settings/review'));
     await page.locator('#studio-settings-review').click();expect((await invalidReview).status()).toBe(422);await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(' 1. ');
     await focusedStudioScreenshot(page, '#studio-settings-editor', 'library-reopened-exact-invalid-draft.png', testInfo);
@@ -2093,6 +2102,7 @@ with sqlite3.connect(root/'profile-workspaces.sqlite3') as db:
 `;
     await runFile('python',['-c',corruptScript,runtime.root,record.id,profile.id],{cwd:path.resolve(__dirname,'../..'),timeout:30000});
     await page.locator('#studio-library-refresh').click();await expect(page.locator('#studio-library-list')).toContainText('읽을 수 없는 기록');await page.locator('#studio-library-list').selectOption(record.id);
+    page.__expectedHttpFailures.push({path:`/api/studio-workspaces/${record.id}`,status:409});
     const opening = page.waitForResponse(response=>response.url().endsWith('/api/studio-workspaces/'+record.id));await page.locator('#studio-library-open').click();const failed = await opening;
     expect(failed.status()).toBe(409);expect((await failed.json()).code).toBe('studio_workspace_integrity');await expect(page.locator('#studio-library-feedback')).toContainText('유지');
     await expect(page.locator('#studio-workspace-title')).toHaveValue('현재 초안 이름');await expect(page.locator('#studio-setting-filament_flow_ratio')).toHaveValue(' 1. ');await expect(page.locator('#studio-project-applied')).toContainText(upload.name);await expect(page.locator('#studio-project-candidate')).toBeHidden();
@@ -2100,6 +2110,7 @@ with sqlite3.connect(root/'profile-workspaces.sqlite3') as db:
     await openView(page,'profiles');await page.locator('#profile-file').setInputFiles({name:'current.json',mimeType:'application/json',buffer:Buffer.from('{"name":"Current","nozzle_temperature":["215"]}')});
     await page.locator('#guided-nozzle_temperature').fill('220');const raw = await page.locator('#profile-json').inputValue();
     await page.locator('#workspace-refresh').click();await expect(page.locator('#workspace-list')).toContainText('손상된 재료 저장본');await page.locator('#workspace-list').selectOption(profile.id);
+    page.__expectedHttpFailures.push({path:`/api/profile-workspaces/${profile.id}`,status:409});
     const openingProfile = page.waitForResponse(response=>response.url().endsWith('/api/profile-workspaces/'+profile.id));await page.locator('#workspace-open').click();const failedProfile = await openingProfile;
     expect(failedProfile.status()).toBe(409);expect((await failedProfile.json()).code).toBe('workspace_integrity');await expect(page.locator('#profile-json')).toHaveValue(raw);await expect(page.locator('#guided-nozzle_temperature')).toHaveValue('220');
     await expect(page.locator('#workspace-feedback')).toBeVisible();await noHorizontalOverflow(page);
