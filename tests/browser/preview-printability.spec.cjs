@@ -251,3 +251,40 @@ test('review regressions: comparison follows the current model and only 3MF coun
   await expect(page.locator('#offer-comparison th').last()).toContainText(`${secondGrams} g`);
   await expect(page.locator('#offer-model-note')).toContainText(`${secondGrams} g`);
 });
+
+test('parameter panel edits with steppers and sliders, and copied settings paste back exactly', async ({ page, context, browserName }, testInfo) => {
+  await expect(page.locator('#parameter-fields .parameter-group legend')).toHaveText(['크기', '두께', '모양']);
+  await page.getByRole('button', { name: '가로 늘리기 (1 mm)' }).click();
+  await page.getByRole('button', { name: '가로 늘리기 (1 mm)' }).click();
+  await expect(page.locator('#parameter-width')).toHaveValue('122');
+  await expect(page.locator('[data-slider-for="width"]')).toHaveValue('122');
+  await page.locator('[data-slider-for="depth"]').fill('150');
+  await expect(page.locator('#parameter-depth')).toHaveValue('150');
+  await expect(page.locator('[data-field="wall"] .parameter-desc')).toContainText('노즐 지름의 2배');
+  // Copy: clipboard may be refused in automation; either path leaves the exact text available.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  await page.locator('#copy-parameters').click();
+  await expect(page.locator('#parameter-share-feedback')).toBeVisible();
+  const copied = await page.evaluate(async () => {
+    const shown = document.getElementById('paste-text').value;
+    if (shown) return shown;
+    try { return await navigator.clipboard.readText(); } catch { return ''; }
+  });
+  const data = JSON.parse(copied);
+  expect(data).toMatchObject({ format: '3d-printer-agent/parameters', template: 'tray', parameters: { width: 122, depth: 150 } });
+  // Change the draft, then paste the copied settings back.
+  await page.locator('#parameter-width').fill('200');
+  await page.locator('#paste-parameters').click();
+  await page.locator('#paste-text').fill(copied);
+  await page.locator('#paste-apply').click();
+  const confirm = page.locator('#model-confirm-replace');
+  if (await confirm.isVisible()) await confirm.click();
+  await expect(page.locator('#parameter-width')).toHaveValue('122');
+  await expect(page.locator('#parameter-share-feedback')).toContainText('붙여 넣은 설정을 적용했습니다');
+  await page.locator('#paste-parameters').click();
+  await page.locator('#paste-text').fill('{"template":"tray","parameters":{"width":5}}');
+  await page.locator('#paste-apply').click();
+  await expect(page.locator('#parameter-share-feedback')).toContainText('10~500 mm');
+  await expect(page.locator('#parameter-width')).toHaveValue('122');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});

@@ -20,6 +20,19 @@
     device_thickness: { label: "기기 두께(케이스 포함)", min: 4, max: 30, step: 0.1 },
     lip_height: { label: "앞턱 높이", min: 3, max: 60, step: 0.1 },
   };
+  // Editing panel: one-line explanations, the +/- step and the group of each field.
+  const fieldDescriptions = {
+    width: "바깥 가로 길이(좌우)", depth: "바깥 세로 길이(앞뒤)", height: "바닥에서 가장 높은 곳까지",
+    wall: "옆벽 두께. 노즐 지름의 2배 이상이면 튼튼합니다", bottom: "바닥판 두께",
+    dividers: "가로 방향 칸막이 개수(칸 수 − 1)", slots: "케이블을 올릴 U자 홈 개수", cable_diameter: "올릴 케이블의 바깥 지름",
+    inset_diameter: "넣을 원판·사진의 지름", inset_depth: "포켓이 파이는 깊이", fit_clearance: "넣을 물건보다 넓게 두는 여유",
+    lean_angle: "바닥에서 등판까지의 각도. 클수록 똑바로 섭니다", device_thickness: "케이스를 포함한 기기 두께", lip_height: "앞에서 기기를 받치는 턱 높이",
+  };
+  const templateFieldDescriptions = { phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" } };
+  const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1 };
+  const fieldGroups = [["size", "크기", ["width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]]];
+  const PARAMETER_FORMAT = "3d-printer-agent/parameters";
+
   // Same field, different meaning per template.
   const templateFieldLabels = { phone_stand: { fit_clearance: "홈 여유", wall: "등판·앞턱 두께" } };
   const fieldNames = {
@@ -201,6 +214,8 @@
     $("plan-button").disabled = busy || !state.token;
     $("generate-button").disabled = busy || !state.token || !state.template;
     $("reset-parameters").disabled = busy || !state.template;
+    $("copy-parameters").disabled = busy || !state.template;
+    $("paste-parameters").disabled = busy || !state.templates.length;
     $("save-outcome").disabled = busy || !state.token || !state.job;
     updateSliceControls();
     updateDiscoveryControls();
@@ -838,6 +853,10 @@
     } else if (action.kind === "plan") {
       applyDraft(action.result.parameters.template, action.result.parameters);
       showNotice("plan-feedback", action.result.message, "success", action.result.assumptions || []);
+    } else if (action.kind === "paste") {
+      applyDraft(action.template, action.parameters);
+      hideNotice("plan-feedback");
+      showNotice("parameter-share-feedback", "붙여 넣은 설정을 적용했습니다. 치수를 확인한 뒤 CAD 모델을 생성하세요.", "success");
     } else {
       applyDraft(action.template);
       hideNotice("plan-feedback");
@@ -874,6 +893,141 @@
     });
   }
 
+  function parameterField(template, key) {
+    const definition = fields[key];
+    const unit = definition.unit || "mm";
+    const container = node("div", "parameter-field");
+    container.dataset.field = key;
+    const labelText = templateFieldLabels[template.id]?.[key] || definition.label;
+    const label = node("label", "", `${labelText} · ${unit}`);
+    const description = node("p", "parameter-desc", templateFieldDescriptions[template.id]?.[key] || fieldDescriptions[key] || "");
+    description.id = `parameter-desc-${key}`;
+    const input = node("input");
+    input.id = `parameter-${key}`;
+    input.name = key;
+    input.type = "number";
+    input.min = definition.min;
+    input.max = definition.max;
+    input.step = definition.unit === "개" ? "1" : "any";
+    input.required = true;
+    input.value = state.parameters[key];
+    input.dataset.parameter = key;
+    label.htmlFor = input.id;
+    const stepper = node("div", "parameter-stepper");
+    const stepButton = (direction, text) => {
+      const button = node("button", "step-button", text);
+      button.type = "button";
+      button.dataset.stepFor = key;
+      button.dataset.direction = String(direction);
+      button.setAttribute("aria-label", `${labelText} ${direction < 0 ? "줄이기" : "늘리기"} (${fieldNudges[key] || 1} ${unit})`);
+      return button;
+    };
+    stepper.append(stepButton(-1, "−"), input, stepButton(1, "+"));
+    const slider = node("input", "parameter-slider");
+    slider.type = "range";
+    slider.min = definition.min;
+    slider.max = definition.max;
+    slider.step = String(fieldNudges[key] || 1);
+    slider.value = state.parameters[key];
+    slider.dataset.sliderFor = key;
+    slider.setAttribute("aria-label", `${labelText} 슬라이더`);
+    slider.tabIndex = -1;  // the number field and +/- already cover keyboard use
+    const help = node("small", "", `기본 ${template.defaults[key]} ${unit}`);
+    help.id = `parameter-help-${key}`;
+    input.setAttribute("aria-describedby", `${description.id} ${help.id}`);
+    container.append(label, description, stepper, slider, help);
+    return container;
+  }
+
+  function stepParameter(key, direction) {
+    const input = $(`parameter-${key}`);
+    const definition = fields[key];
+    if (!input || !definition || input.disabled) return;
+    const nudge = fieldNudges[key] || 1;
+    const current = Number.isFinite(input.valueAsNumber) ? input.valueAsNumber : Number(state.parameters[key]);
+    const decimals = (String(nudge).split(".")[1] || "").length;
+    const next = Math.min(definition.max, Math.max(definition.min, Number((current + direction * nudge).toFixed(decimals))));
+    input.value = String(next);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function syncParameterSlider(key) {
+    const input = $(`parameter-${key}`);
+    const slider = document.querySelector(`[data-slider-for="${key}"]`);
+    if (slider && input && Number.isFinite(input.valueAsNumber)) slider.value = String(input.valueAsNumber);
+  }
+
+  function currentParameterSnapshot() {
+    const template = state.templates.find((item) => item.id === state.template);
+    if (!template) throw new Error("템플릿을 먼저 선택해 주세요.");
+    const parameters = {};
+    for (const key of template.editable_fields) {
+      const input = $(`parameter-${key}`);
+      if (!input || !input.value.trim() || input.validity?.badInput || input.validity?.valid === false || !Number.isFinite(Number(input.value))) throw new Error("모든 치수를 올바르게 입력한 뒤 복사해 주세요.");
+      parameters[key] = Number(input.value);
+    }
+    return { format: PARAMETER_FORMAT, version: 1, template: template.id, title: template.title, parameters };
+  }
+
+  function parseParameterText(text) {
+    let data;
+    try { data = JSON.parse(String(text || "").trim()); } catch { throw new Error("붙여 넣은 내용이 복사한 설정 형식(JSON)이 아닙니다."); }
+    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("붙여 넣은 내용에서 설정을 찾지 못했습니다.");
+    if (data.format !== undefined && data.format !== PARAMETER_FORMAT) throw new Error("이 앱에서 복사한 설정이 아닙니다.");
+    const template = state.templates.find((item) => item.id === data.template);
+    if (!template) throw new Error("붙여 넣은 설정의 템플릿을 이 버전에서 지원하지 않습니다.");
+    const source = data.parameters && typeof data.parameters === "object" && !Array.isArray(data.parameters) ? data.parameters : data;
+    const parameters = {};
+    for (const [key, value] of Object.entries(source)) {
+      if (["format", "version", "template", "title", "parameters"].includes(key)) continue;
+      if (!template.editable_fields.includes(key)) throw new Error(`${fieldNames[key] || key}은(는) ${template.title}에서 쓰지 않는 치수입니다.`);
+      const definition = fields[key];
+      if (typeof value !== "number" || !Number.isFinite(value) || value < definition.min || value > definition.max || (definition.unit === "개" && !Number.isInteger(value))) {
+        throw new Error(`${fieldNames[key] || key} 값은 ${definition.min}~${definition.max}${definition.unit === "개" ? "개(정수)" : ` ${definition.unit || "mm"}`} 범위의 숫자여야 합니다.`);
+      }
+      parameters[key] = value;
+    }
+    if (!Object.keys(parameters).length) throw new Error("붙여 넣은 설정에 치수가 없습니다.");
+    return { template, parameters };
+  }
+
+  async function copyParameters() {
+    try {
+      const text = JSON.stringify(currentParameterSnapshot());
+      try {
+        await navigator.clipboard.writeText(text);
+        showNotice("parameter-share-feedback", "현재 템플릿과 치수를 복사했습니다. 다른 창이나 다음 작업에서 “붙여넣기”로 그대로 쓸 수 있습니다.", "success");
+      } catch {
+        // Clipboard access can be refused; try the selection-based copy, then let the user copy by hand.
+        $("paste-heading").textContent = "복사할 설정";
+        $("paste-apply").hidden = true;
+        $("paste-text").value = text;
+        $("paste-panel").hidden = false;
+        $("paste-text").select();
+        let copied = false;
+        try { copied = document.execCommand("copy"); } catch { copied = false; }
+        showNotice("parameter-share-feedback", copied ? "현재 템플릿과 치수를 복사했습니다. 아래 칸에도 같은 내용을 표시했습니다." : "브라우저가 클립보드 쓰기를 막았습니다. 아래 칸의 선택된 텍스트를 직접 복사하세요(Ctrl/⌘+C).", copied ? "success" : "warning");
+      }
+    } catch (error) { showNotice("parameter-share-feedback", error.message, "error"); }
+  }
+
+  function openPastePanel() {
+    $("paste-heading").textContent = "복사한 설정 붙여넣기";
+    $("paste-apply").hidden = false;
+    $("paste-panel").hidden = false;
+    $("paste-text").value = "";
+    hideNotice("parameter-share-feedback");
+    $("paste-text").focus();
+  }
+
+  function applyPastedParameters() {
+    try {
+      const { template, parameters } = parseParameterText($("paste-text").value);
+      $("paste-panel").hidden = true;
+      requestModelReplacement({ kind: "paste", template: template.id, parameters, title: `붙여 넣은 ${template.title} 설정`, button: $("paste-apply") });
+    } catch (error) { showNotice("parameter-share-feedback", error.message, "error"); }
+  }
+
   function applyDraft(templateId, parameters, source = null) {
     const template = state.templates.find((item) => item.id === templateId);
     if (!template) throw new Error("지원하지 않는 제작 템플릿입니다.");
@@ -895,36 +1049,40 @@
     $("parameter-description").textContent = template.description;
     const grid = $("parameter-fields");
     grid.replaceChildren();
-    for (const key of template.editable_fields) {
-      const definition = fields[key];
-      if (!definition) continue;
-      const container = node("div", "parameter-field");
-      const labelText = templateFieldLabels[template.id]?.[key] || definition.label;
-      const label = node("label", "", `${labelText} · ${definition.unit || "mm"}`);
-      const input = node("input");
-      input.id = `parameter-${key}`;
-      input.name = key;
-      input.type = "number";
-      input.min = definition.min;
-      input.max = definition.max;
-      input.step = definition.unit === "개" ? "1" : "any";
-      input.required = true;
-      input.value = state.parameters[key];
-      input.dataset.parameter = key;
-      label.htmlFor = input.id;
-      const help = node("small", "", `기본 ${template.defaults[key]} ${definition.unit || "mm"}`);
-      help.id = `parameter-help-${key}`;
-      input.setAttribute("aria-describedby", help.id);
-      container.append(label, input, help);
-      grid.append(container);
+    const grouped = new Set(fieldGroups.flatMap(([, , keys]) => keys));
+    const groups = [...fieldGroups, ["shape", "모양", template.editable_fields.filter((key) => !grouped.has(key))]];
+    for (const [groupId, groupLabel, keys] of groups) {
+      const present = keys.filter((key) => template.editable_fields.includes(key) && fields[key]);
+      if (!present.length) continue;
+      const group = node("fieldset", "parameter-group");
+      group.dataset.group = groupId;
+      group.append(node("legend", "", groupLabel));
+      const groupGrid = node("div", "parameter-grid");
+      for (const key of present) groupGrid.append(parameterField(template, key));
+      group.append(groupGrid);
+      grid.append(group);
     }
     renderTemplates();
     updateWorkflowControls();
   }
 
   $("model-form").addEventListener("input", (event) => {
-    if (event.target.dataset.parameter) manualModelChanged();
+    if (event.target.dataset.sliderFor) {
+      const input = $(`parameter-${event.target.dataset.sliderFor}`);
+      input.value = event.target.value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+    if (event.target.dataset.parameter) { syncParameterSlider(event.target.dataset.parameter); manualModelChanged(); }
   });
+  $("model-form").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-step-for]");
+    if (button) stepParameter(button.dataset.stepFor, Number(button.dataset.direction));
+  });
+  $("copy-parameters").addEventListener("click", copyParameters);
+  $("paste-parameters").addEventListener("click", openPastePanel);
+  $("paste-apply").addEventListener("click", applyPastedParameters);
+  $("paste-cancel").addEventListener("click", () => { $("paste-panel").hidden = true; });
 
   $("reset-parameters").addEventListener("click", () => requestModelReplacement({ kind: "reset", template: state.template, title: "현재 템플릿의 기본 치수", button: $("reset-parameters") }));
   $("model-confirm-replace").addEventListener("click", confirmModelReplacement);

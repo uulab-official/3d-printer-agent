@@ -6,7 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
+names.push('renderPrintVolumeReview','parameterField','stepParameter','syncParameterSlider','currentParameterSnapshot','parseParameterText','copyParameters','openPastePanel','applyPastedParameters','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
 const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -38,6 +38,9 @@ function fixture() {
   $('parameter-width').value='120';$('outcome-result').value='not_tested';$('offer-currency').value='KRW';
   vm.createContext(context);
   for (const name of ['printabilityStatus','printabilityMarks','templateFieldLabels']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
+  // Multi-line editing-panel constants are evaluated from their declaration to the closing brace.
+  for (const name of ['fieldDescriptions']) { const start=source.indexOf('  const '+name+' = {'); vm.runInContext(source.slice(start, source.indexOf('\n  };', start)+5), context); }
+  for (const name of ['templateFieldDescriptions','fieldNudges','fieldGroups','PARAMETER_FORMAT']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if (!match) throw new Error('Missing controller function: '+name);
@@ -1757,6 +1760,28 @@ const printVolumeReport = (overrides={}) => ({
     buttons[1].listeners.click();assert.equal(c.$('setup-material').value,'GFA00');
     buttons[2].listeners.click();assert.equal(c.$('setup-material').value,'GFA00');assert.match(c.$('setup-printer-fill-status').textContent,/바꾸지 않았습니다/);
     assert.deepEqual(events.map(e=>e[0]),['setup-nozzle','setup-material']);
+  });
+  await check('Copied settings round-trip, invalid pastes explain the problem, and steppers clamp to the field range',async()=>{
+    const c=fixture();c.Event=class{constructor(type){this.type=type;}};
+    Object.assign(c.fields,{depth:{label:'세로',min:10,max:500,step:0.1},dividers:{label:'칸막이 수',min:0,max:12,step:1,unit:'개'}});
+    c.state.templates=[{id:'tray',title:'칸막이 수납함',defaults:{width:120,depth:80,dividers:0},editable_fields:['width','depth','dividers'],description:'Tray'}];
+    c.state.template='tray';
+    for(const [k,v] of [['width','120'],['depth','80'],['dividers','2']]){const e=c.$('parameter-'+k);e.value=v;e.validity={valid:true};}
+    const snapshot=c.currentParameterSnapshot();
+    assert.deepEqual(plain(snapshot.parameters),{width:120,depth:80,dividers:2});assert.equal(snapshot.format,'3d-printer-agent/parameters');
+    const parsed=c.parseParameterText(JSON.stringify(snapshot));
+    assert.equal(parsed.template.id,'tray');assert.deepEqual(plain(parsed.parameters),{width:120,depth:80,dividers:2});
+    for(const [text,pattern] of [['nope',/JSON/],['[]',/찾지 못했습니다/],['{"format":"other","template":"tray","parameters":{"width":100}}',/이 앱에서 복사한/],
+      ['{"template":"cube","parameters":{"width":100}}',/지원하지 않습니다/],['{"template":"tray","parameters":{"width":5}}',/10~500/],
+      ['{"template":"tray","parameters":{"dividers":1.5}}',/정수/],['{"template":"tray","parameters":{"slots":3}}',/쓰지 않는 치수/],['{"template":"tray","parameters":{}}',/치수가 없습니다/]]){
+      assert.throws(()=>c.parseParameterText(text),pattern);
+    }
+    const width=c.$('parameter-width');let events=0;width.dispatchEvent=()=>{events+=1;};
+    width.value='499.5';width.valueAsNumber=499.5;c.stepParameter('width',1);assert.equal(width.value,'500');
+    width.valueAsNumber=10;c.stepParameter('width',-1);assert.equal(width.value,'10');assert.equal(events,2);
+    c.$('parameter-wall').value='2';c.$('parameter-wall').valueAsNumber=0.8;c.$('parameter-wall').dispatchEvent=()=>{};
+    Object.assign(c.fields,{wall:{label:'벽 두께',min:0.8,max:20,step:0.1}});c.stepParameter('wall',1);assert.equal(c.$('parameter-wall').value,'0.9');
+    c.$('parameter-width').value='';assert.throws(()=>c.currentParameterSnapshot(),/올바르게 입력/);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();
