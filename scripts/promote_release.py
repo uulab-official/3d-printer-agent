@@ -75,6 +75,8 @@ REQUIRED_CHECKS = frozenset({
     'print_volume_rejects_oversized_before_staging',
     'print_volume_review_bound_to_verified_cad_and_settings',
     'print_volume_review_survives_restart_and_restore',
+    'printer_status_rejects_public_host_without_echo',
+    'printer_status_reports_connection_state_without_print_claim',
 })
 MAX_JSON = 8 * 1024 * 1024
 MAX_ZIP_BYTES = 64 * 1024 * 1024

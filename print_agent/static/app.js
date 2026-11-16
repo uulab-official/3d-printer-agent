@@ -2,8 +2,8 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
-  const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", history: "작업 기록" };
+  const state = { printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
     depth: { label: "세로", min: 10, max: 500, step: 0.1 },
@@ -83,6 +83,7 @@
     $("reconnect-button").textContent = state.bootstrapPending ? "연결 확인 중" : "다시 연결";
     $("review-profile").disabled = !state.token || Boolean($("review-profile").dataset.busy) || Object.keys(state.guidedEdits || {}).length > 0;
     $("compare-offers").disabled = !state.token || Boolean($("compare-offers").dataset.busy);
+    if (typeof updatePrinterControls === "function") updatePrinterControls();
   }
 
   function renderConnection() {
@@ -2957,6 +2958,181 @@
     $("effective-settings").replaceChildren(table);
     $("profile-report").textContent = JSON.stringify(result, null, 2);
   }
+
+  const printerConnectionTones = { reporting: "success", certificate_changed: "error", access_rejected: "warning" };
+
+  function printerTarget() {
+    return {
+      host: $("printer-host").value.trim(),
+      serial: $("printer-serial").value.trim().toUpperCase(),
+      access_code: $("printer-access-code").value,
+    };
+  }
+
+  function printerPinKey(target) { return `${target.host}|${target.serial}`; }
+
+  function updatePrinterControls() {
+    const busy = Boolean($("printer-check").dataset.busy || $("printer-discover").dataset.busy);
+    const target = printerTarget();
+    $("printer-check").disabled = !state.token || busy || !target.host || !target.serial || !target.access_code;
+    $("printer-discover").disabled = !state.token || busy;
+    $("printer-unpin").hidden = !state.printerPins[printerPinKey(target)];
+  }
+
+  function selectPrinterDevice(device) {
+    $("printer-host").value = device.host;
+    $("printer-serial").value = device.serial;
+    state.printerStatus = null;
+    $("printer-result").hidden = true;
+    setBadge("printer-status-badge", "아직 확인 전");
+    updatePrinterControls();
+    $("printer-access-code").focus();
+  }
+
+  function renderPrinterDevices(result) {
+    const area = $("printer-devices");
+    const devices = Array.isArray(result?.devices) ? result.devices : [];
+    area.replaceChildren();
+    if (result?.state === "listen_unavailable") {
+      showNotice("printer-discover-feedback", "이 PC에서 프린터 알림을 들을 수 없습니다. 다른 앱(예: Bambu Studio)이 같은 포트를 사용 중일 수 있습니다. IP와 시리얼을 직접 입력하세요.", "warning");
+      return;
+    }
+    if (!devices.length) {
+      showNotice("printer-discover-feedback", `${result?.seconds ?? 4}초 동안 응답한 프린터가 없습니다. 같은 네트워크인지 확인하거나 IP와 시리얼을 직접 입력하세요.`, "info");
+      return;
+    }
+    showNotice("printer-discover-feedback", `${devices.length}대의 프린터 알림을 받았습니다. 알림 내용은 프린터가 스스로 보낸 정보이며 아직 접속을 확인하지 않았습니다.`, "info");
+    for (const device of devices) {
+      const item = node("div", "printer-device");
+      const model = device.model_name ? `${device.model_name} (${device.model_code})` : device.model_code ? `알 수 없는 기종 코드 ${device.model_code}` : "기종 미보고";
+      item.append(node("strong", "", device.name || device.serial), node("span", "field-help", `${model} · ${device.host} · ${device.serial}`));
+      const details = [];
+      if (device.connection_mode) details.push(`연결 방식 보고: ${device.connection_mode}`);
+      if (device.firmware) details.push(`펌웨어 보고: ${device.firmware}`);
+      if (device.location_matches_sender === false) details.push("알림의 주소와 보낸 주소가 다릅니다");
+      if (details.length) item.append(node("span", "field-help", details.join(" · ")));
+      const choose = node("button", "button button-secondary", "이 프린터 선택");
+      choose.type = "button";
+      choose.addEventListener("click", () => selectPrinterDevice(device));
+      item.append(choose);
+      area.append(item);
+    }
+  }
+
+  function printerNumber(value, unit) {
+    return typeof value === "number" && Number.isFinite(value) ? `${numberFormat.format(value)}${unit}` : "보고되지 않음";
+  }
+
+  function printerTemperature(current, target) {
+    if (typeof current !== "number") return "보고되지 않음";
+    return typeof target === "number" && target > 0 ? `${printerNumber(current, "°C")} / 목표 ${printerNumber(target, "°C")}` : printerNumber(current, "°C");
+  }
+
+  function renderPrinterStatus(result) {
+    const connection = result?.connection || {};
+    const area = $("printer-result");
+    area.replaceChildren();
+    const reporting = connection.state === "reporting";
+    setBadge("printer-status-badge", reporting ? (result.print?.state_label || "상태 보고됨") : "상태를 받지 못함", printerConnectionTones[connection.state] || "neutral");
+    showNotice("printer-feedback", connection.detail || "확인 결과를 해석하지 못했습니다.", reporting ? "info" : printerConnectionTones[connection.state] || "warning");
+    const certificate = result?.certificate;
+    if (certificate?.sha256) {
+      const pinned = certificate.pinned && certificate.matches_pin;
+      area.append(node("p", "field-help", `${pinned ? "고정한 인증서와 일치" : "처음 확인한 인증서"} · SHA-256 ${certificate.sha256.slice(0, 16)}… · 발급 기관은 확인하지 않았습니다.`));
+    }
+    if (!reporting) { area.hidden = !certificate?.sha256; return; }
+    const status = result.print || {};
+    const progress = typeof status.progress_percent === "number" ? `${status.progress_percent}%` : "보고되지 않음";
+    const layers = typeof status.layer === "number" && typeof status.total_layers === "number" ? `${status.layer} / ${status.total_layers}` : "보고되지 않음";
+    const grid = node("div", "metric-grid printer-metrics");
+    grid.append(
+      metric("프린터 보고 상태", status.state_label || "보고되지 않음"),
+      metric("진행률", progress),
+      metric("남은 시간 보고", typeof status.remaining_minutes === "number" ? `${status.remaining_minutes}분` : "보고되지 않음"),
+      metric("레이어", layers),
+      metric("노즐", printerTemperature(status.temperatures_c?.nozzle, status.temperatures_c?.nozzle_target)),
+      metric("베드", printerTemperature(status.temperatures_c?.bed, status.temperatures_c?.bed_target)),
+    );
+    area.append(grid);
+    const identity = result.identity || {};
+    const facts = [`시리얼 ${result.target?.serial} 주제로 보고 수신`];
+    if (identity.product_name) facts.push(`제품 보고: ${identity.product_name}`);
+    if (identity.firmware) facts.push(`펌웨어 보고: ${identity.firmware}`);
+    if (status.nozzle?.diameter_mm) facts.push(`노즐 보고: ${status.nozzle.diameter_mm} mm${status.nozzle.type ? ` · ${status.nozzle.type}` : ""}`);
+    if (status.job_name) facts.push(`작업: ${status.job_name}`);
+    area.append(node("p", "field-help", facts.join(" · ")));
+    if (status.error_code || (status.hms || []).length) {
+      const codes = (status.hms || []).map((entry) => `HMS ${entry.hms_code}`);
+      if (status.error_code) codes.unshift(`오류 코드 ${status.error_code_hex}`);
+      area.append(node("p", "notice notice-warning", `프린터가 보고한 알림: ${codes.join(", ")}. 코드의 의미는 프린터 화면이나 제조사 안내에서 확인하세요.`));
+    }
+    const slots = (status.material_slots || []).filter((slot) => !slot.empty);
+    if (slots.length) {
+      const list = node("ul", "printer-slots");
+      for (const slot of slots) {
+        const where = slot.unit === "external" ? "외부 스풀" : `AMS ${Number(slot.unit) + 1} · 슬롯 ${Number(slot.slot) + 1}`;
+        list.append(node("li", "", `${where}: ${[slot.product || slot.material || "재료 미보고", slot.filament_id, slot.color ? `#${slot.color}` : null].filter(Boolean).join(" · ")}`));
+      }
+      area.append(node("p", "field-help", "프린터에 등록된 재료 정보(사용자가 설정한 값일 수 있음):"), list);
+    }
+    area.append(node("p", "field-help", `확인 시각 ${dateTime(result.observed_at)} · ${result.scope || ""}`));
+    area.hidden = false;
+  }
+
+  async function discoverPrinters() {
+    try {
+      await withBusy($("printer-discover"), "찾는 중", async () => {
+        updatePrinterControls();
+        showNotice("printer-discover-feedback", "4초 동안 프린터 알림을 기다리고 있습니다.", "info");
+        renderPrinterDevices(await api("/api/printers/discover", { seconds: 4 }));
+      });
+    } catch (error) { showNotice("printer-discover-feedback", error.message, "error"); }
+    finally { updatePrinterControls(); }
+  }
+
+  async function checkPrinterStatus() {
+    const target = printerTarget();
+    if (!target.host || !target.serial || !target.access_code) return;
+    const key = printerPinKey(target);
+    const body = { ...target };
+    if (state.printerPins[key]) body.pinned_certificate_sha256 = state.printerPins[key];
+    const request = ++state.printerRequest;
+    try {
+      await withBusy($("printer-check"), "상태 읽는 중", async () => {
+        updatePrinterControls();
+        const result = await api("/api/printers/status", body);
+        if (request !== state.printerRequest || printerPinKey(printerTarget()) !== key) return;
+        // Pin the first certificate that produced a real report for this page session.
+        if (result.connection?.state === "reporting" && result.certificate?.sha256 && !state.printerPins[key]) state.printerPins[key] = result.certificate.sha256;
+        state.printerStatus = result;
+        renderPrinterStatus(result);
+      });
+    } catch (error) {
+      if (request === state.printerRequest) showNotice("printer-feedback", error.message, error.code === "printer_busy" ? "warning" : "error");
+    } finally { updatePrinterControls(); }
+  }
+
+  function printerInputChanged() {
+    state.printerRequest += 1;
+    if (state.printerStatus) {
+      state.printerStatus = null;
+      $("printer-result").hidden = true;
+      hideNotice("printer-feedback");
+      setBadge("printer-status-badge", "입력이 바뀌어 다시 확인 필요");
+    }
+    updatePrinterControls();
+  }
+
+  function clearPrinterPin() {
+    delete state.printerPins[printerPinKey(printerTarget())];
+    showNotice("printer-feedback", "이 프린터의 고정 인증서를 해제했습니다. 다음 확인에서 받은 인증서가 다시 고정됩니다. 프린터를 교체했거나 초기화한 경우에만 해제하세요.", "warning");
+    updatePrinterControls();
+  }
+
+  $("printer-discover").addEventListener("click", discoverPrinters);
+  $("printer-form").addEventListener("submit", (event) => { event.preventDefault(); return checkPrinterStatus(); });
+  $("printer-form").addEventListener("input", printerInputChanged);
+  $("printer-unpin").addEventListener("click", clearPrinterPin);
 
   function renderOfferRows() {
     const container = $("offer-rows");

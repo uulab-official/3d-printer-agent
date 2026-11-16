@@ -18,6 +18,7 @@ Help people discover useful things to print, customize models, prepare settings 
 - `studio_project.py`, `studio_sources.py`: bounded project inspection/composition and immutable verified originals.
 - `studio_workspaces.py`: named Studio input references, exact drafts, bounded recorded-metadata catalogs and revision conflicts.
 - `studio_settings.py`, `studio_revisions.py`: six-field proposals, immutable user-selected revisions and original-based rederivation.
+- `printer_lan.py`: read-only Bambu LAN discovery and status (fixed `pushall`/`get_version` requests only, private IP literals, session certificate pin, access codes never stored or returned).
 - `offers.py`, `storage.py`: user-entered offer calculation and per-job artifacts/history.
 - `static/`: dependency-free Korean UI and Canvas mesh viewer.
 
