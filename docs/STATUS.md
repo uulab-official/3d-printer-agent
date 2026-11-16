@@ -2,9 +2,11 @@
 
 Date: 2026-11-16 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.10 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.11 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.11 adds a MakerWorld-style parameter panel (grouped fields with explanations, -/+ steppers and synced sliders) and validated copy/paste of template settings, and keeps reconnect available when a saved-list load stalls after a successful bootstrap. Published as [v0.11.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.11.0) on 2026-11-16 from `1882063`.
 
 Version 0.10 adds an owner-facing journey bar (four steps with one next action) and an easiest-path print guide, a fourth template, a phone stand with a leaning back plate (50–80°), a device-thickness slot and a front lip; planning grows an unspecified depth so the back stays over the base. It also improves the model preview (view presets, dimension lines, crease edges, overhang highlighting) and adds an advisory [printability review](PRINTABILITY.md) to every generated model, measured against a stated 0.4 mm reference nozzle and linked to the parameter to change. It is not a slicer or physical result. Published as [v0.10.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.10.0) on 2026-11-16 from `a74a477`; see [RELEASES.md](RELEASES.md).
 
