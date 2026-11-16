@@ -378,10 +378,11 @@ def qualify(args, report):
                   and job['result']['geometry_status'] == 'validated')
             check('physical_print_stays_unverified_' + kind, job['result']['print_status'] == 'not_tested'
                   and job['latest_slice'] is None)
-            review = job['result'].get('printability') or {}
-            check('printability_review_' + kind, review.get('status') in ('ok', 'review', 'needs_change')
-                  and review.get('basis', {}).get('nozzle_mm') == 0.4
-                  and {'min_thickness', 'bed_contact', 'overhang', 'material'} <= {i['id'] for i in review.get('items', [])})
+            # Distinct name: `review` is the Studio settings review used later in this function.
+            printability = job['result'].get('printability') or {}
+            check('printability_review_' + kind, printability.get('status') in ('ok', 'review', 'needs_change')
+                  and printability.get('basis', {}).get('nozzle_mm') == 0.4
+                  and {'min_thickness', 'bed_contact', 'overhang', 'material'} <= {i['id'] for i in printability.get('items', [])})
             manifest = get_json(server, job['artifacts']['manifest'])
             write_json(downloads / f'{kind}-manifest.json', manifest)
             for artifact_kind, metadata in manifest['artifacts'].items():
