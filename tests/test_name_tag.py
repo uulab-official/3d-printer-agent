@@ -49,15 +49,32 @@ class NameTagTests(unittest.TestCase):
                 self.assertFalse(shape.isInside(hole_center))
                 dims = result['dimensions_mm']
                 self.assertTrue(shape.isInside(cq.Vector(dims['x'] / 2, dims['y'] / 2, 1)))  # plate under the letters
-                self.assertIn('시스템 글꼴', ' '.join(result['warnings']))
+                self.assertIn('글꼴', ' '.join(result['warnings']))
         longer, _ = build(text='MINSU KIM')
         self.assertGreater(longer['dimensions_mm']['x'], build()[0]['dimensions_mm']['x'])
 
     def test_printability_names_estimated_stroke(self):
-        result, _ = build(text_size=6)
-        items = {item['id']: item for item in result['printability']['items']}
-        self.assertIn('글자 획', items['min_thickness']['value'])
-        self.assertEqual(items['min_thickness']['status'], 'warn')
+        # Checked on the rule itself so the result does not depend on the platform font.
+        from print_agent.printability import _wall_item
+        item = _wall_item(GeometryRequest(**{**TAG, 'text_size': 6}).model_dump())
+        self.assertIn('글자 획', item['value'])
+        self.assertEqual((item['status'], item['field']), ('warn', 'text_size'))
+        self.assertEqual(_wall_item(GeometryRequest(**TAG).model_dump())['status'], 'pass')
+
+    @unittest.skipUnless(Path('/System/Library/Fonts/Supplemental/Bradley Hand Bold.ttf').is_file(), 'needs a known self-overlapping font')
+    def test_invalid_font_outlines_fail_with_a_clear_reason(self):
+        from unittest.mock import patch
+        from print_agent import geometry
+        bad = {'fontPath': '/System/Library/Fonts/Supplemental/Bradley Hand Bold.ttf', 'label': 'Bradley Hand Bold.ttf'}
+        with patch.object(geometry, '_name_tag_font', return_value=bad), self.assertRaisesRegex(ValueError, '글자 형상이 올바르지 않습니다'):
+            build()
+
+    def test_font_is_pinned_and_reported(self):
+        from print_agent.geometry import _name_tag_font
+        font = _name_tag_font()
+        self.assertTrue(font['label'])
+        result, _ = build()
+        self.assertIn(font['label'], ' '.join(result['warnings']))
 
     def test_planner_reads_text_and_sizes(self):
         cases = {

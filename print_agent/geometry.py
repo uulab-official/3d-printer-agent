@@ -43,6 +43,26 @@ def template_catalog() -> list[dict]:
     ]
 
 
+def _name_tag_font() -> dict:
+    """Pinned, known-good bold sans fonts per platform; a font name only as a last resort.
+
+    Some decorative fonts have overlapping outlines that make invalid solids, so the
+    template never picks an arbitrary system font.
+    """
+    import os
+    candidates = [
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "arialbd.ttf"),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return {"fontPath": path, "label": os.path.basename(path)}
+    return {"font": "Arial", "label": "Arial(시스템 대체 글꼴)"}
+
+
 def _build_solid(p: dict) -> cq.Shape:
     """Build only fixed templates; p contains validated numeric parameters."""
     w, d, h, wall, bottom = (p[key] for key in ("width", "depth", "height", "wall", "bottom"))
@@ -72,8 +92,12 @@ def _build_solid(p: dict) -> cq.Shape:
         # Letters stand on a rounded plate; a tab with a hole sits on the left.
         # System fonts are used, so another computer may draw slightly different letters.
         text = p["text"].strip()
-        letters = (cq.Workplane("XY").text(text, p["text_size"], p["text_depth"], combine=False,
-                                           halign="left", valign="bottom", font="Arial", kind="bold"))
+        font = _name_tag_font()
+        options = {"fontPath": font["fontPath"]} if "fontPath" in font else {"font": font["font"], "kind": "bold"}
+        letters = cq.Workplane("XY").text(text, p["text_size"], p["text_depth"], combine=False,
+                                          halign="left", valign="bottom", **options)
+        if not letters.val().isValid():
+            raise ValueError(f"이 PC의 글꼴({font['label']})로 만든 글자 형상이 올바르지 않습니다. 글자 크기를 키우거나 글자를 바꿔 다시 시도하세요.")
         letter_box = letters.val().BoundingBox()
         margin, hole = wall, p["hole_diameter"]
         tab = hole + 2 * margin
@@ -138,7 +162,7 @@ def _reproduction_source(parameters: dict) -> str:
     preamble = ("# Generated with CadQuery " + cq.__version__ + "; all lengths are millimetres.\n"
                 "# This source reproduces geometry, not slicer settings or print success.\n"
                 "from pathlib import Path\nimport sys\nimport cadquery as cq\n\n")
-    functions = "\n\n".join(inspect.getsource(fn) for fn in (_validate_geometry, _build_solid, _export_cad))
+    functions = "\n\n".join(inspect.getsource(fn) for fn in (_validate_geometry, _name_tag_font, _build_solid, _export_cad))
     runner = (f"\n\nPARAMETERS = {parameters!r}\n\n"
               "if __name__ == '__main__':\n"
               "    destination = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / 'reproduced'\n"
@@ -201,7 +225,7 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
     if spec.template == "cable_comb":
         warnings.append("위가 열린 케이블 받침입니다. 스냅 고정이나 케이블 유지력을 보장하지 않습니다.")
     elif spec.template == "name_tag":
-        warnings.append("이 PC의 시스템 글꼴(Arial 굵게, 없으면 대체 글꼴)로 글자를 만듭니다. 다른 PC에서 다시 만들면 글자 모양이 조금 다를 수 있고, 고리의 강도는 보장하지 않습니다.")
+        warnings.append(f"글꼴 {_name_tag_font()['label']}로 글자를 만들었습니다. 운영체제마다 정해진 굵은 글꼴(Arial Bold·DejaVu Sans Bold)을 쓰므로 다른 PC에서는 글자 모양이 조금 다를 수 있고, 고리의 강도는 보장하지 않습니다.")
     elif spec.template == "phone_stand":
         warnings.append("기기 두께와 여유로 홈 폭을 정합니다. 실제 기기·케이스 두께와 넘어짐·충전 케이블 위치는 직접 확인하세요.")
     elif spec.template == "magnet_frame":
