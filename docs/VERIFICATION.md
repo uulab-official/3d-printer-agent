@@ -134,6 +134,19 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-16 v0.10.0·v0.9.0 공개 릴리스
+
+| 릴리스 | 게시 (UTC) | 소스·tag | 앱 CI | 설치 패키지 | Native |
+|---|---|---|---|---|---|
+| [v0.10.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.10.0) | 2026-11-16 13:01:27 | `a74a477` | [Python 694·컨트롤러 203·Chromium 80](https://github.com/uulab-official/3d-printer-agent/actions/runs/43870761890) | [세 OS 각 309개](https://github.com/uulab-official/3d-printer-agent/actions/runs/43870762021) | [통과](https://github.com/uulab-official/3d-printer-agent/actions/runs/43870761873) |
+| [v0.9.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.9.0) | 2026-11-16 06:10:06 | `b48e540` | [Python 666·컨트롤러 195·Chromium 58](https://github.com/uulab-official/3d-printer-agent/actions/runs/43814155368) | [세 OS 각 290개](https://github.com/uulab-official/3d-printer-agent/actions/runs/43814155417) | [통과](https://github.com/uulab-official/3d-printer-agent/actions/runs/43814155586) |
+
+두 릴리스의 공개 자산 7개씩을 인증 없이 내려받아 확인했습니다: wheel 바이트 수와 SHA-256이 `SHA256SUMS`·영수증과 같고
+(v0.10.0 `cd7404ad820aca59…`, v0.9.0 `ae880f8b6d6840cf…`), 영수증·릴리스 근거·세 운영체제 보고서의 소스 커밋이 tag 커밋과 같으며, 보고서는 모두
+통과 상태입니다. v0.9.0은 PR #3 병합 직후 자동 승격으로 게시됐는데 당시 이 기록을 남기지 못해 이번에 함께 대조했습니다.
+PR #4의 앱 CI에서 재시작 복구 브라우저 사례 1건이 데스크톱에서 한 번 시간 초과로 실패했고, 재실행과 로컬 5회 반복에서 통과했습니다.
+main에서는 실행 차수 1로 통과했습니다. 실제 프린터 연결과 실물 출력은 여전히 별도 검증 대상입니다.
+
 ## 2026-11-16 v0.9 읽기 전용 프린터 상태 (미출시, 로컬 검증)
 
 아래는 [PR #3](https://github.com/uulab-official/3d-printer-agent/pull/3) 브랜치를 이 저장소 개발자의 macOS 로컬에서
