@@ -2,7 +2,7 @@
 
 ## Product goal
 
-Help people discover useful things to print, customize models, prepare settings for their exact printer and filament, and learn from recorded outcomes. The current release is a local web app with four fixed CAD templates. Fields added after the original eleven appear in canonical parameters only for templates that use them (`schemas.LATER_FIELDS`), so earlier jobs, recipes and review hashes keep their exact shape. Read README.md and docs/STATUS.md before expanding its capabilities.
+Help people discover useful things to print, customize models, prepare settings for their exact printer and filament, and learn from recorded outcomes. The current release is a local web app with five fixed CAD templates, including a system-font name tag. `text` is the only non-numeric parameter (`schemas.TEXT_FIELDS`). Fields added after the original eleven appear in canonical parameters only for templates that use them (`schemas.LATER_FIELDS`), so earlier jobs, recipes and review hashes keep their exact shape. Read README.md and docs/STATUS.md before expanding its capabilities.
 
 ## Architecture
 

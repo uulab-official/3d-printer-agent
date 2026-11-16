@@ -7,7 +7,7 @@ import math
 import re
 
 from .geometry_rules import _validate_geometry
-from .schemas import GeometryRequest, TEMPLATE_SPECIFIC_FIELDS
+from .schemas import TEXT_FIELDS, GeometryRequest, TEMPLATE_SPECIFIC_FIELDS
 from . import planner
 
 _COMMON = {'width', 'depth', 'height', 'wall', 'bottom'}
@@ -59,13 +59,17 @@ def normalize_parameters(base: dict) -> dict:
     for name, value in base.items():
         if name == 'template':
             continue
+        if name in TEXT_FIELDS:
+            if not isinstance(value, str):
+                raise ValueError('글자 항목은 문자열이어야 합니다.')
+            continue
         _number(value)
         if name in _COUNTS and type(value) is not int:
             raise ValueError('개수는 정수여야 합니다.')
         if name not in editable and value != fields[name].default:
             raise ValueError('현재 템플릿에 적용되지 않는 치수입니다.')
     parameters = GeometryRequest(**{**{name:field.default for name,field in fields.items()}, **base}).model_dump()
-    for name in parameters.keys() - _COUNTS - {'template'}:
+    for name in parameters.keys() - _COUNTS - TEXT_FIELDS - {'template'}:
         parameters[name] = _length_number(parameters[name])
     _validate_geometry(parameters)
     return parameters
@@ -104,6 +108,12 @@ def _selection(selection):
             raise ValueError('중복되거나 적용되지 않는 변경 항목입니다.')
         if op not in ('set', 'add'):
             raise ValueError('지원하지 않는 변경 연산입니다.')
+        if field in TEXT_FIELDS:
+            if op != 'set' or not isinstance(value, str):
+                raise ValueError('글자는 새 문자열로 직접 지정해야 합니다.')
+            seen.add(field)
+            result.append({'field':field, 'op':op, 'value':value})
+            continue
         _number(value)
         if field in _COUNTS and (op != 'set' or type(value) is not int):
             raise ValueError('개수 변경은 정수를 직접 지정해야 합니다.')

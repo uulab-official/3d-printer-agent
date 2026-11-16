@@ -6,7 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview','parameterField','stepParameter','syncParameterSlider','currentParameterSnapshot','parseParameterText','copyParameters','openPastePanel','applyPastedParameters','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
+names.push('renderPrintVolumeReview','readParameter','parameterInputComplete','parameterField','stepParameter','syncParameterSlider','currentParameterSnapshot','parseParameterText','copyParameters','openPastePanel','applyPastedParameters','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
 const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -40,7 +40,7 @@ function fixture() {
   for (const name of ['printabilityStatus','printabilityMarks','templateFieldLabels']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   // Multi-line editing-panel constants are evaluated from their declaration to the closing brace.
   for (const name of ['fieldDescriptions']) { const start=source.indexOf('  const '+name+' = {'); vm.runInContext(source.slice(start, source.indexOf('\n  };', start)+5), context); }
-  for (const name of ['templateFieldDescriptions','fieldNudges','fieldGroups','PARAMETER_FORMAT']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
+  for (const name of ['templateFieldDescriptions','fieldNudges','fieldGroups','PARAMETER_FORMAT','TEXT_PARAMETERS']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if (!match) throw new Error('Missing controller function: '+name);
@@ -1792,6 +1792,20 @@ const printVolumeReport = (overrides={}) => ({
     assert.equal(c.state.connectionState,'connected');assert.equal(c.state.bootstrapPending,false);
     assert.equal(c.$('reconnect-button').disabled,false);assert.equal(c.$('reconnect-button').textContent,'다시 연결');
     void pending;
+  });
+  await check('Text parameters stay strings in reads, copies and pastes',()=>{
+    const c=fixture();
+    Object.assign(c.fields,{text:{label:'글자',kind:'text',maxLength:20,unit:''},text_size:{label:'글자 크기',min:6,max:40,step:0.5}});
+    c.state.templates=[{id:'name_tag',title:'이름 키링',defaults:{text:'MINSU',text_size:12},editable_fields:['text','text_size'],description:'Tag'}];
+    c.state.template='name_tag';
+    const text=c.$('parameter-text');text.value='  민수 ';text.dataset.parameter='text';text.validity={valid:true};
+    const size=c.$('parameter-text_size');size.value='14';size.valueAsNumber=14;size.dataset.parameter='text_size';size.validity={valid:true};
+    assert.equal(c.readParameter(text),'민수');assert.equal(c.readParameter(size),14);
+    assert.equal(c.parameterInputComplete(text),true);text.value='   ';assert.equal(c.parameterInputComplete(text),false);text.value='민수';
+    const snapshot=c.currentParameterSnapshot();assert.deepEqual(plain(snapshot.parameters),{text:'민수',text_size:14});
+    assert.deepEqual(plain(c.parseParameterText(JSON.stringify(snapshot)).parameters),{text:'민수',text_size:14});
+    assert.throws(()=>c.parseParameterText('{"template":"name_tag","parameters":{"text":42}}'),/1~20자/);
+    assert.throws(()=>c.parseParameterText('{"template":"name_tag","parameters":{"text":"'+'x'.repeat(21)+'"}}'),/1~20자/);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

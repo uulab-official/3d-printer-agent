@@ -30,6 +30,10 @@ def template_catalog() -> list[dict]:
                       "inset_diameter": 52, "inset_depth": 2, "fit_clearance": 0.3},
          "editable_fields": ["width", "depth", "height", "wall", "bottom", "inset_diameter",
                              "inset_depth", "fit_clearance"]},
+        {"id": "name_tag", "title": "이름 키링",
+         "description": "둥근 받침판 위에 글자를 올리고 고리 구멍을 둔 키링입니다. 가로·세로는 글자 길이에 맞춰 정해집니다.",
+         "defaults": {"text": "MINSU", "text_size": 12, "text_depth": 2, "wall": 3, "bottom": 2, "hole_diameter": 4},
+         "editable_fields": ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"]},
         {"id": "phone_stand", "title": "휴대폰 거치대",
          "description": "앞턱과 기울어진 등판 사이에 휴대폰을 세워 두는 거치대입니다.",
          "defaults": {"width": 70, "depth": 80, "height": 90, "wall": 4, "bottom": 4,
@@ -37,6 +41,26 @@ def template_catalog() -> list[dict]:
          "editable_fields": ["width", "depth", "height", "wall", "bottom", "lean_angle",
                              "device_thickness", "lip_height", "fit_clearance"]},
     ]
+
+
+def _name_tag_font() -> dict:
+    """Pinned, known-good bold sans fonts per platform; a font name only as a last resort.
+
+    Some decorative fonts have overlapping outlines that make invalid solids, so the
+    template never picks an arbitrary system font.
+    """
+    import os
+    candidates = [
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "arialbd.ttf"),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return {"fontPath": path, "label": os.path.basename(path)}
+    return {"font": "Arial", "label": "Arial(시스템 대체 글꼴)"}
 
 
 def _build_solid(p: dict) -> cq.Shape:
@@ -64,6 +88,29 @@ def _build_solid(p: dict) -> cq.Shape:
             opening = cq.Workplane("XY").box(diameter, d + 2, h - center_z + 1, centered=False)
             opening = opening.translate((center_x - radius, -1, center_z))
             body = body.cut(round_floor).cut(opening)
+    elif p["template"] == "name_tag":
+        # Letters stand on a rounded plate; a tab with a hole sits on the left.
+        # System fonts are used, so another computer may draw slightly different letters.
+        text = p["text"].strip()
+        font = _name_tag_font()
+        options = {"fontPath": font["fontPath"]} if "fontPath" in font else {"font": font["font"], "kind": "bold"}
+        letters = cq.Workplane("XY").text(text, p["text_size"], p["text_depth"], combine=False,
+                                          halign="left", valign="bottom", **options)
+        if not letters.val().isValid():
+            raise ValueError(f"이 PC의 글꼴({font['label']})로 만든 글자 형상이 올바르지 않습니다. 글자 크기를 키우거나 글자를 바꿔 다시 시도하세요.")
+        letter_box = letters.val().BoundingBox()
+        margin, hole = wall, p["hole_diameter"]
+        tab = hole + 2 * margin
+        plate_w = letter_box.xlen + 2 * margin + tab
+        plate_d = max(letter_box.ylen, hole) + 2 * margin
+        radius = min(plate_d / 2 - 0.01, margin + hole / 2)
+        plate = (cq.Workplane("XY").rect(plate_w, plate_d, centered=False).extrude(bottom)
+                 .edges("|Z").fillet(radius))
+        ring = (cq.Workplane("XY").circle(hole / 2).extrude(bottom + 2)
+                .translate((margin + hole / 2, plate_d / 2, -1)))
+        body = plate.cut(ring)
+        offset = (tab + margin - letter_box.xmin, margin + (plate_d - 2 * margin - letter_box.ylen) / 2 - letter_box.ymin, bottom)
+        body = body.union(letters.translate(offset))
     elif p["template"] == "phone_stand":
         import math
         body = cq.Workplane("XY").box(w, d, bottom, centered=False)
@@ -115,7 +162,7 @@ def _reproduction_source(parameters: dict) -> str:
     preamble = ("# Generated with CadQuery " + cq.__version__ + "; all lengths are millimetres.\n"
                 "# This source reproduces geometry, not slicer settings or print success.\n"
                 "from pathlib import Path\nimport sys\nimport cadquery as cq\n\n")
-    functions = "\n\n".join(inspect.getsource(fn) for fn in (_validate_geometry, _build_solid, _export_cad))
+    functions = "\n\n".join(inspect.getsource(fn) for fn in (_validate_geometry, _name_tag_font, _build_solid, _export_cad))
     runner = (f"\n\nPARAMETERS = {parameters!r}\n\n"
               "if __name__ == '__main__':\n"
               "    destination = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / 'reproduced'\n"
@@ -158,10 +205,14 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
         {"name": "single_solid", "passed": len(shape.Solids()) == 1, "detail": "연결된 솔리드 1개"},
         {"name": "positive_volume", "passed": math.isfinite(volume) and volume > 0,
          "detail": f"체적 {volume:.6f} mm³"},
-        {"name": "requested_dimensions",
-         "passed": all(math.isclose(dimensions[axis], parameters[key], abs_tol=1e-6)
-                       for axis, key in zip("xyz", ("width", "depth", "height"))),
-         "detail": "생성 형상의 외부 치수와 요청 치수 비교"},
+        ({"name": "requested_dimensions",
+          "passed": math.isclose(dimensions["z"], parameters["bottom"] + parameters["text_depth"], abs_tol=1e-6),
+          "detail": "글자 길이로 정해지는 가로·세로 대신 받침+글자 높이를 비교"}
+         if spec.template == "name_tag" else
+         {"name": "requested_dimensions",
+          "passed": all(math.isclose(dimensions[axis], parameters[key], abs_tol=1e-6)
+                        for axis, key in zip("xyz", ("width", "depth", "height"))),
+          "detail": "생성 형상의 외부 치수와 요청 치수 비교"}),
         {"name": "closed_preview_mesh", "passed": bool(edges) and all(count == 2 for count in edges.values()),
          "detail": "미리보기 메시의 모서리가 각각 두 면에 연결됨"},
     ]
@@ -173,6 +224,8 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
     warnings = ["CAD 형상 검증만 완료했습니다. 출력 성공·강도·치수 맞춤은 실제 프린터에서 확인해야 합니다."]
     if spec.template == "cable_comb":
         warnings.append("위가 열린 케이블 받침입니다. 스냅 고정이나 케이블 유지력을 보장하지 않습니다.")
+    elif spec.template == "name_tag":
+        warnings.append(f"글꼴 {_name_tag_font()['label']}로 글자를 만들었습니다. 운영체제마다 정해진 굵은 글꼴(Arial Bold·DejaVu Sans Bold)을 쓰므로 다른 PC에서는 글자 모양이 조금 다를 수 있고, 고리의 강도는 보장하지 않습니다.")
     elif spec.template == "phone_stand":
         warnings.append("기기 두께와 여유로 홈 폭을 정합니다. 실제 기기·케이스 두께와 넘어짐·충전 케이블 위치는 직접 확인하세요.")
     elif spec.template == "magnet_frame":

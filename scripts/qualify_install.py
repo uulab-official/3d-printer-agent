@@ -371,11 +371,20 @@ def qualify(args, report):
             ({'template': 'magnet_frame', 'width': 65, 'depth': 65, 'height': 7}, (65, 65, 7)),
             ({'template': 'phone_stand', 'width': 70, 'depth': 80, 'height': 90, 'wall': 4, 'bottom': 4,
               'lean_angle': 65, 'device_thickness': 12, 'lip_height': 12, 'fit_clearance': 1}, (70, 80, 90)),
+            # Text width depends on the platform's system font, so it is compared with the
+            # job's own reported size; the plate-plus-letter height is fixed at 4 mm.
+            ({'template': 'name_tag', 'text': 'MINSU', 'text_size': 12, 'text_depth': 2, 'wall': 3, 'bottom': 2,
+              'hole_diameter': 4}, None),
         ]
         models = []
         for payload, dimensions in requests:
             job = get_json(server, '/api/models', method='POST', payload=payload, token=token)
             kind = payload['template']
+            if dimensions is None:
+                reported = job['result']['dimensions_mm']
+                dimensions = (reported['x'], reported['y'], reported['z'])
+                check('name_tag_height_and_text_width', abs(reported['z'] - 4) < 1e-5 and reported['x'] > 30
+                      and job['title'].startswith('이름 키링 “MINSU”'), json.dumps(reported))
             check('cad_validated_' + kind, job['status'] == 'geometry_validated'
                   and job['result']['geometry_status'] == 'validated')
             check('physical_print_stays_unverified_' + kind, job['result']['print_status'] == 'not_tested'
@@ -666,8 +675,8 @@ def qualify(args, report):
         servers.append(restarted)
         refreshed = restarted.wait_ready()
         recovery = refreshed['storage']['recovery']
-        # The phone stand model adds one completed job to the earlier five.
-        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 6
+        # The phone stand and name tag models add two completed jobs to the earlier five.
+        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 7
               and recovery['interrupted'] == 1 and recovery['unreadable'] == 0, json.dumps(recovery))
         check('restart_rotates_session', refreshed['session_token'] != token)
         old_session = get_json(restarted, '/api/discovery', method='POST', payload={}, token=token, expected=403)
@@ -722,7 +731,7 @@ def qualify(args, report):
             cursor = page['next_cursor']
             if cursor is None:
                 break
-        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 6
+        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 7
               and set(paged_ids) == {model['id'] for model in models} | {interrupted_id, contextual_job['id']})
 
         def backup_command(name, arguments, expected_exit=0):
@@ -778,7 +787,7 @@ def qualify(args, report):
             restored_model = get_json(restored_server, '/api/jobs/' + model['id'])
             code, content, _ = request(restored_server.base, restored_model['artifacts']['three_mf'])
             verified_downloads.append(code == 200 and sha256(content) == model['artifacts']['three_mf']['sha256'])
-        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == len(models) == 4)
+        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == len(models) == 5)
         restored_source = get_json(restored_server, '/api/studio-projects/' + imported['source_id'])
         restored_project = get_json(restored_server, '/api/jobs/' + models[1]['id'])
         source_code, restored_source_bytes, _ = request(restored_server.base, imported['archive_url'])

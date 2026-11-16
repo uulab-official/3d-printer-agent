@@ -81,6 +81,8 @@ REQUIRED_CHECKS = frozenset({
     'printability_review_cable_comb',
     'printability_review_magnet_frame',
     'printability_review_phone_stand',
+    'printability_review_name_tag',
+    'name_tag_height_and_text_width',
 })
 MAX_JSON = 8 * 1024 * 1024
 MAX_ZIP_BYTES = 64 * 1024 * 1024

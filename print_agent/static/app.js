@@ -19,7 +19,13 @@
     lean_angle: { label: "등판 각도", min: 50, max: 80, step: 1, unit: "°" },
     device_thickness: { label: "기기 두께(케이스 포함)", min: 4, max: 30, step: 0.1 },
     lip_height: { label: "앞턱 높이", min: 3, max: 60, step: 0.1 },
+    text: { label: "글자", kind: "text", maxLength: 20, unit: "" },
+    text_size: { label: "글자 크기", min: 6, max: 40, step: 0.5 },
+    text_depth: { label: "글자 높이", min: 0.6, max: 6, step: 0.1 },
+    hole_diameter: { label: "고리 구멍 지름", min: 2, max: 10, step: 0.1 },
   };
+  // Fields read and sent as strings rather than numbers.
+  const TEXT_PARAMETERS = new Set(["text"]);
   // Editing panel: one-line explanations, the +/- step and the group of each field.
   const fieldDescriptions = {
     width: "바깥 가로 길이(좌우)", depth: "바깥 세로 길이(앞뒤)", height: "바닥에서 가장 높은 곳까지",
@@ -27,14 +33,16 @@
     dividers: "가로 방향 칸막이 개수(칸 수 − 1)", slots: "케이블을 올릴 U자 홈 개수", cable_diameter: "올릴 케이블의 바깥 지름",
     inset_diameter: "넣을 원판·사진의 지름", inset_depth: "포켓이 파이는 깊이", fit_clearance: "넣을 물건보다 넓게 두는 여유",
     lean_angle: "바닥에서 등판까지의 각도. 클수록 똑바로 섭니다", device_thickness: "케이스를 포함한 기기 두께", lip_height: "앞에서 기기를 받치는 턱 높이",
+    text: "키링에 새길 글자(한글·영문·숫자, 20자 이하)", text_size: "글자의 높이. 8 mm 이상이면 획이 잘 나옵니다", text_depth: "받침판 위로 솟은 글자 높이",
+    hole_diameter: "고리나 줄을 끼울 구멍 지름",
   };
-  const templateFieldDescriptions = { phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" } };
-  const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1 };
-  const fieldGroups = [["size", "크기", ["width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]]];
+  const templateFieldDescriptions = { phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" } };
+  const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1, text_size: 0.5, text_depth: 0.2, hole_diameter: 0.5 };
+  const fieldGroups = [["text", "글자", ["text", "text_size", "text_depth"]], ["size", "크기", ["width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]]];
   const PARAMETER_FORMAT = "3d-printer-agent/parameters";
 
   // Same field, different meaning per template.
-  const templateFieldLabels = { phone_stand: { fit_clearance: "홈 여유", wall: "등판·앞턱 두께" } };
+  const templateFieldLabels = { phone_stand: { fit_clearance: "홈 여유", wall: "등판·앞턱 두께" }, name_tag: { wall: "테두리 여백", bottom: "받침 두께" } };
   const fieldNames = {
     ...Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.label])),
     printer_model: "프린터 모델", printer_preset: "프린터 프리셋", nozzle_diameter: "노즐 지름",
@@ -566,12 +574,16 @@
   function validateEditParameters(parameters) {
     const defaults = { width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
     // Fields added later appear only in templates that use them (see schemas.LATER_FIELDS).
-    const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 } };
-    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"] };
+    const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 }, name_tag: { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 } };
+    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"], name_tag: ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"] };
     const expected = { ...defaults, ...(laterFields[parameters?.template] || {}) };
     if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== Object.keys(expected).length + 1 || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
     for (const [key, neutral] of Object.entries(expected)) {
       const value = parameters[key];
+      if (TEXT_PARAMETERS.has(key)) {
+        if (!Object.hasOwn(parameters, key) || typeof value !== "string" || !value.trim() || value.length > fields[key].maxLength) throw new Error("수정 제안의 글자 응답이 올바르지 않습니다.");
+        continue;
+      }
       if (!Object.hasOwn(parameters, key) || typeof value !== "number" || !Number.isFinite(value) || ((key === "dividers" || key === "slots") && !Number.isSafeInteger(value)) || (!applicable[parameters.template].includes(key) && value !== neutral)) throw new Error("수정 제안의 치수 응답이 올바르지 않습니다.");
       const definition = fields[key];
       if (definition && (value < definition.min || value > definition.max)) throw new Error("수정 제안의 치수 범위를 확인해 주세요.");
@@ -581,19 +593,20 @@
 
   function parameterKeys(template) {
     // The eleven original fields for every template, plus later fields only where used.
-    const later = { phone_stand: ["lean_angle", "device_thickness", "lip_height"] };
+    const later = { phone_stand: ["lean_angle", "device_thickness", "lip_height"], name_tag: ["text", "text_size", "text_depth", "hole_diameter"] };
     return ["template", "width", "depth", "height", "wall", "bottom", "dividers", "slots", "cable_diameter", "inset_diameter", "inset_depth", "fit_clearance", ...(later[template] || [])];
   }
 
   function currentEditParameters() {
     const parameters = { template: state.template, width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
     if (state.template === "phone_stand") Object.assign(parameters, { lean_angle: 65, device_thickness: 12, lip_height: 12 });
+    if (state.template === "name_tag") Object.assign(parameters, { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 });
     const template = state.templates.find(item => item.id === state.template);
     if (!template) throw new Error("수정할 템플릿을 먼저 선택해 주세요.");
     for (const key of template.editable_fields) {
       const input = $(`parameter-${key}`);
-      if (!input.value.trim() || input.validity?.badInput || input.validity?.valid === false || !Number.isFinite(Number(input.value))) throw new Error("현재 치수 입력을 완성한 뒤 수정 제안을 요청해 주세요.");
-      parameters[key] = Number(input.value);
+      if (!parameterInputComplete(input)) throw new Error("현재 치수 입력을 완성한 뒤 수정 제안을 요청해 주세요.");
+      parameters[key] = TEXT_PARAMETERS.has(key) ? input.value.trim() : Number(input.value);
     }
     validateEditParameters(parameters);
     return parameters;
@@ -893,13 +906,41 @@
     });
   }
 
+  function readParameter(input) {
+    // Text fields stay strings; every other field is a number.
+    return TEXT_PARAMETERS.has(input.dataset.parameter) ? input.value.trim() : input.valueAsNumber;
+  }
+
+  function parameterInputComplete(input) {
+    if (TEXT_PARAMETERS.has(input.dataset.parameter)) return input.value.trim().length > 0 && input.validity?.valid !== false;
+    return Boolean(input.value.trim()) && !input.validity?.badInput && input.validity?.valid !== false && Number.isFinite(Number(input.value));
+  }
+
   function parameterField(template, key) {
     const definition = fields[key];
-    const unit = definition.unit || "mm";
+    const unit = definition.unit ?? "mm";
     const container = node("div", "parameter-field");
     container.dataset.field = key;
     const labelText = templateFieldLabels[template.id]?.[key] || definition.label;
-    const label = node("label", "", `${labelText} · ${unit}`);
+    const label = node("label", "", unit ? `${labelText} · ${unit}` : labelText);
+    if (definition.kind === "text") {
+      container.classList.add("parameter-text");
+      const description = node("p", "parameter-desc", templateFieldDescriptions[template.id]?.[key] || fieldDescriptions[key] || "");
+      description.id = `parameter-desc-${key}`;
+      const input = node("input");
+      input.id = `parameter-${key}`;
+      input.name = key;
+      input.type = "text";
+      input.maxLength = definition.maxLength;
+      input.required = true;
+      input.autocomplete = "off";
+      input.value = state.parameters[key] ?? "";
+      input.dataset.parameter = key;
+      input.setAttribute("aria-describedby", description.id);
+      label.htmlFor = input.id;
+      container.append(label, description, input);
+      return container;
+    }
     const description = node("p", "parameter-desc", templateFieldDescriptions[template.id]?.[key] || fieldDescriptions[key] || "");
     description.id = `parameter-desc-${key}`;
     const input = node("input");
@@ -963,8 +1004,8 @@
     const parameters = {};
     for (const key of template.editable_fields) {
       const input = $(`parameter-${key}`);
-      if (!input || !input.value.trim() || input.validity?.badInput || input.validity?.valid === false || !Number.isFinite(Number(input.value))) throw new Error("모든 치수를 올바르게 입력한 뒤 복사해 주세요.");
-      parameters[key] = Number(input.value);
+      if (!input || !parameterInputComplete(input)) throw new Error("모든 치수를 올바르게 입력한 뒤 복사해 주세요.");
+      parameters[key] = TEXT_PARAMETERS.has(key) ? input.value.trim() : Number(input.value);
     }
     return { format: PARAMETER_FORMAT, version: 1, template: template.id, title: template.title, parameters };
   }
@@ -982,6 +1023,11 @@
       if (["format", "version", "template", "title", "parameters"].includes(key)) continue;
       if (!template.editable_fields.includes(key)) throw new Error(`${fieldNames[key] || key}은(는) ${template.title}에서 쓰지 않는 치수입니다.`);
       const definition = fields[key];
+      if (definition.kind === "text") {
+        if (typeof value !== "string" || !value.trim() || value.length > definition.maxLength) throw new Error(`${fieldNames[key] || key}은(는) 1~${definition.maxLength}자의 글자여야 합니다.`);
+        parameters[key] = value.trim();
+        continue;
+      }
       if (typeof value !== "number" || !Number.isFinite(value) || value < definition.min || value > definition.max || (definition.unit === "개" && !Number.isInteger(value))) {
         throw new Error(`${fieldNames[key] || key} 값은 ${definition.min}~${definition.max}${definition.unit === "개" ? "개(정수)" : ` ${definition.unit || "mm"}`} 범위의 숫자여야 합니다.`);
       }
@@ -1133,7 +1179,7 @@
     hideNotice("model-feedback");
     const signature = modelDraftSignature();
     const parameters = { template: state.template };
-    for (const input of document.querySelectorAll("[data-parameter]")) parameters[input.dataset.parameter] = input.valueAsNumber;
+    for (const input of document.querySelectorAll("[data-parameter]")) parameters[input.dataset.parameter] = readParameter(input);
     if (state.modelEditApplied && state.modelEditAppliedSignature === modelGeometrySignature()) parameters.model_edit = state.modelEditApplied;
     if (state.projectSource) parameters.project_selection = { id: state.projectSource.project_id || state.projectSource.id, recipe_sha256: state.projectSource.recipe_sha256 };
     try {
@@ -4032,7 +4078,9 @@
       const distance = this.radius * 4;
       const project = (point) => {
         const x = point[0] - this.center[0], y = point[1] - this.center[1], z = point[2] - this.center[2];
-        const right = cy * x - sy * y, forward = sy * x + cy * y;
+        // Right-handed view: the camera sits on the -Y side at yaw 0 (CAD "front"),
+        // so the top view shows +Y up and text reads normally.
+        const right = cy * x - sy * y, forward = -(sy * x + cy * y);
         const vertical = ce * z - se * forward, depth = se * z + ce * forward;
         const perspective = distance / (distance - depth);
         return [width / 2 + right * scale * perspective, height / 2 - vertical * scale * perspective, depth];
@@ -4074,7 +4122,7 @@
         const n = normal.map((value) => value / magnitude);
         // Camera-relative lighting: rotate the normal like project() does, then light
         // from the viewer's upper left so every view keeps readable face contrast.
-        const viewRight = cy * n[0] - sy * n[1], viewForward = sy * n[0] + cy * n[1];
+        const viewRight = cy * n[0] - sy * n[1], viewForward = -(sy * n[0] + cy * n[1]);
         const viewUp = ce * n[2] - se * viewForward, viewDepth = se * n[2] + ce * viewForward;
         const key = Math.max(0, -0.38 * viewRight + 0.52 * viewUp + 0.76 * viewDepth);
         const rim = Math.max(0, 0.55 * viewRight + 0.25 * viewUp + 0.4 * viewDepth);
@@ -4131,7 +4179,7 @@
       }
       if (this.showDimensions) this.drawDimensions(ctx, project);
       const origin = [31, height - 31];
-      const axes = [["X", cy, -se * sy, "#bb8391"], ["Y", -sy, -se * cy, "#79a190"], ["Z", 0, ce, "#7898c8"]];
+      const axes = [["X", cy, se * sy, "#bb8391"], ["Y", -sy, se * cy, "#79a190"], ["Z", 0, ce, "#7898c8"]];
       ctx.font = "9px sans-serif";
       axes.forEach(([label, x, y, color]) => {
         const end = [origin[0] + x * 20, origin[1] - y * 20];
@@ -4145,10 +4193,10 @@
     const [x0, y0, z0] = this.mins, [x1, y1, z1] = this.maxs;
     const pad = this.radius * 0.12;
     const format = (value) => `${numberFormat.format(Math.round(value * 10) / 10)} mm`;
-    // In project(), a larger forward value (sin(yaw)·x + cos(yaw)·y) is closer to the
+    // In project(), a larger forward value (−(sin(yaw)·x + cos(yaw)·y)) is closer to the
     // viewer. Use the nearest box edges and push each line outward from the part.
-    const nearY = Math.cos(this.yaw) >= 0 ? y1 : y0, outY = nearY === y1 ? pad : -pad;
-    const nearX = Math.sin(this.yaw) >= 0 ? x1 : x0, outX = nearX === x1 ? pad : -pad, farX = nearX === x1 ? x0 : x1;
+    const nearY = Math.cos(this.yaw) >= 0 ? y0 : y1, outY = nearY === y1 ? pad : -pad;
+    const nearX = Math.sin(this.yaw) >= 0 ? x0 : x1, outX = nearX === x1 ? pad : -pad, farX = nearX === x1 ? x0 : x1;
     // Depth components of the X, Y and Z axes (see project()); an axis pointing
     // almost straight at the viewer has no readable length on screen.
     const ce = Math.cos(this.elevation);

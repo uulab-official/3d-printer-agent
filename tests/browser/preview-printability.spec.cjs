@@ -288,3 +288,28 @@ test('parameter panel edits with steppers and sliders, and copied settings paste
   await expect(page.locator('#parameter-width')).toHaveValue('122');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
+
+test('name keychain: text field, request parsing, readable top view and a single printable solid', async ({ page }) => {
+  await page.locator('#request-text').fill('이름이 민수인 키링 글자 크기 14mm');
+  const planned = page.waitForResponse(r => r.url().endsWith('/api/plan'));
+  await page.locator('#plan-button').click();
+  await planned;
+  const confirm = page.locator('#model-confirm-replace');
+  if (await confirm.isVisible()) await confirm.click();
+  await expect(page.locator('#parameter-text')).toHaveValue('민수');
+  await expect(page.locator('#parameter-text_size')).toHaveValue('14');
+  await expect(page.locator('#parameter-fields .parameter-group legend').first()).toHaveText('글자');
+  await expect(page.locator('label[for="parameter-wall"]')).toHaveText('테두리 여백 · mm');
+  await page.locator('#parameter-text').fill('Samantha');
+  const result = await generate(page, {});
+  expect(result.template).toBe('name_tag');
+  expect(result.geometry_status).toBe('validated');
+  expect(result.dimensions_mm.z).toBeCloseTo(4, 3);
+  await expect(page.locator('#result-heading')).toContainText('이름 키링 “Samantha”');
+  await page.locator('[data-preview-view="top"]').click();
+  await expect(page.locator('[data-preview-view="top"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#parameter-text').fill('');
+  await expect(page.locator('#model-result')).toBeHidden();
+  await page.locator('#generate-button').click();
+  await expect(page.locator('#parameter-text')).toHaveJSProperty('validity.valueMissing', true);
+});
