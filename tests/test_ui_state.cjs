@@ -6,7 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview');
+names.push('renderPrintVolumeReview','renderPrintability');
 const editNames = ['modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -37,6 +37,7 @@ function fixture() {
   };
   $('parameter-width').value='120';$('outcome-result').value='not_tested';$('offer-currency').value='KRW';
   vm.createContext(context);
+  for (const name of ['printabilityStatus','printabilityMarks']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if (!match) throw new Error('Missing controller function: '+name);
@@ -1633,6 +1634,18 @@ const printVolumeReport = (overrides={}) => ({
     const area=c.$('printer-devices');assert.match(area.textContent,/P1S \(C12\)/);assert.match(area.textContent,/주소가 다릅니다/);
     findElement(area,element=>element.listeners?.click).listeners.click();
     assert.equal(c.$('printer-host').value,'10.0.0.9');assert.equal(c.$('printer-serial').value,'01P00ABCDEF0001');
+  });
+  await check('Printability review renders statuses, advice and a fix action only for actionable fields',()=>{
+    const c=fixture();let focused=null;c.$('parameter-wall').focus=()=>{focused='wall';};c.$('parameter-wall').scrollIntoView=()=>{};
+    c.renderPrintability({status:'review',basis:{note:'기준 0.4 mm 노즐'},items:[
+      {id:'min_thickness',label:'가장 얇은 부분',status:'warn',value:'0.80 mm (바깥 벽)',detail:'1.9줄',advice:'늘리세요',field:'wall'},
+      {id:'stability',label:'세운 비율',status:'pass',value:'0.4',detail:'안정',advice:null,field:null},
+      {id:'bed_contact',label:'바닥 접촉면',status:'fail',value:'0 cm²',detail:'<img src=x onerror=alert(1)>',advice:'눕히세요',field:null}]});
+    const area=c.$('printability-items');assert.equal(c.$('printability-review').hidden,false);
+    assert.equal(c.$('printability-status').textContent,'확인할 점이 있어요');assert.match(area.textContent,/<img src=x/);
+    const fixes=[];findElement(area,element=>{if(element.listeners?.click)fixes.push(element);return false;});
+    assert.equal(fixes.length,1);fixes[0].listeners.click();assert.equal(focused,'wall');
+    c.renderPrintability(undefined);assert.equal(c.$('printability-review').hidden,true);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

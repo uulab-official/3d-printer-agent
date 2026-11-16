@@ -9,6 +9,7 @@ import cadquery as cq
 
 from .schemas import GeometryRequest
 from .geometry_rules import _validate_geometry
+from .printability import assess_printability
 
 
 def template_catalog() -> list[dict]:
@@ -151,4 +152,5 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
         warnings.append("원형 포켓의 여유값은 지름에 더합니다. 자석 고정력이나 구조 강도를 보장하지 않습니다.")
     return {"template": spec.template, "parameters": parameters, "dimensions_mm": dimensions,
             "volume_mm3": volume, "geometry_status": "validated", "print_status": "not_tested",
-            "checks": checks, "files": files, "mesh": mesh, "warnings": warnings}
+            "checks": checks, "files": files, "mesh": mesh, "warnings": warnings,
+            "printability": assess_printability(shape, parameters, mesh)}

@@ -2,9 +2,11 @@
 
 Date: 2026-11-16 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.9 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.10 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.10 improves the model preview (view presets, dimension lines, crease edges, overhang highlighting) and adds an advisory [printability review](PRINTABILITY.md) to every generated model, measured against a stated 0.4 mm reference nozzle and linked to the parameter to change. It is not a slicer or physical result. Not yet released.
 
 Version 0.9 adds a [read-only printer status view](PRINTER_STATUS.md). It listens for Bambu SSDP announcements and reads one printer's LAN-mode MQTT/TLS report with a user-entered access code. Connection stages, the device certificate fingerprint and printer-reported state stay separate; only fixed `pushall`/`get_version` requests are sent, targets are limited to private IP literals, and access codes are never stored or returned. Fixture tests use a loopback fake broker; no physical printer has been qualified yet. Not yet released: CI, installed qualification and promotion for v0.9.0 are pending.
 

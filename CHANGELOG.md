@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0 — 2026-11-16
+
+- Preview: isometric/front/side/top view presets, orange bounding-box dimension lines (hidden for axes facing the viewer), depth-tested crease edges, camera-relative lighting and optional overhang highlighting. The preview stage no longer overflows its card, so the zoom toolbar is no longer clipped.
+- Printability review on every generated model, stored with the job result: thinnest template feature against a stated 0.4 mm nozzle / 0.42 mm line, flat bed contact ratio, height-to-footprint ratio, >45° overhang area, fit clearance (cable comb and frame only) and a solid-PLA material upper bound. Warnings name the parameter to change and offer a jump-to-field action.
+- Advisory only: generation is never blocked and no slicer or physical result is implied. Installed-package qualification adds one printability check per template.
+
 ## 0.9.0 — 2026-11-16
 
 - Add a read-only **printer status** view: discover Bambu printers announcing on the local network (SSDP) and read one printer's reported state over LAN-mode MQTT/TLS with its access code.

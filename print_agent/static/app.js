@@ -1006,6 +1006,38 @@
     }
   }
 
+  const printabilityStatus = { ok: ["형상 점검 통과", "success"], review: ["확인할 점이 있어요", "warning"], needs_change: ["수정을 권해요", "error"] };
+  const printabilityMarks = { pass: "✓", warn: "!", fail: "×" };
+
+  function renderPrintability(review) {
+    const section = $("printability-review");
+    if (!review || !Array.isArray(review.items)) { section.hidden = true; return; }
+    const [label, tone] = printabilityStatus[review.status] || ["확인 필요", "neutral"];
+    setBadge("printability-status", label, tone);
+    $("printability-basis").textContent = review.basis?.note || "";
+    $("printability-items").replaceChildren(...review.items.map((item) => {
+      const row = node("li", `printability-item is-${item.status}`);
+      row.dataset.check = item.id;
+      const mark = node("span", "printability-mark", printabilityMarks[item.status] || "?");
+      mark.setAttribute("aria-hidden", "true");
+      const body = node("div", "printability-body");
+      const head = node("div", "printability-row");
+      head.append(node("strong", "", item.label), node("span", "printability-value", item.value));
+      body.append(head, node("p", "", item.detail));
+      if (item.advice) body.append(node("p", "printability-advice", item.advice));
+      const input = item.field ? $(`parameter-${item.field}`) : null;
+      if (input && item.status !== "pass") {
+        const fix = node("button", "text-button", "이 치수 고치기 →");
+        fix.type = "button";
+        fix.addEventListener("click", () => { input.scrollIntoView({ block: "center", behavior: "smooth" }); input.focus(); input.select?.(); });
+        body.append(fix);
+      }
+      row.append(mark, body);
+      return row;
+    }));
+    section.hidden = false;
+  }
+
   function renderJob(job) {
     const result = job.result;
     if (!result) throw new Error("작업에 모델 결과가 없습니다.");
@@ -1035,6 +1067,7 @@
       return element;
     }));
     $("model-warnings").replaceChildren(...(result.warnings || []).map((text) => node("p", "", text)));
+    renderPrintability(result.printability);
     renderDownloads(job);
     viewer.setMesh(result.mesh, job.title);
     setBadge("preview-status", "실제 CAD 메시", "blue");
@@ -3379,6 +3412,8 @@
       this.yaw = 0.62;
       this.elevation = 0.62;
       this.zoom = 1;
+      this.showDimensions = true;
+      this.showOverhangs = true;
       this.pending = false;
       this.drag = null;
       new ResizeObserver(() => this.requestDraw()).observe($("preview-stage"));
@@ -3391,7 +3426,8 @@
       canvas.addEventListener("pointermove", (event) => {
         if (!this.drag) return;
         this.yaw += (event.clientX - this.drag.x) * 0.009;
-        this.elevation = Math.max(0.06, Math.min(1.48, this.elevation + (event.clientY - this.drag.y) * 0.008));
+        this.elevation = Math.max(0, Math.min(Math.PI / 2, this.elevation + (event.clientY - this.drag.y) * 0.008));
+        this.markView("custom");
         this.drag = { x: event.clientX, y: event.clientY };
         this.requestDraw();
       });
@@ -3403,10 +3439,11 @@
       canvas.addEventListener("keydown", (event) => {
         if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-", "0"].includes(event.key)) return;
         event.preventDefault();
+        this.markView("custom");
         if (event.key === "ArrowLeft") this.yaw -= 0.12;
         if (event.key === "ArrowRight") this.yaw += 0.12;
-        if (event.key === "ArrowUp") this.elevation = Math.min(1.48, this.elevation + 0.1);
-        if (event.key === "ArrowDown") this.elevation = Math.max(0.06, this.elevation - 0.1);
+        if (event.key === "ArrowUp") this.elevation = Math.min(Math.PI / 2, this.elevation + 0.1);
+        if (event.key === "ArrowDown") this.elevation = Math.max(0, this.elevation - 0.1);
         if (["+", "="].includes(event.key)) this.changeZoom(1.15);
         if (event.key === "-") this.changeZoom(1 / 1.15);
         if (event.key === "0") this.reset();
@@ -3428,6 +3465,9 @@
       this.extents = mins.map((value, axis) => maxs[axis] - value);
       this.radius = Math.hypot(...this.extents) / 2 || 1;
       this.floor = mins[2];
+      this.mins = mins;
+      this.maxs = maxs;
+      this.featureEdges = MeshViewer.featureEdges(mesh);
       this.canvas.hidden = false;
       this.canvas.setAttribute("aria-label", `${title || "생성한 모델"}. 방향키로 회전, 더하기와 빼기로 확대, 0으로 기본 시점.`);
       $("preview-empty").hidden = true;
@@ -3445,7 +3485,48 @@
       $("preview-tools").hidden = true;
     }
 
-    reset() { this.yaw = 0.62; this.elevation = 0.62; this.zoom = 1; this.requestDraw(); }
+    reset() { this.setView("iso"); }
+
+    static featureEdges(mesh) {
+      // Draw only creases (> 25° between neighbouring triangles) and open
+      // boundaries, so tessellation diagonals on flat or curved faces stay hidden.
+      const normals = mesh.faces.map((face) => {
+        const [a, b, c] = face.map((index) => mesh.vertices[index]);
+        const u = b.map((value, axis) => value - a[axis]), v = c.map((value, axis) => value - a[axis]);
+        const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        const length = Math.hypot(...n) || 1;
+        return n.map((value) => value / length);
+      });
+      const owners = new Map();
+      mesh.faces.forEach((face, faceIndex) => face.forEach((start, corner) => {
+        const end = face[(corner + 1) % 3];
+        const key = start < end ? `${start}:${end}` : `${end}:${start}`;
+        if (!owners.has(key)) owners.set(key, []);
+        owners.get(key).push(faceIndex);
+      }));
+      const edges = [];
+      const crease = Math.cos(25 * Math.PI / 180);
+      for (const [key, faces] of owners) {
+        const keep = faces.length !== 2 || normals[faces[0]].reduce((sum, value, axis) => sum + value * normals[faces[1]][axis], 0) < crease;
+        if (keep) edges.push(key.split(":").map(Number));
+      }
+      return edges;
+    }
+
+    setView(name) {
+      const views = { iso: [0.62, 0.62], front: [0, 0], top: [0, Math.PI / 2], side: [Math.PI / 2, 0] };
+      const [yaw, elevation] = views[name] || views.iso;
+      this.yaw = yaw; this.elevation = elevation; this.zoom = 1;
+      this.markView(name in views ? name : "iso");
+      this.requestDraw();
+    }
+
+    markView(name) {
+      this.view = name;
+      document.querySelectorAll("[data-preview-view]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.previewView === name)));
+    }
+
+    setOption(name, value) { this[name] = value; this.requestDraw(); }
     changeZoom(factor) { this.zoom = Math.max(0.45, Math.min(2.8, this.zoom * factor)); this.requestDraw(); }
     requestDraw() {
       if (this.pending) return;
@@ -3507,9 +3588,17 @@
         const u = pb.map((value, axis) => value - pa[axis]), v = pc.map((value, axis) => value - pa[axis]);
         const normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
         const magnitude = Math.hypot(...normal) || 1;
-        const light = Math.max(-0.6, Math.min(1, (-0.35 * normal[0] - 0.45 * normal[1] + 0.82 * normal[2]) / magnitude));
-        const shade = 0.87 + light * 0.24;
-        const color = [Math.round(112 * shade), Math.round(153 * shade), Math.round(224 * shade)];
+        const n = normal.map((value) => value / magnitude);
+        // Camera-relative lighting: rotate the normal like project() does, then light
+        // from the viewer's upper left so every view keeps readable face contrast.
+        const viewRight = cy * n[0] - sy * n[1], viewForward = sy * n[0] + cy * n[1];
+        const viewUp = ce * n[2] - se * viewForward, viewDepth = se * n[2] + ce * viewForward;
+        const key = Math.max(0, -0.38 * viewRight + 0.52 * viewUp + 0.76 * viewDepth);
+        const rim = Math.max(0, 0.55 * viewRight + 0.25 * viewUp + 0.4 * viewDepth);
+        const shade = Math.min(1.12, 0.6 + key * 0.42 + rim * 0.12);
+        const overhangFace = this.showOverhangs && n[2] < -0.7072 && Math.min(pa[2], pb[2], pc[2]) > this.floor + 1e-6;
+        const base = overhangFace ? [240, 128, 80] : [124, 160, 230];
+        const color = base.map((value) => Math.round(Math.min(255, value * shade)));
         const inverse = 1 / denominator;
         for (let y = minY; y <= maxY; y += 1) {
           for (let x = minX; x <= maxX; x += 1) {
@@ -3526,7 +3615,23 @@
           }
         }
       }
+      // Crease edges: depth-tested against the same buffer so hidden edges stay hidden.
+      for (const [startIndex, endIndex] of this.featureEdges || []) {
+        const a = points[startIndex], b = points[endIndex];
+        const steps = Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])));
+        for (let step = 0; step <= steps; step += 1) {
+          const t = steps ? step / steps : 0;
+          const x = Math.round(a[0] + (b[0] - a[0]) * t), y = Math.round(a[1] + (b[1] - a[1]) * t);
+          if (x < 0 || y < 0 || x >= pixelWidth || y >= pixelHeight) continue;
+          const depth = a[2] + (b[2] - a[2]) * t;
+          const index = y * pixelWidth + x;
+          if (depth < depths[index] * (1 - 2e-4)) continue;
+          const offset = index * 4;
+          pixels[offset] = 38; pixels[offset + 1] = 56; pixels[offset + 2] = 96; pixels[offset + 3] = 255;
+        }
+      }
       ctx.putImageData(raster, 0, 0);
+      if (this.showDimensions) this.drawDimensions(ctx, project);
       const origin = [31, height - 31];
       const axes = [["X", cy, -se * sy, "#bb8391"], ["Y", -sy, -se * cy, "#79a190"], ["Z", 0, ce, "#7898c8"]];
       ctx.font = "9px sans-serif";
@@ -3538,7 +3643,54 @@
     }
   }
 
+  MeshViewer.prototype.drawDimensions = function drawDimensions(ctx, project) {
+    const [x0, y0, z0] = this.mins, [x1, y1, z1] = this.maxs;
+    const pad = this.radius * 0.12;
+    const format = (value) => `${numberFormat.format(Math.round(value * 10) / 10)} mm`;
+    // In project(), a larger forward value (sin(yaw)·x + cos(yaw)·y) is closer to the
+    // viewer. Use the nearest box edges and push each line outward from the part.
+    const nearY = Math.cos(this.yaw) >= 0 ? y1 : y0, outY = nearY === y1 ? pad : -pad;
+    const nearX = Math.sin(this.yaw) >= 0 ? x1 : x0, outX = nearX === x1 ? pad : -pad, farX = nearX === x1 ? x0 : x1;
+    // Depth components of the X, Y and Z axes (see project()); an axis pointing
+    // almost straight at the viewer has no readable length on screen.
+    const ce = Math.cos(this.elevation);
+    const facing = [ce * Math.sin(this.yaw), ce * Math.cos(this.yaw), Math.sin(this.elevation)];
+    const lines = [
+      [[x0, nearY + outY, z0], [x1, nearY + outY, z0], x1 - x0, facing[0]],
+      [[nearX + outX, y0, z0], [nearX + outX, y1, z0], y1 - y0, facing[1]],
+      [[farX - outX, nearY + outY, z0], [farX - outX, nearY + outY, z1], z1 - z0, facing[2]],
+    ].filter((line) => Math.abs(line[3]) < 0.9);
+    ctx.save();
+    ctx.font = "600 11px Pretendard, 'Apple SD Gothic Neo', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const [start, end, length] of lines) {
+      const a = project(start), b = project(end);
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 24) continue;
+      ctx.strokeStyle = "#e0662f"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      for (const [point, direction] of [[a, 1], [b, -1]]) {
+        ctx.beginPath();
+        ctx.moveTo(point[0], point[1]);
+        ctx.lineTo(point[0] + direction * 6 * Math.cos(angle - 0.4), point[1] + direction * 6 * Math.sin(angle - 0.4));
+        ctx.moveTo(point[0], point[1]);
+        ctx.lineTo(point[0] + direction * 6 * Math.cos(angle + 0.4), point[1] + direction * 6 * Math.sin(angle + 0.4));
+        ctx.stroke();
+      }
+      const label = format(length), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const widthText = ctx.measureText(label).width + 10;
+      ctx.fillStyle = "#fffffff0"; ctx.strokeStyle = "#f2b79c"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(mid[0] - widthText / 2, mid[1] - 9, widthText, 18, 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#b5481b"; ctx.fillText(label, mid[0], mid[1] + 0.5);
+    }
+    ctx.restore();
+  };
+
   const viewer = new MeshViewer($("model-canvas"));
+  document.querySelectorAll("[data-preview-view]").forEach((button) => button.addEventListener("click", () => viewer.setView(button.dataset.previewView)));
+  $("preview-dimensions").addEventListener("change", (event) => viewer.setOption("showDimensions", event.target.checked));
+  $("preview-overhangs").addEventListener("change", (event) => viewer.setOption("showOverhangs", event.target.checked));
   $("zoom-in").addEventListener("click", () => viewer.changeZoom(1.15));
   $("zoom-out").addEventListener("click", () => viewer.changeZoom(1 / 1.15));
   $("reset-view").addEventListener("click", () => viewer.reset());
