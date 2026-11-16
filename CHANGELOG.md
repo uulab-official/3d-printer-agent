@@ -2,6 +2,9 @@
 
 ## 0.10.0 — 2026-11-16
 
+- Journey bar on the model screen: four steps (dimensions, make and check, print preparation, recorded result) with each step's state and one next action that jumps to the right section. It is sticky on desktop and a 2×2 grid on mobile; it resets when inputs change. A printability warning is shown but no longer blocks the next action once the user moves on. Downloading the 3MF marks preparation as “downloaded”, never as printed.
+- “가장 쉬운 출력 방법” guide in the result card: download the 3MF, open it in Bambu Studio, slice and send there, then record the result here. Studio project preparation stays optional.
+
 - New `phone_stand` template: base, front lip and a back plate leaning 50–80° from horizontal, with a slot of device thickness plus clearance. Rule and LLM planning, Korean requests (“휴대폰 거치대”, “각도 70도”, “폰 두께”, “앞턱 높이”), degree-unit contextual edits and a desk starting project. Planning grows an unspecified depth so the back stays over the base and asks for the minimum when the user's depth is too short.
 - The three new fields appear in canonical parameters only for the phone stand (`schemas.LATER_FIELDS`), so existing jobs, starting-project recipes and contextual-edit hashes keep their exact eleven-field shape.
 - Preview: isometric/front/side/top view presets, orange bounding-box dimension lines (hidden for axes facing the viewer), depth-tested crease edges, camera-relative lighting and optional overhang highlighting. The preview stage no longer overflows its card, so the zoom toolbar is no longer clipped.

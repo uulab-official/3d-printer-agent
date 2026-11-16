@@ -118,3 +118,29 @@ test('phone stand starts from discovery, edits its angle in degrees and outlines
   expect(second.dimensions_mm).toEqual(first.dimensions_mm);
   await expect(page.locator('#preview-previous-label')).toHaveText('이전 모델 · 같은 크기');
 });
+
+test('journey bar walks an owner from dimensions to a recorded result and resets on edits', async ({ page }) => {
+  const steps = page.locator('#journey-steps .journey-step');
+  await expect(steps).toHaveCount(4);
+  await expect(steps.nth(0)).toHaveAttribute('aria-current', 'step');
+  await generate(page, { width: '120', depth: '80', height: '35', wall: '2' });
+  await expect(steps.nth(2)).toHaveAttribute('aria-current', 'step');
+  await expect(page.locator('#journey-next-button')).toHaveText('출력 방법 보기 →');
+  await page.locator('#journey-next-button').click();
+  await expect(page.locator('#print-quickstart')).toBeInViewport();
+  const download = page.waitForEvent('download');
+  await page.locator('#download-links a', { hasText: '3MF 형상' }).click();
+  await download;
+  await expect(steps.nth(2)).toContainText('3MF 내려받음');
+  await expect(page.locator('#journey-next-button')).toHaveText('결과 기록하기 →');
+  await page.locator('#journey-next-button').click();
+  await expect(page.locator('#outcome-result')).toBeFocused();
+  await page.locator('#outcome-result').selectOption('success');
+  await page.locator('#save-outcome').click();
+  await expect(steps.nth(3)).toContainText('성공으로 기록');
+  await expect(page.locator('#journey-steps .is-done')).toHaveCount(4);
+  await page.locator('#parameter-height').fill('40');
+  await expect(steps.nth(0)).toHaveAttribute('aria-current', 'step');
+  await expect(page.locator('#journey-steps .is-done')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});

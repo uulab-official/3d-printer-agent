@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -230,6 +230,7 @@
     showNotice("model-feedback", message);
     showNotice("slice-feedback", "현재 제작안의 모델을 생성한 뒤 슬라이싱을 준비할 수 있습니다.");
     updateWorkflowControls();
+    if (typeof renderJourney === "function") renderJourney();
   }
 
   function parseObject(value, label) {
@@ -1064,7 +1065,62 @@
     }
   }
 
+  function journeySteps() {
+    const job = state.job;
+    const review = job && state.printabilityReview ? state.printabilityReview : job?.result?.printability;
+    const dims = job?.result?.dimensions_mm;
+    const reviewText = { ok: "점검 통과", review: "확인할 점 있음", needs_change: "수정 권장" }[review?.status];
+    const prepared = Boolean(job && (state.slicePrepared || state.studioSlicePrepared || job.latest_slice?.phase === "finished"));
+    const downloaded = Boolean(job && state.downloadedJobId === job.id);
+    const outcome = job?.user_outcome?.result;
+    const recorded = Boolean(outcome && outcome !== "not_tested");
+    return [
+      { id: "size", label: "치수 정하기", done: Boolean(job), detail: dims ? `${numberFormat.format(dims.x)} × ${numberFormat.format(dims.y)} × ${numberFormat.format(dims.z)} mm` : "시작점을 고르거나 치수 입력" },
+      { id: "make", label: "만들기·점검", done: Boolean(job), attention: Boolean(job && review && review.status !== "ok"), detail: job ? (reviewText || "CAD 검증 완료") : "CAD 생성 전" },
+      { id: "prepare", label: "출력 준비", done: prepared || downloaded, detail: prepared ? "준비 파일 있음" : downloaded ? "3MF 내려받음" : job ? "3MF를 Studio에서 열기" : "모델을 먼저 만들기" },
+      { id: "record", label: "결과 기록", done: recorded, detail: recorded ? (outcome === "success" ? "성공으로 기록" : "실패로 기록") : "출력 후 직접 기록" },
+    ];
+  }
+
+  function journeyNext(steps) {
+    const job = state.job;
+    if (!job) return { text: "치수를 확인하고 CAD 모델을 만들어 보세요.", label: "치수 확인하러 가기", target: "parameter-heading" };
+    // A warning is advice: once the user moves on (downloads or prepares), follow them.
+    if (steps[1].attention && !steps[2].done) return { text: "형상 점검에서 확인할 점이 있어요. 고칠 치수를 바로 찾을 수 있습니다.", label: "점검 결과 보기", target: "printability-review" };
+    if (!steps[2].done) return { text: "모델이 준비됐어요. 3MF를 내려받아 Bambu Studio에서 여세요.", label: "출력 방법 보기", target: "print-quickstart" };
+    if (!steps[3].done) return { text: "출력했다면 결과를 남겨 두세요. 다음에 같은 조건으로 만들 때 참고합니다.", label: "결과 기록하기", target: "outcome-card", focus: "outcome-result" };
+    return { text: "이 작업의 기록까지 마쳤어요. 고칠 점이 있으면 치수를 바꿔 다시 만드세요.", label: "치수 바꾸러 가기", target: "parameter-heading" };
+  }
+
+  function renderJourney() {
+    const steps = journeySteps();
+    const current = steps.findIndex((step, index) => !step.done || (step.attention && !steps[index + 1]?.done));
+    $("journey-steps").replaceChildren(...steps.map((step, index) => {
+      const item = node("li", `journey-step${step.done ? " is-done" : ""}${index === current ? " is-current" : ""}${step.attention ? " needs-attention" : ""}`);
+      if (index === current) item.setAttribute("aria-current", "step");
+      item.dataset.step = step.id;
+      item.append(node("span", "journey-mark", step.attention ? "!" : step.done ? "✓" : String(index + 1)), node("span", "journey-label", step.label), node("span", "journey-detail", step.detail));
+      return item;
+    }));
+    const next = journeyNext(steps);
+    $("journey-next-text").textContent = next.text;
+    const button = $("journey-next-button");
+    button.textContent = `${next.label} →`;
+    button.dataset.target = next.target;
+    button.dataset.focus = next.focus || "";
+  }
+
+  function goToJourneyTarget() {
+    const button = $("journey-next-button");
+    const target = $(button.dataset.target);
+    if (!target) return;
+    target.scrollIntoView({ block: "start", behavior: "smooth" });
+    const focus = button.dataset.focus ? $(button.dataset.focus) : target.matches("h1,h2,h3") ? target : null;
+    if (focus) { if (!focus.hasAttribute("tabindex") && focus.matches("h1,h2,h3")) focus.setAttribute("tabindex", "-1"); focus.focus({ preventScroll: true }); }
+  }
+
   function renderPrintability(review) {
+    state.printabilityReview = review && Array.isArray(review.items) ? review : null;
     const section = $("printability-review");
     if (!review || !Array.isArray(review.items)) {
       // Jobs saved before v0.10 have no stored review; offer an explicit check.
@@ -1077,6 +1133,7 @@
       $("printability-run").hidden = !state.job?.result?.mesh;
       section.hidden = !state.job?.result?.mesh;
       updatePrintabilityControls();
+      renderJourney();
       return;
     }
     state.printabilityShown = true;
@@ -1108,6 +1165,7 @@
     }));
     section.hidden = false;
     updatePrintabilityControls();
+    renderJourney();
   }
 
   function renderJob(job) {
@@ -1795,6 +1853,7 @@
   }
 
   function updateSliceControls() {
+    if (typeof renderJourney === "function" && $("journey-steps")) renderJourney();
     const reading = Object.keys(state.slicerPending).length > 0;
     const busy = state.workflowBusy;
     const canPrepare = Boolean(state.token && state.job && state.environment.available && state.environment.cli_supported !== false && !busy && !state.slicerStaged && !reading);
@@ -2188,6 +2247,7 @@
         const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/outcome`, { result: $("outcome-result").value, notes: $("outcome-notes").value });
         state.job = job;
         showNotice("outcome-feedback", "직접 보고한 출력 결과를 기록했습니다. CAD 검증 상태와 별도로 보관합니다.", "success");
+        renderJourney();
       });
     } catch (error) { showNotice("outcome-feedback", error.message, "error"); }
   });
@@ -3823,6 +3883,12 @@
     ctx.restore();
   };
 
+  $("journey-next-button").addEventListener("click", goToJourneyTarget);
+  renderJourney();
+  $("download-links").addEventListener("click", (event) => {
+    // Remember only that this page offered the file and it was clicked; not that it was printed.
+    if (event.target.closest("a") && state.job) { state.downloadedJobId = state.job.id; renderJourney(); }
+  });
   $("printability-nozzle").addEventListener("change", (event) => recheckPrintability(Number(event.target.value)));
   $("printability-run").addEventListener("click", () => recheckPrintability(Number($("printability-nozzle").value)));
   $("printability-use-printer").addEventListener("click", () => { const nozzle = printerReportedNozzle(); if (nozzle) recheckPrintability(nozzle); });
