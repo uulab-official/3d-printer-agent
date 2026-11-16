@@ -47,6 +47,7 @@ def project_catalog() -> dict:
     ]
     tray_limits = ['칸막이와 벽이 내부 공간을 차지합니다. 외부 치수로 내용물 맞춤을 판단하지 마세요.']
     cable_limits = ['위가 열린 홈입니다. 스냅 고정장치가 아니며 케이블 유지력을 보장하지 않습니다.']
+    stand_limits = ['휴대폰을 세워 두는 받침입니다. 충전 케이블 구멍이 없고, 넘어짐 방지나 하중을 보장하지 않습니다.']
     frame_limits = ['원형 포켓만 있습니다. 걸이·스탠드·자석 고정 구조는 포함하지 않습니다.',
                     '여유값은 포켓 지름 전체에 더합니다. 실제 끼워맞춤은 따로 확인하세요.']
     definitions = [
@@ -83,6 +84,12 @@ def project_catalog() -> dict:
          ['넣을 원판의 실제 지름·두께와 프레임을 놓을 공간을 측정하세요.'], frame_limits,
          dict(width=65, depth=65, height=7, wall=2, bottom=2, inset_diameter=52,
               inset_depth=2, fit_clearance=0.3)),
+        ('desk-phone-stand', '책상 휴대폰 거치대', 'organization', 'phone_stand',
+         '앞턱과 65° 등판 사이에 휴대폰을 세워 두는 거치대입니다.',
+         '케이스를 포함한 휴대폰 두께에 맞춰 홈 폭을 조정하는 시작안입니다.',
+         ['케이스를 포함한 휴대폰 두께와 거치대를 놓을 책상 공간을 측정하세요.'], stand_limits,
+         dict(width=70, depth=80, height=90, wall=4, bottom=4, lean_angle=65,
+              device_thickness=12, lip_height=12, fit_clearance=1)),
     ]
     projects = []
     for project_id, title, purpose, template, description, reason, measurements, limits, values in definitions:

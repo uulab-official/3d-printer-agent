@@ -19,3 +19,14 @@ A useful private report includes the affected commit, operating system, relevant
 Reproduce findings only in environments you own or are authorized to test. The normal test suite works without a physical printer or live LLM credentials. A test that needs native software or hardware should state that requirement and the actions it would perform before running them.
 
 General bugs, installation problems, and unsupported features can use the normal bug report template. A CAD-valid model or a successfully produced slice is not evidence of physical-print suitability; the project records those stages separately.
+
+## Printer LAN status boundary (v0.9+)
+
+The printer status view reads a Bambu printer's LAN-mode report. Its intended security properties are:
+
+- Only fixed `pushall` and `get_version` requests can be published; no print, motion, temperature or file command is constructible.
+- Targets are private, link-local or loopback IP literals; hostnames and public addresses are rejected before any network use. One read runs at a time, at most once per printer every 5 seconds.
+- The device certificate issuer is **not** verified, because printer certificates are not in common trust stores. The fingerprint is shown and pinned per host/serial for the page session; a different certificate stops the read before the access code is sent. A first connection on an untrusted network can therefore still reach an impersonating device.
+- Access codes are used for one read and are never stored, logged or returned, including in request-validation errors.
+
+Reports that break one of these properties are in scope.

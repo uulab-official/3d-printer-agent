@@ -72,5 +72,30 @@ class PrinterAPITests(unittest.TestCase):
         discover.assert_called_once_with(2)
 
 
+class PrintabilityAPITests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.client = TestClient(create_app(Path(self.temp.name), test_mode=True))
+        self.headers = {'X-Session-Token': self.client.get('/api/bootstrap').json()['session_token']}
+
+    def tearDown(self):
+        self.client.close()
+        self.temp.cleanup()
+
+    def test_saved_job_can_be_rechecked_for_another_nozzle_without_changing_it(self):
+        job = self.client.post('/api/models', json={'template': 'tray', 'width': 60, 'depth': 40, 'height': 20, 'wall': 1.2},
+                               headers=self.headers).json()
+        response = self.client.post(f"/api/jobs/{job['id']}/printability", json={'nozzle_mm': 0.8}, headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['basis']['nozzle_mm'], 0.8)
+        self.assertEqual(response.json()['status'], 'review')
+        stored = self.client.get(f"/api/jobs/{job['id']}").json()
+        self.assertEqual(stored['result']['printability']['basis']['nozzle_mm'], 0.4)
+        for body in ({'nozzle_mm': 0.5}, {'nozzle_mm': '0.4'}, {}):
+            self.assertEqual(self.client.post(f"/api/jobs/{job['id']}/printability", json=body, headers=self.headers).status_code, 422)
+        self.assertEqual(self.client.post('/api/jobs/' + 'f' * 32 + '/printability', json={'nozzle_mm': 0.4}, headers=self.headers).status_code, 404)
+        self.assertEqual(self.client.post(f"/api/jobs/{job['id']}/printability", json={'nozzle_mm': 0.4}).status_code, 403)
+
+
 if __name__ == '__main__':
     unittest.main()

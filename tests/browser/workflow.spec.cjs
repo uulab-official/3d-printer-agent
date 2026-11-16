@@ -146,7 +146,7 @@ test.beforeEach(async ({ page }) => {
   page.__errors = errors;
   await page.goto('/');
   await expect(page.locator('#generate-button')).toBeEnabled();
-  await expect(page.locator('#template-cards .template-card')).toHaveCount(3);
+  await expect(page.locator('#template-cards .template-card')).toHaveCount(4);
   await expect(page.locator('#plan-mode option[value="llm"]')).toHaveJSProperty('disabled', true);
   await expect(page.locator('#environment-badge')).toContainText('사용 불가');
   await noHorizontalOverflow(page);
@@ -743,7 +743,7 @@ async function findProjects(page) {
 }
 
 test('local project discovery reaches customized real CAD and preserves its recipe through downloads and history', async ({ page }, testInfo) => {
-  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(6);
+  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(7);
   await page.locator('#discovery-purpose [data-purpose="organization"]').click();
   for (const [axis, value] of Object.entries({ width: '150', depth: '90', height: '30' })) {
     await page.locator(`#space-${axis}`).fill(value);
@@ -894,7 +894,7 @@ test('discovery preserves unfinished drafts and recovers from empty, stale and f
   const fetched = new Promise(resolve => { signalFetched = resolve; });
   const delayedRoute = async route => {
     const actual = await route.fetch();
-    expect((await actual.json()).matches).toHaveLength(6);
+    expect((await actual.json()).matches).toHaveLength(7);
     signalFetched();
     await held;
     await route.fulfill({ response: actual });

@@ -81,9 +81,13 @@
           <div><p class="eyebrow">FROM IDEA TO SOMETHING REAL</p><h1 id="models-heading">무엇을 만들어 볼까요?</h1><p class="page-description">쓸모 있는 시작점을 고르고, 내 치수에 맞는 모델로 만들어 보세요.</p></div>
           <span class="page-tag">치수 단위 · mm</span>
         </div>
+        <nav id="journey" class="journey" aria-label="만들기 진행 단계">
+          <ol id="journey-steps" class="journey-steps"></ol>
+          <div class="journey-next"><p id="journey-next-text" role="status"></p><button id="journey-next-button" class="button button-primary" type="button"></button></div>
+        </nav>
 
         <section id="discovery" class="discovery-section" aria-labelledby="discovery-heading">
-          <div class="discovery-heading"><div><p class="eyebrow">SIX SMALL STARTS</p><h2 id="discovery-heading">내 일상에 쓸모 있는 첫 출력</h2><p>이 저장소의 원본 설계 6가지에서 시작해 보세요. 먼저 용도를 고르고, 놓을 곳을 실측해 보세요.</p></div><span class="badge badge-neutral">로컬 원본 시작점</span></div>
+          <div class="discovery-heading"><div><p class="eyebrow">SEVEN SMALL STARTS</p><h2 id="discovery-heading">내 일상에 쓸모 있는 첫 출력</h2><p>이 저장소의 원본 설계 7가지에서 시작해 보세요. 먼저 용도를 고르고, 놓을 곳을 실측해 보세요.</p></div><span class="badge badge-neutral">로컬 원본 시작점</span></div>
           <form id="discovery-form" novalidate>
             <fieldset class="discovery-purpose-field"><legend>어디에 쓰고 싶나요?</legend><div id="discovery-purpose" class="purpose-buttons" aria-label="시작점 용도"></div></fieldset>
             <details class="discovery-space" open><summary>놓을 공간으로 좁히기 <span>선택 · mm</span></summary>
@@ -163,6 +167,17 @@
               <div id="preview-stage" class="preview-stage">
                 <canvas id="model-canvas" tabindex="0" aria-label="생성한 3D 모델. 방향키로 회전하고 더하기와 빼기 키로 확대하거나 축소합니다." hidden></canvas>
                 <div id="preview-empty" class="preview-empty"><span class="empty-mark" aria-hidden="true">+</span><h3>첫 모델을 기다리고 있어요</h3><p>치수를 확인하고 모델을 생성하면<br>실제 CAD 형상이 여기에 나타납니다.</p></div>
+                <div id="preview-views" class="preview-views" role="group" aria-label="미리보기 시점">
+                  <button class="view-chip" type="button" data-preview-view="iso" aria-pressed="true">입체</button>
+                  <button class="view-chip" type="button" data-preview-view="front" aria-pressed="false">정면</button>
+                  <button class="view-chip" type="button" data-preview-view="side" aria-pressed="false">측면</button>
+                  <button class="view-chip" type="button" data-preview-view="top" aria-pressed="false">윗면</button>
+                </div>
+                <div class="preview-toggles">
+                  <label class="toggle-chip"><input id="preview-dimensions" type="checkbox" checked> 치수</label>
+                  <label class="toggle-chip"><input id="preview-overhangs" type="checkbox" checked> 돌출부</label>
+                  <label id="preview-previous-toggle" class="toggle-chip toggle-previous" hidden><input id="preview-previous" type="checkbox" checked> <span id="preview-previous-label">이전 모델</span></label>
+                </div>
                 <div id="preview-tools" class="preview-tools" hidden>
                   <button id="zoom-out" class="icon-button" type="button" aria-label="모델 축소">−</button>
                   <button id="zoom-in" class="icon-button" type="button" aria-label="모델 확대">+</button>
@@ -179,8 +194,29 @@
               <section id="generated-model-edit" class="source-details" aria-label="생성한 모델의 최신 치수 수정 기록" hidden></section>
               <div id="model-metrics" class="metric-grid"></div>
               <div id="model-checks" class="check-list"></div>
+              <section id="printability-review" class="printability" aria-labelledby="printability-heading" hidden>
+                <div class="printability-heading"><h3 id="printability-heading">출력 전 형상 점검</h3><span id="printability-status" class="badge badge-neutral">확인 전</span></div>
+                <div class="printability-controls">
+                  <label for="printability-nozzle">점검할 노즐<select id="printability-nozzle"><option value="0.2">0.2 mm</option><option value="0.4" selected>0.4 mm</option><option value="0.6">0.6 mm</option><option value="0.8">0.8 mm</option></select></label>
+                  <button id="printability-use-printer" class="text-button" type="button" hidden></button>
+                  <button id="printability-run" class="button button-secondary" type="button" hidden>이 작업 점검하기</button>
+                </div>
+                <p id="printability-basis" class="field-help"></p>
+                <div id="printability-feedback" class="notice" role="status" hidden></div>
+                <ul id="printability-items" class="printability-items"></ul>
+              </section>
               <div id="model-warnings" class="warning-list"></div>
               <div id="download-links" class="download-grid" aria-label="생성한 모델 파일 다운로드"></div>
+              <section id="print-quickstart" class="print-quickstart" aria-labelledby="print-quickstart-heading">
+                <h3 id="print-quickstart-heading">가장 쉬운 출력 방법</h3>
+                <ol>
+                  <li>위의 <strong>3MF 형상</strong>을 내려받습니다.</li>
+                  <li>Bambu Studio 창에 파일을 끌어다 놓거나 <strong>파일 → 가져오기</strong>로 엽니다.</li>
+                  <li>사용할 프린터·필라멘트·플레이트를 고르고 슬라이스한 뒤 프린터로 보냅니다. 이 앱은 출력 명령을 보내지 않습니다.</li>
+                  <li>출력이 끝나면 아래 <a href="#outcome-card">결과 기록</a>에 성공·실패를 남겨 주세요.</li>
+                </ol>
+                <p class="field-help">Studio 프로젝트의 설정을 모델에 담거나 이 PC에서 직접 슬라이싱하려면 아래 ‘출력 준비’를 쓰세요. 선택 사항입니다.</p>
+              </section>
               <p class="field-help">3MF에는 모델 형상이 들어 있습니다. 프린터용 출력 경로는 슬라이싱 단계에서 별도로 만듭니다.</p>
             </section>
           </div>
@@ -267,6 +303,7 @@
 
         <section id="outcome-card" class="card" aria-labelledby="outcome-heading" hidden>
           <div class="card-heading"><div><span class="step-label">실물 출력 후</span><h2 id="outcome-heading">직접 확인한 결과를 남겨 주세요</h2></div><span class="badge badge-neutral">사용자 기록</span></div>
+          <p id="outcome-printer-hint" class="notice notice-info" role="status" hidden></p>
           <form id="outcome-form" class="outcome-form">
             <label for="outcome-result">출력 결과<select id="outcome-result"><option value="not_tested">아직 출력하지 않음</option><option value="success">출력 성공</option><option value="failure">출력 실패</option></select></label>
             <label for="outcome-notes">메모<textarea id="outcome-notes" rows="2" maxlength="2000" placeholder="맞춤 정도나 다음에 바꾸고 싶은 점을 적어 주세요."></textarea></label>
@@ -278,21 +315,19 @@
 
       <section id="view-profiles" class="view" aria-labelledby="profiles-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">KNOW YOUR MATERIAL</p><h1 id="profiles-heading">재료 설정을 확인하세요</h1><p class="page-description">가지고 있는 프로필이 내 장비와 재료에 맞는지, 어떤 근거가 더 필요한지 살펴봅니다.</p></div><span class="page-tag">수치 자동 추천 없음</span></div>
-        <section class="card profile-workspace" aria-labelledby="workspace-heading">
-          <div class="card-heading"><div><span class="step-label">이 PC의 작업 공간</span><h2 id="workspace-heading">다음에도 이어서 편집하세요</h2></div><span id="workspace-status" class="badge badge-neutral" role="status">새 작업</span></div>
-          <p class="muted compact">가져온 원본, 편집 중인 JSON, 선택한 파일과 사용 조건을 함께 저장합니다. 다시 열면 현재 조건으로 검토해 주세요.</p>
-          <div class="workspace-grid">
-            <div><label for="workspace-title">작업 이름<input id="workspace-title" type="text" maxlength="120" placeholder="예: 내 프린터 · 사용 중인 PLA"></label><div class="button-row"><button id="workspace-save" class="button button-primary" type="button" disabled>이 PC에 저장</button><button id="workspace-save-copy" class="button button-secondary" type="button" disabled>다른 이름으로 저장</button></div></div>
-            <div><label for="workspace-list">저장된 작업<select id="workspace-list"><option value="">저장된 작업을 선택하세요</option></select></label><div class="button-row"><button id="workspace-open" class="button button-secondary" type="button" disabled>작업 열기</button><button id="workspace-refresh" class="text-button" type="button">목록 새로고침</button><button id="workspace-new" class="text-button" type="button">새 작업</button><button id="workspace-delete" class="text-button" type="button" disabled>저장본 삭제</button></div></div>
-          </div>
-          <p id="workspace-detail" class="field-help" aria-live="polite">이름을 정해 저장하면 새로고침 후에도 다시 열 수 있습니다.</p>
-          <div id="workspace-feedback" class="notice" role="status" hidden></div>
-        </section>
         <form id="profile-form">
           <div class="two-column-layout">
             <section class="card" aria-labelledby="profile-input-heading">
               <div class="card-heading profile-input-heading"><div><span class="step-label">01 · 설정 파일</span><h2 id="profile-input-heading">필라멘트 프로필</h2></div><div class="profile-import-buttons"><label class="file-button">Studio 내보내기 가져오기<input id="profile-archive" type="file" accept=".bbsflmt,.bbscfg,.zip"></label><label class="file-button">JSON 파일 추가<input id="profile-file" type="file" accept=".json,application/json" multiple></label></div></div>
               <p class="field-help profile-import-help">Studio 내보내기(.bbsflmt·.bbscfg·.zip, 최대 4 MiB)에서 필라멘트 JSON을 읽거나 개별 JSON을 추가하세요. 빠진 부모 파일은 나중에 추가할 수 있습니다. 최대 64개이며, 원본 모음과 편집 문자열 모음은 파일 정보를 포함해 각각 2 MiB까지 지원합니다.</p>
+              <details class="profile-howto"><summary>프로필 파일이 없나요? Bambu Studio에서 꺼내는 방법</summary>
+                <ol>
+                  <li>Bambu Studio에서 쓰는 필라멘트 프리셋을 선택해 둡니다. 직접 바꾼 값이 있으면 먼저 저장합니다.</li>
+                  <li><strong>파일(File) → 내보내기(Export) → 프리셋 묶음 내보내기(Export Preset Bundle)</strong>에서 필라멘트 묶음(.bbsflmt) 또는 프린터 묶음(.bbscfg)을 저장합니다.</li>
+                  <li>위의 <strong>Studio 내보내기 가져오기</strong>로 그 파일을 선택합니다.</li>
+                </ol>
+                <p class="field-help">Studio 버전·언어에 따라 메뉴 이름이 다를 수 있습니다. 시스템 기본 프리셋만 쓰고 있다면 내보낼 사용자 프리셋이 없을 수 있습니다.</p>
+              </details>
               <div id="profile-library" class="profile-library" hidden>
                 <div class="label-row"><label for="profile-target">검토할 프로필</label><button id="profile-clear" class="text-button" type="button">파일 모음 비우기</button></div>
                 <select id="profile-target" aria-describedby="profile-library-summary"></select>
@@ -330,6 +365,11 @@
             <section class="card" aria-labelledby="setup-heading">
               <div class="card-heading"><div><span class="step-label">02 · 사용 조건</span><h2 id="setup-heading">내 프린터와 재료</h2></div></div>
               <p class="muted compact">준비 가능 판정에는 아래 8가지 정보가 모두 필요합니다. 모르는 값은 비워 두면 확인할 항목으로 표시합니다.</p>
+              <div id="setup-printer-fill" class="setup-printer-fill" hidden>
+                <p id="setup-printer-fill-text" class="field-help"></p>
+                <div id="setup-printer-fill-actions" class="button-row"></div>
+                <p id="setup-printer-fill-status" class="field-help setup-fill-status" role="status"></p>
+              </div>
               <div class="setup-grid">
                 <label for="setup-printer-model">프린터 모델<input id="setup-printer-model" name="printer_model" type="text" placeholder="정확한 모델명"></label>
                 <label for="setup-printer-preset">프린터 프리셋<input id="setup-printer-preset" name="printer_preset" type="text" placeholder="슬라이서의 전체 프리셋 이름"></label>
@@ -346,6 +386,16 @@
           </div>
         </form>
         <div id="profile-feedback" class="notice" role="status" hidden></div>
+        <section class="card profile-workspace" aria-labelledby="workspace-heading">
+          <div class="card-heading"><div><span class="step-label">이 PC의 작업 공간</span><h2 id="workspace-heading">다음에도 이어서 편집하세요</h2></div><span id="workspace-status" class="badge badge-neutral" role="status">새 작업</span></div>
+          <p class="muted compact">가져온 원본, 편집 중인 JSON, 선택한 파일과 사용 조건을 함께 저장합니다. 다시 열면 현재 조건으로 검토해 주세요.</p>
+          <div class="workspace-grid">
+            <div><label for="workspace-title">작업 이름<input id="workspace-title" type="text" maxlength="120" placeholder="예: 내 프린터 · 사용 중인 PLA"></label><div class="button-row"><button id="workspace-save" class="button button-primary" type="button" disabled>이 PC에 저장</button><button id="workspace-save-copy" class="button button-secondary" type="button" disabled>다른 이름으로 저장</button></div></div>
+            <div><label for="workspace-list">저장된 작업<select id="workspace-list"><option value="">저장된 작업을 선택하세요</option></select></label><div class="button-row"><button id="workspace-open" class="button button-secondary" type="button" disabled>작업 열기</button><button id="workspace-refresh" class="text-button" type="button">목록 새로고침</button><button id="workspace-new" class="text-button" type="button">새 작업</button><button id="workspace-delete" class="text-button" type="button" disabled>저장본 삭제</button></div></div>
+          </div>
+          <p id="workspace-detail" class="field-help" aria-live="polite">이름을 정해 저장하면 새로고침 후에도 다시 열 수 있습니다.</p>
+          <div id="workspace-feedback" class="notice" role="status" hidden></div>
+        </section>
         <section id="profile-resolution" class="card" aria-labelledby="profile-resolution-heading" hidden>
           <div class="card-heading"><div><span class="step-label">가져온 파일의 상속</span><h2 id="profile-resolution-heading">설정이 어디에서 왔나요?</h2></div><span id="profile-resolution-status" class="badge"></span></div>
           <p class="muted compact">제공한 파일에 적힌 값과 단일 부모 연결을 확인합니다. Studio 기본값을 채운 전체 설정이나 실물 출력 검증을 뜻하지 않습니다.</p>
@@ -363,12 +413,13 @@
 
       <section id="view-offers" class="view" aria-labelledby="offers-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">COMPARE WHAT MATTERS</p><h1 id="offers-heading">같은 기준으로 비교하세요</h1><p class="page-description">찾아둔 상품의 가격과 중량, 배송비를 넣어 kg당 비용을 비교합니다.</p></div><span class="badge badge-neutral">실시간 가격 미연결</span></div>
+        <p id="offers-model-hint" class="notice notice-info" hidden></p>
         <section class="card" aria-labelledby="offer-input-heading">
           <div class="card-heading"><div><span class="step-label">사용자가 확인한 가격</span><h2 id="offer-input-heading">비교할 필라멘트</h2></div><label for="offer-currency" class="currency-control">통화<select id="offer-currency" form="offers-form"><option value="KRW">KRW · 원</option><option value="USD">USD · 달러</option><option value="EUR">EUR · 유로</option><option value="JPY">JPY · 엔</option><option value="CNY">CNY · 위안</option></select></label></div>
           <form id="offers-form"><div id="offer-rows" class="offer-rows"></div><div class="offer-actions"><p class="field-help">배송비를 모르면 비워 두세요. 무료 배송이 확인된 경우에만 0을 입력합니다.</p><button id="compare-offers" class="button button-primary" type="submit" disabled>배송비 포함 단가 비교 <span aria-hidden="true">→</span></button></div></form>
         </section>
         <div id="offers-feedback" class="notice" role="status" hidden></div>
-        <section id="offers-result" class="card" aria-labelledby="offers-result-heading" hidden><div class="card-heading"><div><span class="step-label">입력한 조건 기준</span><h2 id="offers-result-heading">비교 결과</h2></div><span class="badge badge-neutral">직접 입력한 가격</span></div><div id="offer-comparison"></div><p id="offer-notice" class="field-help"></p></section>
+        <section id="offers-result" class="card" aria-labelledby="offers-result-heading" hidden><div class="card-heading"><div><span class="step-label">입력한 조건 기준</span><h2 id="offers-result-heading">비교 결과</h2></div><span class="badge badge-neutral">직접 입력한 가격</span></div><div id="offer-comparison"></div><p id="offer-model-note" class="notice notice-info" hidden></p><p id="offer-notice" class="field-help"></p></section>
         <div class="plain-note"><strong>가격 다음에는 재료와 사용 조건을 확인하세요.</strong><p>동일 제품·색상·중량인지 살펴보세요. 세금, 쿠폰, 회원 조건, 재고와 장비 호환성은 이 계산에 포함하지 않습니다.</p></div>
       </section>
 
@@ -397,6 +448,12 @@
       <section id="view-history" class="view" aria-labelledby="history-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">YOUR MAKING JOURNAL</p><h1 id="history-heading">만든 과정을 남겨 두세요</h1><p class="page-description">모델 파일과 준비 상태, 직접 기록한 실물 출력 결과를 다시 확인할 수 있습니다.</p></div><button id="refresh-history" class="button button-secondary" type="button">새로고침 <span aria-hidden="true">↻</span></button></div>
         <div id="history-feedback" class="notice" role="status" hidden></div>
+        <div id="history-filters" class="history-filters" role="group" aria-label="출력 결과로 거르기">
+          <button class="filter-chip" type="button" data-history-filter="all" aria-pressed="true">전체</button>
+          <button class="filter-chip" type="button" data-history-filter="success" aria-pressed="false">출력 성공</button>
+          <button class="filter-chip" type="button" data-history-filter="failure" aria-pressed="false">출력 실패</button>
+          <button class="filter-chip" type="button" data-history-filter="unrecorded" aria-pressed="false">결과 미기록</button>
+        </div>
         <p id="history-summary" class="history-summary" role="status">작업 기록을 아직 불러오지 않았습니다.</p>
         <div id="history-list" class="history-list"></div>
         <div class="history-pagination"><button id="history-more" class="button button-secondary" type="button" hidden>이전 기록 더 보기</button></div>

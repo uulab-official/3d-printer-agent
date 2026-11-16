@@ -253,7 +253,8 @@ class ModelEditRecordTests(unittest.TestCase):
         edited_id, folder = self.reserve_edit()
         edited = self.store.finish(edited_id, self.result(folder, self.parameters))
         expected_record = edited['model_edit']
-        summary_keys = {'id', 'created_at', 'title', 'template', 'status', 'user_outcome'}
+        # 'summary' carries display-only distinguishing facts (v0.10).
+        summary_keys = {'id', 'created_at', 'title', 'template', 'status', 'user_outcome', 'summary'}
         summaries = {}
         page = self.store.list_jobs_page(limit=1)
         while True:

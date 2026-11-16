@@ -1,15 +1,20 @@
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 TEMPLATE_SPECIFIC_FIELDS = {
     'tray': {'dividers'},
     'cable_comb': {'slots','cable_diameter','fit_clearance'},
     'magnet_frame': {'inset_diameter','inset_depth','fit_clearance'},
+    'phone_stand': {'lean_angle','device_thickness','lip_height','fit_clearance'},
 }
+# Fields added after v0.10. They appear in canonical parameters only for the
+# templates that use them, so earlier jobs, recipes and review hashes keep the
+# exact same eleven-field shape.
+LATER_FIELDS = {'lean_angle','device_thickness','lip_height'}
 
 class GeometryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    template: Literal["tray", "cable_comb", "magnet_frame"] = "tray"
+    template: Literal["tray", "cable_comb", "magnet_frame", "phone_stand"] = "tray"
     width: float = Field(default=120, ge=10, le=500)
     depth: float = Field(default=80, ge=10, le=500)
     height: float = Field(default=35, ge=2, le=300)
@@ -21,6 +26,9 @@ class GeometryRequest(BaseModel):
     inset_diameter: float = Field(default=52, ge=5, le=450)
     inset_depth: float = Field(default=2, ge=0.5, le=30)
     fit_clearance: float = Field(default=0.3, ge=0, le=3)
+    lean_angle: float = Field(default=65, ge=50, le=80)
+    device_thickness: float = Field(default=12, ge=4, le=30)
+    lip_height: float = Field(default=12, ge=3, le=60)
 
     @model_validator(mode='after')
     def applicable_fields(self):
@@ -31,3 +39,10 @@ class GeometryRequest(BaseModel):
             if getattr(self,name) != type(self).model_fields[name].default:
                 raise ValueError(f'{name}은 {self.template} 템플릿에 적용되지 않습니다.')
         return self
+
+    @model_serializer(mode='wrap')
+    def canonical(self, handler):
+        data = handler(self)
+        for name in LATER_FIELDS - TEMPLATE_SPECIFIC_FIELDS[self.template]:
+            data.pop(name, None)
+        return data

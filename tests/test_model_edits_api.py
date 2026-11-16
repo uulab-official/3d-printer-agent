@@ -235,7 +235,8 @@ class ModelEditsAPITests(unittest.TestCase):
         self.assertEqual(set(summaries), {parent['id'], edited['id']})
         self.assertEqual(summaries[edited['id']].get('model_edit'), record)
         self.assertEqual(summaries[edited['id']]['model_edit']['selection']['request_text'], '높이를 5mm 늘려줘')
-        summary_keys = {'id', 'created_at', 'title', 'template', 'status', 'user_outcome'}
+        # 'summary' carries display-only distinguishing facts (v0.10).
+        summary_keys = {'id', 'created_at', 'title', 'template', 'status', 'user_outcome', 'summary'}
         self.assertEqual(set(summaries[parent['id']]), summary_keys)
         self.assertEqual(set(summaries[edited['id']]), summary_keys | {'model_edit'})
         self.assertNotIn(str(self.root), json.dumps(summaries, ensure_ascii=False))

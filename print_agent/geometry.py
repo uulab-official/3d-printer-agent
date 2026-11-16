@@ -9,6 +9,7 @@ import cadquery as cq
 
 from .schemas import GeometryRequest
 from .geometry_rules import _validate_geometry
+from .printability import assess_printability
 
 
 def template_catalog() -> list[dict]:
@@ -29,6 +30,12 @@ def template_catalog() -> list[dict]:
                       "inset_diameter": 52, "inset_depth": 2, "fit_clearance": 0.3},
          "editable_fields": ["width", "depth", "height", "wall", "bottom", "inset_diameter",
                              "inset_depth", "fit_clearance"]},
+        {"id": "phone_stand", "title": "휴대폰 거치대",
+         "description": "앞턱과 기울어진 등판 사이에 휴대폰을 세워 두는 거치대입니다.",
+         "defaults": {"width": 70, "depth": 80, "height": 90, "wall": 4, "bottom": 4,
+                      "lean_angle": 65, "device_thickness": 12, "lip_height": 12, "fit_clearance": 1},
+         "editable_fields": ["width", "depth", "height", "wall", "bottom", "lean_angle",
+                             "device_thickness", "lip_height", "fit_clearance"]},
     ]
 
 
@@ -57,6 +64,17 @@ def _build_solid(p: dict) -> cq.Shape:
             opening = cq.Workplane("XY").box(diameter, d + 2, h - center_z + 1, centered=False)
             opening = opening.translate((center_x - radius, -1, center_z))
             body = body.cut(round_floor).cut(opening)
+    elif p["template"] == "phone_stand":
+        import math
+        body = cq.Workplane("XY").box(w, d, bottom, centered=False)
+        lip = cq.Workplane("XY").box(w, wall, bottom + p["lip_height"], centered=False)
+        slot_front = wall + p["device_thickness"] + p["fit_clearance"]
+        lean = 90 - p["lean_angle"]
+        length = (h - bottom) / math.cos(math.radians(lean)) + 2 * wall
+        back = (cq.Workplane("XY").box(w, wall, length, centered=False)
+                .rotate((0, 0, 0), (1, 0, 0), -lean).translate((0, slot_front, bottom)))
+        envelope = cq.Workplane("XY").box(w, d, h, centered=False)
+        body = body.union(lip).union(back).intersect(envelope)
     elif p["template"] == "magnet_frame":
         radius = (p["inset_diameter"] + p["fit_clearance"]) / 2
         pocket = cq.Solid.makeCylinder(radius, p["inset_depth"] + 1,
@@ -109,6 +127,14 @@ def _reproduction_source(parameters: dict) -> str:
     return preamble + functions + runner
 
 
+def _safe_printability(shape, parameters, mesh):
+    """The review is advice; an unexpected failure must not block a valid CAD result."""
+    try:
+        return assess_printability(shape, parameters, mesh)
+    except Exception:  # noqa: BLE001 - reported as an absent review
+        return None
+
+
 def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
     spec = GeometryRequest.model_validate(spec.model_dump())
     parameters = spec.model_dump(mode="json")
@@ -147,8 +173,11 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
     warnings = ["CAD 형상 검증만 완료했습니다. 출력 성공·강도·치수 맞춤은 실제 프린터에서 확인해야 합니다."]
     if spec.template == "cable_comb":
         warnings.append("위가 열린 케이블 받침입니다. 스냅 고정이나 케이블 유지력을 보장하지 않습니다.")
+    elif spec.template == "phone_stand":
+        warnings.append("기기 두께와 여유로 홈 폭을 정합니다. 실제 기기·케이스 두께와 넘어짐·충전 케이블 위치는 직접 확인하세요.")
     elif spec.template == "magnet_frame":
         warnings.append("원형 포켓의 여유값은 지름에 더합니다. 자석 고정력이나 구조 강도를 보장하지 않습니다.")
     return {"template": spec.template, "parameters": parameters, "dimensions_mm": dimensions,
             "volume_mm3": volume, "geometry_status": "validated", "print_status": "not_tested",
-            "checks": checks, "files": files, "mesh": mesh, "warnings": warnings}
+            "checks": checks, "files": files, "mesh": mesh, "warnings": warnings,
+            "printability": _safe_printability(shape, parameters, mesh)}

@@ -31,6 +31,7 @@ from .offers import compare_offers
 from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
 from . import printer_lan
+from .printability import review_mesh
 from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
 from .runtime import DataDirectoryLease, require_compatible_data, resolve_data_directory
@@ -262,6 +263,10 @@ class PrinterStatusPayload(StrictPayload):
     pinned_certificate_sha256: str | None = Field(default=None, max_length=64)
 
 
+class PrintabilityPayload(StrictPayload):
+    nozzle_mm: Literal[0.2, 0.4, 0.6, 0.8]
+
+
 class OutcomePayload(StrictPayload):
     result: Literal['success','failure','not_tested']
     notes: str = Field(default='', max_length=4000)
@@ -474,6 +479,15 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     def bundle(job_id: str):
         content = store.bundle(job_id)
         return Response(content,media_type='application/zip',headers={'Content-Disposition':f'attachment; filename="print-job-{job_id[:8]}.zip"'})
+
+    @app.post('/api/jobs/{job_id}/printability')
+    def job_printability(job_id: str, payload: PrintabilityPayload):
+        # Recompute from the saved result only; the stored job is not changed.
+        job = store.get(job_id)
+        result = job.get('result') or {}
+        if job.get('status') != 'geometry_validated' or not result.get('mesh'):
+            raise ValueError('형상 검증을 마친 작업만 다시 점검할 수 있습니다.')
+        return review_mesh(result['parameters'], result['mesh'], result['volume_mm3'], payload.nozzle_mm)
 
     @app.post('/api/jobs/{job_id}/outcome')
     def outcome(job_id: str,payload: OutcomePayload):

@@ -13,6 +13,15 @@ def _validate_geometry(p: dict) -> None:
             raise ValueError("케이블 홈 사이와 양끝에 지정한 벽 두께를 확보할 수 없습니다.")
         if h < bottom + diameter / 2:
             raise ValueError("둥근 케이블 홈과 지정한 바닥 두께에 비해 높이가 부족합니다.")
+    elif p["template"] == "phone_stand":
+        import math
+        slot_front = wall + p["device_thickness"] + p["fit_clearance"]
+        lean = math.radians(90 - p["lean_angle"])
+        reach = slot_front + (h - bottom) * math.tan(lean) + wall / math.cos(lean)
+        if bottom + p["lip_height"] >= h:
+            raise ValueError("앞턱 높이와 바닥 두께가 전체 높이보다 낮아야 합니다.")
+        if reach > d:
+            raise ValueError(f"기울어진 등판이 바닥 밖으로 나갑니다. 세로(깊이)를 {math.ceil(reach)} mm 이상으로 늘리거나 높이·기울기를 줄이세요.")
     else:
         diameter = p["inset_diameter"] + p["fit_clearance"]
         if diameter + 2 * wall > min(w, d):

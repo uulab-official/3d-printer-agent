@@ -6,8 +6,8 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview');
-const editNames = ['modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
+names.push('renderPrintVolumeReview','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
+const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
 names.push(...libraryNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
@@ -30,13 +30,14 @@ function fixture() {
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
     $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa,
-    state:{offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
+    state:{offersResult:null,historyFilter:'all',downloadedJobId:null,printabilityReview:null,printabilityRequest:0,printabilityPending:false,printabilityNozzle:0.4,printabilityShown:false,printerStatus:null,offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
-    viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},workspaceDirty(){return false;},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
+    viewer:{setMesh(){},clear(){this.mesh=null;},forgetPrevious(){this.forgotten=true;},mesh:'old'},workspaceDirty(){return false;},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
   };
   $('parameter-width').value='120';$('outcome-result').value='not_tested';$('offer-currency').value='KRW';
   vm.createContext(context);
+  for (const name of ['printabilityStatus','printabilityMarks','templateFieldLabels']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if (!match) throw new Error('Missing controller function: '+name);
@@ -1633,6 +1634,129 @@ const printVolumeReport = (overrides={}) => ({
     const area=c.$('printer-devices');assert.match(area.textContent,/P1S \(C12\)/);assert.match(area.textContent,/주소가 다릅니다/);
     findElement(area,element=>element.listeners?.click).listeners.click();
     assert.equal(c.$('printer-host').value,'10.0.0.9');assert.equal(c.$('printer-serial').value,'01P00ABCDEF0001');
+  });
+  await check('Printability review renders statuses, advice and a fix action only for actionable fields',()=>{
+    const c=fixture();let focused=null;c.$('parameter-wall').focus=()=>{focused='wall';};c.$('parameter-wall').scrollIntoView=()=>{};
+    c.renderPrintability({status:'review',basis:{note:'기준 0.4 mm 노즐'},items:[
+      {id:'min_thickness',label:'가장 얇은 부분',status:'warn',value:'0.80 mm (바깥 벽)',detail:'1.9줄',advice:'늘리세요',field:'wall'},
+      {id:'stability',label:'세운 비율',status:'pass',value:'0.4',detail:'안정',advice:null,field:null},
+      {id:'bed_contact',label:'바닥 접촉면',status:'fail',value:'0 cm²',detail:'<img src=x onerror=alert(1)>',advice:'눕히세요',field:null}]});
+    const area=c.$('printability-items');assert.equal(c.$('printability-review').hidden,false);
+    assert.equal(c.$('printability-status').textContent,'확인할 점이 있어요');assert.match(area.textContent,/<img src=x/);
+    const fixes=[];findElement(area,element=>{if(element.listeners?.click)fixes.push(element);return false;});
+    assert.equal(fixes.length,1);fixes[0].listeners.click();assert.equal(focused,'wall');
+    c.renderPrintability(undefined);assert.equal(c.$('printability-review').hidden,true);
+  });
+  await check('Nozzle recheck renders the new basis, ignores late results for another job and reverts on failure',async()=>{
+    const c=fixture();c.state.job={id:'job-a',result:{mesh:{vertices:[[0,0,0]],faces:[[0,0,0]]}}};c.$('printability-nozzle').value='0.4';
+    const review=(n,status)=>({status,basis:{nozzle_mm:n,note:`${n} mm`},items:[{id:'min_thickness',label:'가장 얇은 부분',status:status==='ok'?'pass':'warn',value:'1.2 mm',detail:'d',advice:null,field:null}]});
+    c.renderPrintability(review(0.4,'ok'));
+    let bodies=[];c.api=async(path,body)=>{bodies.push([path,plain(body)]);return review(0.8,'review');};
+    await c.recheckPrintability(0.8);
+    assert.deepEqual(bodies[0],['/api/jobs/job-a/printability',{nozzle_mm:0.8}]);
+    assert.equal(c.$('printability-nozzle').value,'0.8');assert.equal(c.$('printability-status').textContent,'확인할 점이 있어요');
+    let finish;c.api=()=>new Promise(done=>{finish=done;});
+    const pending=c.recheckPrintability(0.2);c.state.job={id:'job-b',result:{}};finish(review(0.2,'ok'));await pending;
+    assert.equal(c.$('printability-basis').textContent,'0.8 mm');
+    c.state.job={id:'job-a',result:{mesh:{}}};c.api=async()=>{throw new Error('서버 오류');};
+    await c.recheckPrintability(0.6);
+    assert.equal(c.$('printability-nozzle').value,'0.8');assert.match(c.$('printability-feedback').textContent,/서버 오류/);
+    assert.equal(c.state.printabilityPending,false);
+  });
+  await check('Printer-reported nozzle offers a recheck only when it differs, and old jobs get an explicit check',()=>{
+    const c=fixture();c.state.job={id:'job-a',result:{mesh:{vertices:[[0,0,0]]}}};
+    c.renderPrintability({status:'ok',basis:{nozzle_mm:0.4,note:''},items:[]});
+    assert.equal(c.$('printability-use-printer').hidden,true);
+    c.state.printerStatus={connection:{state:'reporting'},print:{nozzle:{diameter_mm:0.6}}};c.updatePrintabilityControls();
+    assert.equal(c.$('printability-use-printer').hidden,false);assert.match(c.$('printability-use-printer').textContent,/0.6 mm/);
+    c.state.printerStatus={connection:{state:'access_rejected'},print:null};c.updatePrintabilityControls();
+    assert.equal(c.$('printability-use-printer').hidden,true);
+    c.renderPrintability(undefined);
+    assert.equal(c.$('printability-review').hidden,false);assert.equal(c.$('printability-run').hidden,false);
+    assert.equal(c.$('printability-status').textContent,'아직 점검 안 함');
+    c.state.job={id:'job-b',result:{}};c.renderPrintability(undefined);assert.equal(c.$('printability-review').hidden,true);
+  });
+  await check('Journey shows progress, a single next action, attention that yields once the user moves on, and resets with the job',()=>{
+    const c=fixture();
+    c.state.job=null;c.renderJourney();
+    assert.equal(c.$('journey-next-button').dataset.target,'parameter-heading');
+    assert.equal(c.$('journey-steps').children[0].attributes['aria-current'],'step');
+    const job={id:'job-a',result:{dimensions_mm:{x:120,y:80,z:35},printability:{status:'review',items:[]}},user_outcome:null,latest_slice:null};
+    c.state.job=job;c.state.printabilityReview=null;c.renderJourney();
+    assert.equal(c.$('journey-next-button').dataset.target,'printability-review');
+    assert.match(c.$('journey-steps').textContent,/120 × 80 × 35 mm/);assert.match(c.$('journey-steps').textContent,/확인할 점 있음/);
+    c.state.downloadedJobId='job-a';c.renderJourney();
+    assert.equal(c.$('journey-next-button').dataset.target,'outcome-card');assert.equal(c.$('journey-next-button').dataset.focus,'outcome-result');
+    assert.equal(c.$('journey-steps').children[3].attributes['aria-current'],'step');
+    c.state.downloadedJobId='other-job';c.renderJourney();
+    assert.equal(c.$('journey-next-button').dataset.target,'printability-review');
+    c.state.job={...job,user_outcome:{result:'failure'}};c.state.slicePrepared=true;c.state.downloadedJobId=null;c.renderJourney();
+    // A reviewed plan alone is not a prepared file.
+    assert.equal(c.$('journey-next-button').dataset.target,'printability-review');
+    c.state.job={...job,user_outcome:{result:'failure'},latest_slice:{phase:'finished',plan:{ready:false},execution:{status:'failed'}}};c.renderJourney();
+    assert.equal(c.$('journey-next-button').dataset.target,'printability-review');
+    c.state.job={...job,user_outcome:{result:'failure'},latest_slice:{phase:'finished',plan:{ready:true},execution:{status:'sliced'}}};c.renderJourney();
+    assert.match(c.$('journey-steps').textContent,/슬라이스 파일 있음/);
+    assert.match(c.$('journey-steps').textContent,/실패로 기록/);assert.equal(c.$('journey-next-button').dataset.target,'parameter-heading');
+    c.state.slicePrepared=false;c.state.job=null;c.renderJourney();
+    assert.equal(c.$('journey-next-button').dataset.target,'parameter-heading');assert.doesNotMatch(c.$('journey-steps').textContent,/실패로 기록/);
+  });
+  await check('History tells same-title records apart, filters loaded results honestly and escapes notes',()=>{
+    const c=fixture();c.state.historyLoaded=true;c.state.historyCursor='next';
+    Object.assign(c.fields,{wall:{label:'벽 두께',min:0.8,max:20,step:0.1},bottom:{label:'바닥 두께',min:0.8,max:20,step:0.1},dividers:{label:'칸막이 수',min:0,max:12,step:1,unit:'개'}});
+    const base={title:'칸막이 수납함 · 120 × 80 × 35 mm',template:'tray',status:'geometry_validated',created_at:'2026-11-16T00:00:00Z'};
+    c.state.historyItems=[
+      {...base,id:'a',summary:{parameters:{wall:0.8,bottom:2,dividers:0},printability:'review'},user_outcome:null},
+      {...base,id:'b',summary:{parameters:{wall:2,bottom:2,dividers:2},printability:'ok',slice:'sliced'},user_outcome:{result:'success',notes:'<b>딱</b> 맞음'}},
+      {...base,id:'c',user_outcome:{result:'failure',notes:''}}];
+    c.renderHistory();
+    const text=c.$('history-list').textContent;
+    assert.match(text,/벽 두께 0.8 mm/);assert.match(text,/칸막이 수 2개/);assert.match(text,/슬라이스 완료/);assert.match(text,/메모: <b>딱<\/b> 맞음/);assert.match(text,/점검 확인할 점/);
+    c.setHistoryFilter('success');
+    assert.match(c.$('history-list').textContent,/불러온 3개 중 1개/);assert.match(c.$('history-list').textContent,/이전 기록을 더 불러오면/);
+    assert.equal(c.$('history-list').children.filter(x=>x.dataset?.jobId).map(x=>x.dataset.jobId).join(),'b');
+    c.setHistoryFilter('unrecorded');assert.equal(c.$('history-list').children.filter(x=>x.dataset?.jobId).map(x=>x.dataset.jobId).join(),'a');
+    c.state.historyItems=[];c.setHistoryFilter('failure');assert.match(c.$('history-list').textContent,/아직 만들어 둔 모델이 없어요/);
+  });
+  await check('A printer finish report hints at the outcome without selecting it',()=>{
+    const c=fixture();c.$('outcome-result').value='not_tested';
+    c.state.job={id:'job-a',result:{dimensions_mm:{x:1,y:1,z:1}},user_outcome:null};
+    c.state.printerStatus={connection:{state:'reporting'},observed_at:'2026-11-16T00:00:00Z',target:{serial:'01S00X'},print:{state:'FINISH',state_label:'프린터가 완료를 보고함',job_name:'tray'}};
+    c.renderJourney();
+    assert.equal(c.$('outcome-printer-hint').hidden,false);assert.match(c.$('outcome-printer-hint').textContent,/상태: 출력 완료 보고/);assert.match(c.$('outcome-printer-hint').textContent,/자동으로 선택하지 않습니다/);
+    assert.equal(c.$('outcome-result').value,'not_tested');
+    c.state.printerStatus.print.state='RUNNING';c.renderJourney();assert.equal(c.$('outcome-printer-hint').hidden,true);
+    c.state.printerStatus.print.state='FAILED';c.state.job=null;c.renderJourney();assert.equal(c.$('outcome-printer-hint').hidden,true);
+  });
+  await check('Offer comparison adds the current model material-cost upper bound and labels shipping-excluded values',()=>{
+    const c=fixture();
+    c.state.job={id:'j',title:'칸막이 수납함 · 120 × 80 × 35 mm',result:{printability:{items:[{id:'material',grams:50,value:'약 50 g'}]}}};
+    c.renderOffersModelHint();assert.equal(c.$('offers-model-hint').hidden,false);assert.match(c.$('offers-model-hint').textContent,/약 50 g/);
+    c.renderOffers({groups:{KRW:[{name:'A',grams:1000,price:20000,delivered_total:20000,price_per_kg:20000,product_price_per_kg:20000},{name:'B',grams:1000,price:30000,delivered_total:null,price_per_kg:null,product_price_per_kg:30000}]}});
+    const text=c.$('offer-comparison').textContent;
+    assert.match(text,/현재 모델 재료비 상한 · 50 g/);assert.match(text,/₩1,000/);assert.match(text,/₩1,500/);assert.match(text,/배송비 제외 금액/);
+    assert.equal(c.$('offer-model-note').hidden,false);
+    c.state.job=null;c.renderOffers({groups:{KRW:[{name:'A',grams:1000,price:20000,delivered_total:20000,price_per_kg:20000,product_price_per_kg:20000}]}});
+    assert.doesNotMatch(c.$('offer-comparison').textContent,/재료비 상한/);assert.equal(c.$('offer-model-note').hidden,true);
+    c.renderOffersModelHint();assert.equal(c.$('offers-model-hint').hidden,true);
+  });
+  await check('Printer-reported values fill only empty setup fields and each AMS slot is an explicit choice',()=>{
+    const c=fixture();const events=[];c.Event=class{constructor(type){this.type=type;}};
+    for(const id of ['setup-printer-model','setup-nozzle','setup-material']){c.$(id).value='';c.$(id).dispatchEvent=e=>events.push([id,e.type]);}
+    c.state.printerStatus={connection:{state:'access_rejected'}};c.renderSetupPrinterFill();assert.equal(c.$('setup-printer-fill').hidden,true);
+    c.state.printerStatus={connection:{state:'reporting'},observed_at:'2026-11-16T00:00:00Z',target:{serial:'01S00X'},identity:{product_name:'Bambu Lab P1S'},
+      print:{nozzle:{diameter_mm:0.4},material_slots:[{unit:0,slot:0,product:'PLA Basic',filament_id:'GFA00'},{unit:0,slot:1,empty:true},{unit:'external',slot:254,material:'PETG',filament_id:'GFG99'}]}};
+    c.$('setup-printer-model').value='내가 쓴 모델';
+    c.renderSetupPrinterFill();
+    assert.equal(c.$('setup-printer-fill').hidden,false);
+    const buttons=c.$('setup-printer-fill-actions').children;
+    assert.equal(buttons.length,3);assert.match(buttons[1].textContent,/AMS 1·슬롯 1: PLA Basic \(GFA00\)/);assert.match(buttons[2].textContent,/외부 스풀/);
+    buttons[0].listeners.click();
+    assert.equal(c.$('setup-printer-model').value,'내가 쓴 모델');assert.equal(c.$('setup-nozzle').value,'0.4');
+    assert.match(c.$('setup-printer-fill-status').textContent,/노즐 지름/);assert.doesNotMatch(c.$('setup-printer-fill-status').textContent,/프린터 모델·/);
+    buttons[1].listeners.click();assert.equal(c.$('setup-material').value,'GFA00');
+    buttons[2].listeners.click();assert.equal(c.$('setup-material').value,'GFA00');assert.match(c.$('setup-printer-fill-status').textContent,/바꾸지 않았습니다/);
+    assert.deepEqual(events.map(e=>e[0]),['setup-nozzle','setup-material']);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

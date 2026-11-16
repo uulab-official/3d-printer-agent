@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { offersResult: null, historyFilter: "all", downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -16,7 +16,12 @@
     inset_diameter: { label: "원판 지름", min: 5, max: 450, step: 0.1 },
     inset_depth: { label: "포켓 깊이", min: 0.5, max: 30, step: 0.1 },
     fit_clearance: { label: "지름 여유", min: 0, max: 3, step: 0.05 },
+    lean_angle: { label: "등판 각도", min: 50, max: 80, step: 1, unit: "°" },
+    device_thickness: { label: "기기 두께(케이스 포함)", min: 4, max: 30, step: 0.1 },
+    lip_height: { label: "앞턱 높이", min: 3, max: 60, step: 0.1 },
   };
+  // Same field, different meaning per template.
+  const templateFieldLabels = { phone_stand: { fit_clearance: "홈 여유", wall: "등판·앞턱 두께" } };
   const fieldNames = {
     ...Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.label])),
     printer_model: "프린터 모델", printer_preset: "프린터 프리셋", nozzle_diameter: "노즐 지름",
@@ -97,6 +102,9 @@
     const recovery = storage?.recovery || {};
     const count = (key) => Number.isInteger(recovery[key]) && recovery[key] >= 0 ? recovery[key] : 0;
     $("storage-recovery").textContent = storage ? `시작할 때 확인한 기록 ${count("indexed")}개 · 중단 처리 ${count("interrupted")}개 · 읽기 확인 필요 ${count("unreadable")}개. 중단되거나 손상된 기록의 원본은 보존합니다.` : "연결되면 현재 앱 데이터 위치와 시작 시 복구 결과를 보여줍니다.";
+    // Healthy and nothing to recover: keep the card to one quiet line so the
+    // first screen starts with the work. Problems keep the full explanation.
+    $("local-runtime").classList.toggle("is-quiet", connected && Boolean(storage) && !count("interrupted") && !count("unreadable"));
     updateConnectionActions();
   }
 
@@ -225,6 +233,7 @@
     showNotice("model-feedback", message);
     showNotice("slice-feedback", "현재 제작안의 모델을 생성한 뒤 슬라이싱을 준비할 수 있습니다.");
     updateWorkflowControls();
+    if (typeof renderJourney === "function") renderJourney();
   }
 
   function parseObject(value, label) {
@@ -262,6 +271,8 @@
     }
     closeMenu();
     if (name === "history") loadHistory();
+    if (name === "offers") { renderOffersModelHint(); if (state.offersResult && !$("offers-result").hidden) renderOffers(state.offersResult); }
+    if (name === "profiles") renderSetupPrinterFill();
     if (name === "models") viewer.requestDraw();
     window.scrollTo({ top: 0, behavior: "auto" });
   }
@@ -539,9 +550,12 @@
 
   function validateEditParameters(parameters) {
     const defaults = { width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
-    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"] };
-    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== 12 || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
-    for (const [key, neutral] of Object.entries(defaults)) {
+    // Fields added later appear only in templates that use them (see schemas.LATER_FIELDS).
+    const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 } };
+    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"] };
+    const expected = { ...defaults, ...(laterFields[parameters?.template] || {}) };
+    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== Object.keys(expected).length + 1 || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
+    for (const [key, neutral] of Object.entries(expected)) {
       const value = parameters[key];
       if (!Object.hasOwn(parameters, key) || typeof value !== "number" || !Number.isFinite(value) || ((key === "dividers" || key === "slots") && !Number.isSafeInteger(value)) || (!applicable[parameters.template].includes(key) && value !== neutral)) throw new Error("수정 제안의 치수 응답이 올바르지 않습니다.");
       const definition = fields[key];
@@ -550,8 +564,15 @@
     return applicable[parameters.template];
   }
 
+  function parameterKeys(template) {
+    // The eleven original fields for every template, plus later fields only where used.
+    const later = { phone_stand: ["lean_angle", "device_thickness", "lip_height"] };
+    return ["template", "width", "depth", "height", "wall", "bottom", "dividers", "slots", "cable_diameter", "inset_diameter", "inset_depth", "fit_clearance", ...(later[template] || [])];
+  }
+
   function currentEditParameters() {
     const parameters = { template: state.template, width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
+    if (state.template === "phone_stand") Object.assign(parameters, { lean_angle: 65, device_thickness: 12, lip_height: 12 });
     const template = state.templates.find(item => item.id === state.template);
     if (!template) throw new Error("수정할 템플릿을 먼저 선택해 주세요.");
     for (const key of template.editable_fields) {
@@ -581,7 +602,7 @@
     if (!exact(review, ["schema_version", "selection", "base_sha256", "parameters", "parameters_sha256", "changes", "review_sha256"]) || review.schema_version !== 1 || !hash(review.base_sha256) || !hash(review.parameters_sha256) || !hash(review.review_sha256) || !exact(selection, ["schema_version", "request_text", "base_parameters", "operations", "parent"]) || selection.schema_version !== 1 || selection.request_text !== context.text) fail();
     let editable;
     try { editable = validateEditParameters(review.parameters); validateEditParameters(selection.base_parameters); } catch { fail(); }
-    const keys = ["template", "width", "depth", "height", "wall", "bottom", "dividers", "slots", "cable_diameter", "inset_diameter", "inset_depth", "fit_clearance"];
+    const keys = parameterKeys(context.base.template);
     if (review.parameters.template !== context.base.template || keys.some(key => selection.base_parameters[key] !== context.base[key])) fail();
     if (context.parent) {
       const parent = selection.parent;
@@ -616,7 +637,7 @@
     $("model-edit-cancel").disabled = busy;
     $("model-edit-changes").replaceChildren();
     if (candidate) {
-      for (const change of candidate.review.changes) $("model-edit-changes").append(node("li", "", `${fieldNames[change.field] || change.field}: ${change.before} → ${change.after} ${["dividers", "slots"].includes(change.field) ? "개" : "mm"}`));
+      for (const change of candidate.review.changes) $("model-edit-changes").append(node("li", "", `${fieldNames[change.field] || change.field}: ${change.before} → ${change.after} ${fields[change.field]?.unit || "mm"}`));
     }
     $("model-edit-selected").hidden = !state.modelEditApplied;
     $("model-edit-selected").textContent = state.modelEditApplied ? `적용한 최신 수정: ${state.modelEditApplied.request_text} · 다음 생성에 기록됩니다. 치수를 직접 바꾸면 이 수정 선택은 해제됩니다.` : "";
@@ -878,7 +899,8 @@
       const definition = fields[key];
       if (!definition) continue;
       const container = node("div", "parameter-field");
-      const label = node("label", "", `${definition.label} · ${definition.unit || "mm"}`);
+      const labelText = templateFieldLabels[template.id]?.[key] || definition.label;
+      const label = node("label", "", `${labelText} · ${definition.unit || "mm"}`);
       const input = node("input");
       input.id = `parameter-${key}`;
       input.name = key;
@@ -1006,6 +1028,173 @@
     }
   }
 
+  const printabilityStatus = { ok: ["형상 점검 통과", "success"], review: ["확인할 점이 있어요", "warning"], needs_change: ["수정을 권해요", "error"] };
+  const printabilityMarks = { pass: "✓", warn: "!", fail: "×" };
+
+  function printerReportedNozzle() {
+    const value = state.printerStatus?.connection?.state === "reporting" ? state.printerStatus.print?.nozzle?.diameter_mm : null;
+    return [0.2, 0.4, 0.6, 0.8].includes(value) ? value : null;
+  }
+
+  function updatePrintabilityControls() {
+    const pending = Boolean(state.printabilityPending);
+    const reported = printerReportedNozzle();
+    const current = Number($("printability-nozzle").value);
+    $("printability-nozzle").disabled = pending || !state.job || !state.token;
+    $("printability-run").disabled = pending || !state.job || !state.token;
+    const usePrinter = $("printability-use-printer");
+    usePrinter.hidden = !reported || reported === current || !state.printabilityShown;
+    usePrinter.disabled = pending;
+    if (reported) usePrinter.textContent = `프린터가 보고한 ${reported} mm 노즐로 점검 →`;
+  }
+
+  async function recheckPrintability(nozzle) {
+    const job = state.job;
+    if (!job) return;
+    const request = ++state.printabilityRequest;
+    const previous = state.printabilityNozzle;
+    state.printabilityPending = true;
+    $("printability-nozzle").value = String(nozzle);
+    hideNotice("printability-feedback");
+    updatePrintabilityControls();
+    try {
+      const review = await api(`/api/jobs/${encodeURIComponent(job.id)}/printability`, { nozzle_mm: nozzle });
+      if (request !== state.printabilityRequest || state.job?.id !== job.id) return;
+      renderPrintability(review);
+    } catch (error) {
+      if (request !== state.printabilityRequest || state.job?.id !== job.id) return;
+      $("printability-nozzle").value = String(previous);
+      showNotice("printability-feedback", error.message, "error");
+    } finally {
+      if (request === state.printabilityRequest) { state.printabilityPending = false; updatePrintabilityControls(); }
+    }
+  }
+
+  function journeySteps() {
+    const job = state.job;
+    const review = job && state.printabilityReview ? state.printabilityReview : job?.result?.printability;
+    const dims = job?.result?.dimensions_mm;
+    const reviewText = { ok: "점검 통과", review: "확인할 점 있음", needs_change: "수정 권장" }[review?.status];
+    // Only a recorded prepared project or a successful slice counts; a reviewed plan,
+    // a blocked plan or a failed run does not.
+    const latest = job?.latest_slice;
+    const prepared = Boolean(latest?.phase === "finished" && (latest.plan?.project_prepared === true || latest.execution?.status === "sliced"));
+    const downloaded = Boolean(job && state.downloadedJobId === job.id);
+    const outcome = job?.user_outcome?.result;
+    const recorded = Boolean(outcome && outcome !== "not_tested");
+    return [
+      { id: "size", label: "치수 정하기", done: Boolean(job), detail: dims ? `${numberFormat.format(dims.x)} × ${numberFormat.format(dims.y)} × ${numberFormat.format(dims.z)} mm` : "시작점을 고르거나 치수 입력" },
+      { id: "make", label: "만들기·점검", done: Boolean(job), attention: Boolean(job && review && review.status !== "ok"), detail: job ? (reviewText || "CAD 검증 완료") : "CAD 생성 전" },
+      { id: "prepare", label: "출력 준비", done: prepared || downloaded, detail: prepared ? (latest.execution?.status === "sliced" ? "슬라이스 파일 있음" : "설정 포함 3MF 있음") : downloaded ? "3MF 내려받음" : job ? "3MF를 Studio에서 열기" : "모델을 먼저 만들기" },
+      { id: "record", label: "결과 기록", done: recorded, detail: recorded ? (outcome === "success" ? "성공으로 기록" : "실패로 기록") : "출력 후 직접 기록" },
+    ];
+  }
+
+  function journeyNext(steps) {
+    const job = state.job;
+    if (!job) return { text: "치수를 확인하고 CAD 모델을 만들어 보세요.", label: "치수 확인하러 가기", target: "parameter-heading" };
+    // A warning is advice: once the user moves on (downloads or prepares), follow them.
+    if (steps[1].attention && !steps[2].done) return { text: "형상 점검에서 확인할 점이 있어요. 고칠 치수를 바로 찾을 수 있습니다.", label: "점검 결과 보기", target: "printability-review" };
+    if (!steps[2].done) return { text: "모델이 준비됐어요. 3MF를 내려받아 Bambu Studio에서 여세요.", label: "출력 방법 보기", target: "print-quickstart" };
+    if (!steps[3].done) return { text: "출력했다면 결과를 남겨 두세요. 다음에 같은 조건으로 만들 때 참고합니다.", label: "결과 기록하기", target: "outcome-card", focus: "outcome-result" };
+    return { text: "이 작업의 기록까지 마쳤어요. 고칠 점이 있으면 치수를 바꿔 다시 만드세요.", label: "치수 바꾸러 가기", target: "parameter-heading" };
+  }
+
+  function renderOutcomePrinterHint() {
+    // A printer's finish/fail report is a hint for the user's own record, never the record itself.
+    const hint = $("outcome-printer-hint");
+    const status = state.printerStatus;
+    const reported = status?.connection?.state === "reporting" ? status.print?.state : null;
+    if (!state.job || !["FINISH", "FAILED"].includes(reported)) { hint.hidden = true; return; }
+    const job = status.print.job_name ? ` (프린터의 작업 이름: ${status.print.job_name})` : "";
+    const verdict = reported === "FINISH" ? "출력 완료" : "출력 실패";
+    hint.textContent = `${dateTime(status.observed_at)}에 읽은 프린터 ${status.target?.serial || ""}의 상태: ${verdict} 보고${job}. 이 모델을 출력한 것이 맞는지, 실물을 직접 확인한 뒤 아래 결과를 골라 주세요. 자동으로 선택하지 않습니다.`;
+    hint.hidden = false;
+  }
+
+  function renderJourney() {
+    renderOutcomePrinterHint();
+    const steps = journeySteps();
+    const current = steps.findIndex((step, index) => !step.done || (step.attention && !steps[index + 1]?.done));
+    $("journey-steps").replaceChildren(...steps.map((step, index) => {
+      const item = node("li", `journey-step${step.done ? " is-done" : ""}${index === current ? " is-current" : ""}${step.attention ? " needs-attention" : ""}`);
+      if (index === current) item.setAttribute("aria-current", "step");
+      item.dataset.step = step.id;
+      item.append(node("span", "journey-mark", step.attention ? "!" : step.done ? "✓" : String(index + 1)), node("span", "journey-label", step.label), node("span", "journey-detail", step.detail));
+      return item;
+    }));
+    const next = journeyNext(steps);
+    $("journey-next-text").textContent = next.text;
+    const button = $("journey-next-button");
+    button.textContent = `${next.label} →`;
+    button.dataset.target = next.target;
+    button.dataset.focus = next.focus || "";
+  }
+
+  function goToJourneyTarget() {
+    const button = $("journey-next-button");
+    const target = $(button.dataset.target);
+    if (!target) return;
+    target.scrollIntoView({ block: "start", behavior: "smooth" });
+    const focus = button.dataset.focus ? $(button.dataset.focus) : target.matches("h1,h2,h3") ? target : null;
+    if (focus) { if (!focus.hasAttribute("tabindex") && focus.matches("h1,h2,h3")) focus.setAttribute("tabindex", "-1"); focus.focus({ preventScroll: true }); }
+  }
+
+  function renderPrintability(review) {
+    state.printabilityReview = review && Array.isArray(review.items) ? review : null;
+    const section = $("printability-review");
+    if (!review || !Array.isArray(review.items)) {
+      // Jobs saved before v0.10 have no stored review; offer an explicit check.
+      state.printabilityShown = false;
+      state.printabilityNozzle = 0.4;
+      $("printability-nozzle").value = "0.4";
+      setBadge("printability-status", "아직 점검 안 함");
+      $("printability-basis").textContent = "이전 버전에서 만든 작업입니다. 노즐을 고르고 점검하면 저장된 형상으로 계산합니다.";
+      $("printability-items").replaceChildren();
+      $("printability-run").hidden = !state.job?.result?.mesh;
+      section.hidden = !state.job?.result?.mesh;
+      updatePrintabilityControls();
+      renderJourney();
+      return;
+    }
+    state.printabilityShown = true;
+    state.printabilityNozzle = review.basis?.nozzle_mm ?? 0.4;
+    $("printability-nozzle").value = String(state.printabilityNozzle);
+    $("printability-run").hidden = true;
+    const [label, tone] = printabilityStatus[review.status] || ["확인 필요", "neutral"];
+    setBadge("printability-status", label, tone);
+    $("printability-basis").textContent = review.basis?.note || "";
+    $("printability-items").replaceChildren(...review.items.map((item) => {
+      const row = node("li", `printability-item is-${item.status}`);
+      row.dataset.check = item.id;
+      const mark = node("span", "printability-mark", printabilityMarks[item.status] || "?");
+      mark.setAttribute("aria-hidden", "true");
+      const body = node("div", "printability-body");
+      const head = node("div", "printability-row");
+      head.append(node("strong", "", item.label), node("span", "printability-value", item.value));
+      body.append(head, node("p", "", item.detail));
+      if (item.advice) body.append(node("p", "printability-advice", item.advice));
+      const input = item.field ? $(`parameter-${item.field}`) : null;
+      if (item.id === "material" && Number.isFinite(item.grams)) {
+        const compare = node("button", "text-button", "구매 비교에서 재료비 보기 →");
+        compare.type = "button";
+        compare.addEventListener("click", () => changeView("offers"));
+        body.append(compare);
+      }
+      if (input && item.status !== "pass") {
+        const fix = node("button", "text-button", "이 치수 고치기 →");
+        fix.type = "button";
+        fix.addEventListener("click", () => { input.scrollIntoView({ block: "center", behavior: "smooth" }); input.focus(); input.select?.(); });
+        body.append(fix);
+      }
+      row.append(mark, body);
+      return row;
+    }));
+    section.hidden = false;
+    updatePrintabilityControls();
+    renderJourney();
+  }
+
   function renderJob(job) {
     const result = job.result;
     if (!result) throw new Error("작업에 모델 결과가 없습니다.");
@@ -1035,8 +1224,12 @@
       return element;
     }));
     $("model-warnings").replaceChildren(...(result.warnings || []).map((text) => node("p", "", text)));
+    state.printabilityRequest += 1;
+    state.printabilityPending = false;
+    hideNotice("printability-feedback");
+    renderPrintability(result.printability);
     renderDownloads(job);
-    viewer.setMesh(result.mesh, job.title);
+    viewer.setMesh(result.mesh, job.title, result.template);
     setBadge("preview-status", "실제 CAD 메시", "blue");
     $("preview-caption").textContent = "생성된 모델 · 드래그 또는 방향키로 조작";
     $("outcome-result").value = job.user_outcome?.result || "not_tested";
@@ -1687,6 +1880,7 @@
   }
 
   function updateSliceControls() {
+    if (typeof renderJourney === "function" && $("journey-steps")) renderJourney();
     const reading = Object.keys(state.slicerPending).length > 0;
     const busy = state.workflowBusy;
     const canPrepare = Boolean(state.token && state.job && state.environment.available && state.environment.cli_supported !== false && !busy && !state.slicerStaged && !reading);
@@ -2080,6 +2274,7 @@
         const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/outcome`, { result: $("outcome-result").value, notes: $("outcome-notes").value });
         state.job = job;
         showNotice("outcome-feedback", "직접 보고한 출력 결과를 기록했습니다. CAD 검증 상태와 별도로 보관합니다.", "success");
+        renderJourney();
       });
     } catch (error) { showNotice("outcome-feedback", error.message, "error"); }
   });
@@ -3126,6 +3321,7 @@
         if (result.connection?.state === "reporting" && result.certificate?.sha256 && !state.printerPins[key]) state.printerPins[key] = result.certificate.sha256;
         state.printerStatus = result;
         renderPrinterStatus(result);
+        if (typeof updatePrintabilityControls === "function") updatePrintabilityControls();
       });
     } catch (error) {
       if (request === state.printerRequest) showNotice("printer-feedback", error.message, error.code === "printer_busy" ? "warning" : "error");
@@ -3220,7 +3416,7 @@
       state.offersPending = true;
       await withBusy($("compare-offers"), "단가 계산 중", async () => {
         const result = await api("/api/offers/compare", { offers }, undefined, { current });
-        if (current()) renderOffers(result);
+        if (current()) { state.offersResult = result; renderOffers(result); }
       });
     } catch (error) { if (current()) showNotice("offers-feedback", error.message, "error"); }
     finally { state.offersPending = false; }
@@ -3244,7 +3440,8 @@
       const table = node("table", "offer-result-table");
       const head = node("thead");
       const headings = node("tr");
-      ["상품", "중량", "상품 + 배송비", "배송비 포함 kg당 비용"].forEach((label) => { const th = node("th", "", label); th.scope = "col"; headings.append(th); });
+      const material = currentModelMaterial();
+      ["상품", "중량", "상품 + 배송비", "배송비 포함 kg당 비용", ...(material ? [`현재 모델 재료비 상한 · ${numberFormat.format(material.grams)} g`] : [])].forEach((label) => { const th = node("th", "", label); th.scope = "col"; headings.append(th); });
       head.append(headings);
       table.append(head);
       const body = node("tbody");
@@ -3255,6 +3452,12 @@
         if (offer.price_per_kg !== null && index === 0 && offers.filter((item) => item.price_per_kg !== null).length > 1) unit.append(node("small", "", "입력한 조건 중 최소 단가"));
         if (offer.price_per_kg === null) unit.append(node("small", "", `배송비 제외 ${money(offer.product_price_per_kg, currency)} / kg`));
         row.append(product, node("td", "", `${numberFormat.format(offer.grams)} g`), node("td", "", offer.delivered_total === null ? `${money(offer.price, currency)} + 미확인` : money(offer.delivered_total, currency)), unit);
+        if (material) {
+          const perKg = offer.price_per_kg ?? offer.product_price_per_kg;
+          const cost = node("td", "offer-model-cost", `${money(perKg * material.grams / 1000, currency)}`);
+          if (offer.price_per_kg === null) cost.append(node("small", "", "배송비 제외 금액"));
+          row.append(cost);
+        }
         body.append(row);
       });
       table.append(body);
@@ -3262,6 +3465,63 @@
       area.append(wrap);
     }
     $("offer-notice").textContent = result.notice || "사용자가 입력한 조건으로 계산했습니다. 실시간 가격은 확인하지 않았습니다.";
+    const material = currentModelMaterial();
+    const note = $("offer-model-note");
+    note.hidden = !material;
+    if (material) note.textContent = `재료비 상한은 지금 만든 “${material.title}”을 속 100% PLA로 채웠을 때의 무게(약 ${numberFormat.format(material.grams)} g) 기준입니다. 실제 사용량은 속채움·지지대 설정에 따라 보통 더 적으니 슬라이서 결과를 보세요.`;
+  }
+
+  function renderSetupPrinterFill() {
+    // Offer values the printer reported, for empty fields only. They describe what the
+    // printer says is installed, so the user is asked to confirm them.
+    const area = $("setup-printer-fill");
+    const status = state.printerStatus;
+    if (status?.connection?.state !== "reporting") { area.hidden = true; return; }
+    const product = status.identity?.product_name;
+    const nozzle = status.print?.nozzle?.diameter_mm;
+    const slots = (status.print?.material_slots || []).filter((slot) => !slot.empty && slot.filament_id);
+    const actions = $("setup-printer-fill-actions");
+    actions.replaceChildren();
+    $("setup-printer-fill-status").textContent = "";
+    const fill = (id, value) => {
+      const input = $(id);
+      if (input.value.trim() || value === null || value === undefined) return false;
+      input.value = String(value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;
+    };
+    if (product || nozzle) {
+      const button = node("button", "button button-secondary", "프린터 모델·노즐 채우기");
+      button.type = "button";
+      button.addEventListener("click", () => {
+        const filled = [fill("setup-printer-model", product) && "프린터 모델", fill("setup-nozzle", nozzle) && "노즐 지름"].filter(Boolean);
+        $("setup-printer-fill-status").textContent = filled.length ? `프린터가 보고한 ${filled.join("·")}을 빈 칸에 채웠습니다. 실제 장착 상태와 같은지 확인하세요.` : "이미 입력한 값은 바꾸지 않았습니다.";
+      });
+      actions.append(button);
+    }
+    for (const slot of slots.slice(0, 5)) {
+      const where = slot.unit === "external" ? "외부 스풀" : `AMS ${Number(slot.unit) + 1}·슬롯 ${Number(slot.slot) + 1}`;
+      const button = node("button", "text-button", `${where}: ${slot.product || slot.material || "재료"} (${slot.filament_id}) 사용`);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        const done = fill("setup-material", slot.filament_id);
+        $("setup-printer-fill-status").textContent = done ? `${where}에 등록된 재료 식별자 ${slot.filament_id}를 채웠습니다. 프린터에 사용자가 설정한 값이므로 실제 스풀과 맞는지 확인하세요.` : "재료 식별자 칸에 이미 값이 있어 바꾸지 않았습니다.";
+      });
+      actions.append(button);
+    }
+    $("setup-printer-fill-text").textContent = `프린터 ${status.target?.serial || ""} 상태(${dateTime(status.observed_at)})에서 읽은 값을 비어 있는 칸에만 채울 수 있습니다.`;
+    area.hidden = !actions.children.length;
+  }
+
+  function renderOffersModelHint() {
+    const material = currentModelMaterial();
+    $("offers-model-hint").hidden = !material;
+    if (material) $("offers-model-hint").textContent = `지금 만든 “${material.title}”은 속을 100% 채워도 PLA 약 ${numberFormat.format(material.grams)} g입니다. 상품을 넣고 비교하면 이 모델 하나의 재료비 상한도 함께 계산합니다.`;
+  }
+
+  function currentModelMaterial() {
+    const item = state.job?.result?.printability?.items?.find((entry) => entry.id === "material");
+    return item && Number.isFinite(item.grams) && item.grams > 0 ? { grams: item.grams, title: state.job.title || "현재 모델" } : null;
   }
 
   function dateTime(value) {
@@ -3308,6 +3568,33 @@
     }
   }
 
+  function historyMatches(job) {
+    const outcome = job.user_outcome?.result;
+    if (state.historyFilter === "success") return outcome === "success";
+    if (state.historyFilter === "failure") return outcome === "failure";
+    if (state.historyFilter === "unrecorded") return !outcome || outcome === "not_tested";
+    return true;
+  }
+
+  function historyFacts(job) {
+    // Short facts that distinguish records with the same title.
+    const parameters = job.summary?.parameters || {};
+    const facts = Object.entries(parameters).map(([key, value]) => {
+      const definition = fields[key];
+      const label = templateFieldLabels[job.template]?.[key] || definition?.label || key;
+      return `${label} ${numberFormat.format(value)}${definition?.unit === "개" ? "개" : definition?.unit || " mm"}`;
+    });
+    const slice = { sliced: "슬라이스 완료", needs_review: "슬라이스 확인 필요", failed: "슬라이스 실패", blocked: "슬라이스 차단", prepared: "설정 포함 3MF 준비", planned: "실행 계획 검토", running: "슬라이스 기록 실행 중", interrupted: "슬라이스 중단" }[job.summary?.slice];
+    if (slice) facts.push(slice);
+    return facts;
+  }
+
+  function setHistoryFilter(filter) {
+    state.historyFilter = filter;
+    document.querySelectorAll("[data-history-filter]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.historyFilter === filter)));
+    renderHistory();
+  }
+
   function renderHistory() {
     const container = $("history-list");
     container.replaceChildren();
@@ -3321,10 +3608,26 @@
       container.append(empty);
       return;
     }
-    state.historyItems.forEach((job) => {
+    const visible = state.historyItems.filter(historyMatches);
+    if (state.historyFilter !== "all") {
+      const more = state.historyCursor ? " 이전 기록을 더 불러오면 함께 거릅니다." : "";
+      container.append(node("p", "history-filter-note", `불러온 ${state.historyItems.length}개 중 ${visible.length}개가 조건에 맞습니다.${more}`));
+    }
+    if (!visible.length) {
+      const empty = node("div", "history-empty");
+      empty.append(node("h3", "", "조건에 맞는 기록이 없어요"), node("p", "", "출력한 뒤 모델을 열어 결과를 기록하면 여기에서 찾을 수 있습니다."));
+      container.append(empty);
+      return;
+    }
+    visible.forEach((job) => {
       const card = node("article", "history-item");
+      card.dataset.jobId = job.id;
       const title = node("div");
       title.append(node("h3", "", job.title || "생성한 모델"), node("p", "", dateTime(job.created_at)));
+      const facts = historyFacts(job);
+      if (facts.length) title.append(node("p", "history-facts", facts.join(" · ")));
+      const notes = typeof job.user_outcome?.notes === "string" ? job.user_outcome.notes.trim() : "";
+      if (notes) title.append(node("p", "history-notes", `메모: ${notes.length > 80 ? `${notes.slice(0, 80)}…` : notes}`));
       if (job.model_edit) {
         const edit = node("div", "history-model-edit");
         edit.id = `history-model-edit-${job.id}`;
@@ -3338,6 +3641,8 @@
       statuses.append(node("span", `badge badge-${warning ? "warning" : job.status === "geometry_validated" ? "blue" : "neutral"}`, statusLabel));
       const outcome = job.user_outcome?.result;
       statuses.append(node("span", `badge badge-${outcome === "success" ? "success" : outcome === "failure" ? "warning" : "neutral"}`, outcome === "success" ? "출력 성공 · 사용자 보고" : outcome === "failure" ? "출력 실패 · 사용자 보고" : "실물 출력 미기록"));
+      const review = job.summary?.printability;
+      if (review) statuses.append(node("span", `badge badge-${review === "ok" ? "success" : review === "review" ? "warning" : "error"}`, review === "ok" ? "형상 점검 통과" : review === "review" ? "점검 확인할 점" : "점검 수정 권장"));
       const open = node("button", "button button-secondary", warning ? "기록 보기 ↗" : "열기 ↗");
       open.type = "button";
       open.disabled = state.workflowBusy;
@@ -3379,6 +3684,11 @@
       this.yaw = 0.62;
       this.elevation = 0.62;
       this.zoom = 1;
+      this.showDimensions = true;
+      this.showOverhangs = true;
+      this.showPrevious = true;
+      this.previous = null;
+      this.lastMesh = null;
       this.pending = false;
       this.drag = null;
       new ResizeObserver(() => this.requestDraw()).observe($("preview-stage"));
@@ -3391,7 +3701,8 @@
       canvas.addEventListener("pointermove", (event) => {
         if (!this.drag) return;
         this.yaw += (event.clientX - this.drag.x) * 0.009;
-        this.elevation = Math.max(0.06, Math.min(1.48, this.elevation + (event.clientY - this.drag.y) * 0.008));
+        this.elevation = Math.max(0, Math.min(Math.PI / 2, this.elevation + (event.clientY - this.drag.y) * 0.008));
+        this.markView("custom");
         this.drag = { x: event.clientX, y: event.clientY };
         this.requestDraw();
       });
@@ -3403,10 +3714,11 @@
       canvas.addEventListener("keydown", (event) => {
         if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-", "0"].includes(event.key)) return;
         event.preventDefault();
+        this.markView("custom");
         if (event.key === "ArrowLeft") this.yaw -= 0.12;
         if (event.key === "ArrowRight") this.yaw += 0.12;
-        if (event.key === "ArrowUp") this.elevation = Math.min(1.48, this.elevation + 0.1);
-        if (event.key === "ArrowDown") this.elevation = Math.max(0.06, this.elevation - 0.1);
+        if (event.key === "ArrowUp") this.elevation = Math.min(Math.PI / 2, this.elevation + 0.1);
+        if (event.key === "ArrowDown") this.elevation = Math.max(0, this.elevation - 0.1);
         if (["+", "="].includes(event.key)) this.changeZoom(1.15);
         if (event.key === "-") this.changeZoom(1 / 1.15);
         if (event.key === "0") this.reset();
@@ -3414,20 +3726,33 @@
       });
     }
 
-    setMesh(mesh, title) {
+    setMesh(mesh, title, template = null) {
       if (!mesh?.vertices?.length || !mesh.faces?.length || !this.context) {
         $("preview-empty").hidden = false;
         this.canvas.hidden = true;
         $("preview-tools").hidden = true;
         return;
       }
+      // Keep the model shown just before as a labelled outline for comparison.
+      const earlier = this.mesh || this.lastMesh;
+      const bounds = MeshViewer.bounds(mesh);
+      // Compare only with the same kind of object; another template is not "the previous version".
+      if (earlier && earlier !== mesh && template && template === this.template && MeshViewer.signature(earlier) !== MeshViewer.signature(mesh)) {
+        this.previous = { mesh: earlier, edges: MeshViewer.featureEdges(earlier), bounds: MeshViewer.bounds(earlier), title: this.title };
+      } else if (earlier !== mesh) {
+        this.previous = null;
+      }
       this.mesh = mesh;
-      const mins = [Infinity, Infinity, Infinity], maxs = [-Infinity, -Infinity, -Infinity];
-      mesh.vertices.forEach((point) => point.forEach((value, axis) => { mins[axis] = Math.min(mins[axis], value); maxs[axis] = Math.max(maxs[axis], value); }));
-      this.center = mins.map((value, axis) => (value + maxs[axis]) / 2);
-      this.extents = mins.map((value, axis) => maxs[axis] - value);
-      this.radius = Math.hypot(...this.extents) / 2 || 1;
+      this.title = title;
+      this.template = template;
+      this.lastMesh = null;
+      const [mins, maxs] = bounds;
       this.floor = mins[2];
+      this.mins = mins;
+      this.maxs = maxs;
+      this.frame();
+      this.featureEdges = MeshViewer.featureEdges(mesh);
+      MeshViewer.renderPreviousControl(this.previous, bounds);
       this.canvas.hidden = false;
       this.canvas.setAttribute("aria-label", `${title || "생성한 모델"}. 방향키로 회전, 더하기와 빼기로 확대, 0으로 기본 시점.`);
       $("preview-empty").hidden = true;
@@ -3435,7 +3760,47 @@
       this.reset();
     }
 
+    static signature(mesh) {
+      // Same-size models can still differ (for example a changed angle), so
+      // compare vertex count and per-axis coordinate sums, not only the box.
+      const sums = [0, 0, 0];
+      mesh.vertices.forEach((point) => point.forEach((value, axis) => { sums[axis] += value; }));
+      return JSON.stringify([mesh.vertices.length, mesh.faces.length, ...sums.map((value) => Math.round(value * 1000))]);
+    }
+
+    static bounds(mesh) {
+      const mins = [Infinity, Infinity, Infinity], maxs = [-Infinity, -Infinity, -Infinity];
+      mesh.vertices.forEach((point) => point.forEach((value, axis) => { mins[axis] = Math.min(mins[axis], value); maxs[axis] = Math.max(maxs[axis], value); }));
+      return [mins, maxs];
+    }
+
+    frame() {
+      // Frame the union of the current and (when shown) previous model.
+      const mins = [...this.mins], maxs = [...this.maxs];
+      if (this.previous && this.showPrevious) this.previous.bounds[0].forEach((value, axis) => {
+        mins[axis] = Math.min(mins[axis], value); maxs[axis] = Math.max(maxs[axis], this.previous.bounds[1][axis]);
+      });
+      this.center = mins.map((value, axis) => (value + maxs[axis]) / 2);
+      this.extents = mins.map((value, axis) => maxs[axis] - value);
+      this.radius = Math.hypot(...this.extents) / 2 || 1;
+    }
+
+    static renderPreviousControl(previous, currentBounds) {
+      $("preview-previous-toggle").hidden = !previous;
+      if (!previous) return;
+      const size = ([mins, maxs]) => mins.map((value, axis) => numberFormat.format(Math.round((maxs[axis] - value) * 10) / 10)).join(" × ");
+      const before = size(previous.bounds);
+      $("preview-previous-label").textContent = currentBounds && before === size(currentBounds) ? "이전 모델 · 같은 크기" : `이전 ${before} mm`;
+    }
+
+    forgetPrevious() {
+      this.lastMesh = null;
+      this.previous = null;
+      MeshViewer.renderPreviousControl(null);
+    }
+
     clear() {
+      if (this.mesh) this.lastMesh = this.mesh;
       this.mesh = null;
       this.drag = null;
       this.canvas.hidden = true;
@@ -3445,7 +3810,48 @@
       $("preview-tools").hidden = true;
     }
 
-    reset() { this.yaw = 0.62; this.elevation = 0.62; this.zoom = 1; this.requestDraw(); }
+    reset() { this.setView("iso"); }
+
+    static featureEdges(mesh) {
+      // Draw only creases (> 25° between neighbouring triangles) and open
+      // boundaries, so tessellation diagonals on flat or curved faces stay hidden.
+      const normals = mesh.faces.map((face) => {
+        const [a, b, c] = face.map((index) => mesh.vertices[index]);
+        const u = b.map((value, axis) => value - a[axis]), v = c.map((value, axis) => value - a[axis]);
+        const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        const length = Math.hypot(...n) || 1;
+        return n.map((value) => value / length);
+      });
+      const owners = new Map();
+      mesh.faces.forEach((face, faceIndex) => face.forEach((start, corner) => {
+        const end = face[(corner + 1) % 3];
+        const key = start < end ? `${start}:${end}` : `${end}:${start}`;
+        if (!owners.has(key)) owners.set(key, []);
+        owners.get(key).push(faceIndex);
+      }));
+      const edges = [];
+      const crease = Math.cos(25 * Math.PI / 180);
+      for (const [key, faces] of owners) {
+        const keep = faces.length !== 2 || normals[faces[0]].reduce((sum, value, axis) => sum + value * normals[faces[1]][axis], 0) < crease;
+        if (keep) edges.push(key.split(":").map(Number));
+      }
+      return edges;
+    }
+
+    setView(name) {
+      const views = { iso: [0.62, 0.62], front: [0, 0], top: [0, Math.PI / 2], side: [Math.PI / 2, 0] };
+      const [yaw, elevation] = views[name] || views.iso;
+      this.yaw = yaw; this.elevation = elevation; this.zoom = 1;
+      this.markView(name in views ? name : "iso");
+      this.requestDraw();
+    }
+
+    markView(name) {
+      this.view = name;
+      document.querySelectorAll("[data-preview-view]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.previewView === name)));
+    }
+
+    setOption(name, value) { this[name] = value; if (name === "showPrevious" && this.mesh) this.frame(); this.requestDraw(); }
     changeZoom(factor) { this.zoom = Math.max(0.45, Math.min(2.8, this.zoom * factor)); this.requestDraw(); }
     requestDraw() {
       if (this.pending) return;
@@ -3507,9 +3913,17 @@
         const u = pb.map((value, axis) => value - pa[axis]), v = pc.map((value, axis) => value - pa[axis]);
         const normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
         const magnitude = Math.hypot(...normal) || 1;
-        const light = Math.max(-0.6, Math.min(1, (-0.35 * normal[0] - 0.45 * normal[1] + 0.82 * normal[2]) / magnitude));
-        const shade = 0.87 + light * 0.24;
-        const color = [Math.round(112 * shade), Math.round(153 * shade), Math.round(224 * shade)];
+        const n = normal.map((value) => value / magnitude);
+        // Camera-relative lighting: rotate the normal like project() does, then light
+        // from the viewer's upper left so every view keeps readable face contrast.
+        const viewRight = cy * n[0] - sy * n[1], viewForward = sy * n[0] + cy * n[1];
+        const viewUp = ce * n[2] - se * viewForward, viewDepth = se * n[2] + ce * viewForward;
+        const key = Math.max(0, -0.38 * viewRight + 0.52 * viewUp + 0.76 * viewDepth);
+        const rim = Math.max(0, 0.55 * viewRight + 0.25 * viewUp + 0.4 * viewDepth);
+        const shade = Math.min(1.12, 0.6 + key * 0.42 + rim * 0.12);
+        const overhangFace = this.showOverhangs && n[2] < -0.7072 && Math.min(pa[2], pb[2], pc[2]) > this.floor + 1e-6;
+        const base = overhangFace ? [240, 128, 80] : [124, 160, 230];
+        const color = base.map((value) => Math.round(Math.min(255, value * shade)));
         const inverse = 1 / denominator;
         for (let y = minY; y <= maxY; y += 1) {
           for (let x = minX; x <= maxX; x += 1) {
@@ -3526,7 +3940,38 @@
           }
         }
       }
+      // Crease edges: depth-tested against the same buffer so hidden edges stay hidden.
+      for (const [startIndex, endIndex] of this.featureEdges || []) {
+        const a = points[startIndex], b = points[endIndex];
+        const steps = Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])));
+        for (let step = 0; step <= steps; step += 1) {
+          const t = steps ? step / steps : 0;
+          const x = Math.round(a[0] + (b[0] - a[0]) * t), y = Math.round(a[1] + (b[1] - a[1]) * t);
+          if (x < 0 || y < 0 || x >= pixelWidth || y >= pixelHeight) continue;
+          const depth = a[2] + (b[2] - a[2]) * t;
+          const index = y * pixelWidth + x;
+          if (depth < depths[index] * (1 - 2e-4)) continue;
+          const offset = index * 4;
+          pixels[offset] = 38; pixels[offset + 1] = 56; pixels[offset + 2] = 96; pixels[offset + 3] = 255;
+        }
+      }
       ctx.putImageData(raster, 0, 0);
+      if (this.previous && this.showPrevious) {
+        // Previous model: dashed grey outline drawn over everything and never
+        // shaded, so it cannot be mistaken for the current CAD.
+        ctx.save();
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = "rgba(71, 85, 105, 0.7)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (const [start, end] of this.previous.edges) {
+          const a = project(this.previous.mesh.vertices[start]), b = project(this.previous.mesh.vertices[end]);
+          ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (this.showDimensions) this.drawDimensions(ctx, project);
       const origin = [31, height - 31];
       const axes = [["X", cy, -se * sy, "#bb8391"], ["Y", -sy, -se * cy, "#79a190"], ["Z", 0, ce, "#7898c8"]];
       ctx.font = "9px sans-serif";
@@ -3538,7 +3983,67 @@
     }
   }
 
+  MeshViewer.prototype.drawDimensions = function drawDimensions(ctx, project) {
+    const [x0, y0, z0] = this.mins, [x1, y1, z1] = this.maxs;
+    const pad = this.radius * 0.12;
+    const format = (value) => `${numberFormat.format(Math.round(value * 10) / 10)} mm`;
+    // In project(), a larger forward value (sin(yaw)·x + cos(yaw)·y) is closer to the
+    // viewer. Use the nearest box edges and push each line outward from the part.
+    const nearY = Math.cos(this.yaw) >= 0 ? y1 : y0, outY = nearY === y1 ? pad : -pad;
+    const nearX = Math.sin(this.yaw) >= 0 ? x1 : x0, outX = nearX === x1 ? pad : -pad, farX = nearX === x1 ? x0 : x1;
+    // Depth components of the X, Y and Z axes (see project()); an axis pointing
+    // almost straight at the viewer has no readable length on screen.
+    const ce = Math.cos(this.elevation);
+    const facing = [ce * Math.sin(this.yaw), ce * Math.cos(this.yaw), Math.sin(this.elevation)];
+    const lines = [
+      [[x0, nearY + outY, z0], [x1, nearY + outY, z0], x1 - x0, facing[0]],
+      [[nearX + outX, y0, z0], [nearX + outX, y1, z0], y1 - y0, facing[1]],
+      [[farX - outX, nearY + outY, z0], [farX - outX, nearY + outY, z1], z1 - z0, facing[2]],
+    ].filter((line) => Math.abs(line[3]) < 0.9);
+    ctx.save();
+    ctx.font = "600 11px Pretendard, 'Apple SD Gothic Neo', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const [start, end, length] of lines) {
+      const a = project(start), b = project(end);
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 24) continue;
+      ctx.strokeStyle = "#e0662f"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      for (const [point, direction] of [[a, 1], [b, -1]]) {
+        ctx.beginPath();
+        ctx.moveTo(point[0], point[1]);
+        ctx.lineTo(point[0] + direction * 6 * Math.cos(angle - 0.4), point[1] + direction * 6 * Math.sin(angle - 0.4));
+        ctx.moveTo(point[0], point[1]);
+        ctx.lineTo(point[0] + direction * 6 * Math.cos(angle + 0.4), point[1] + direction * 6 * Math.sin(angle + 0.4));
+        ctx.stroke();
+      }
+      const label = format(length), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const widthText = ctx.measureText(label).width + 10;
+      ctx.fillStyle = "#fffffff0"; ctx.strokeStyle = "#f2b79c"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(mid[0] - widthText / 2, mid[1] - 9, widthText, 18, 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#b5481b"; ctx.fillText(label, mid[0], mid[1] + 0.5);
+    }
+    ctx.restore();
+  };
+
+  $("journey-next-button").addEventListener("click", goToJourneyTarget);
+  document.querySelectorAll("[data-history-filter]").forEach((button) => button.addEventListener("click", () => setHistoryFilter(button.dataset.historyFilter)));
+  renderJourney();
+  $("download-links").addEventListener("click", (event) => {
+    // Remember only that this page offered the file and it was clicked; not that it was printed.
+    const link = event.target.closest("a");
+    if (link && state.job && /3MF/.test(link.textContent)) { state.downloadedJobId = state.job.id; renderJourney(); }
+  });
+  $("printability-nozzle").addEventListener("change", (event) => recheckPrintability(Number(event.target.value)));
+  $("printability-run").addEventListener("click", () => recheckPrintability(Number($("printability-nozzle").value)));
+  $("printability-use-printer").addEventListener("click", () => { const nozzle = printerReportedNozzle(); if (nozzle) recheckPrintability(nozzle); });
+
   const viewer = new MeshViewer($("model-canvas"));
+  document.querySelectorAll("[data-preview-view]").forEach((button) => button.addEventListener("click", () => viewer.setView(button.dataset.previewView)));
+  $("preview-dimensions").addEventListener("change", (event) => viewer.setOption("showDimensions", event.target.checked));
+  $("preview-overhangs").addEventListener("change", (event) => viewer.setOption("showOverhangs", event.target.checked));
+  $("preview-previous").addEventListener("change", (event) => viewer.setOption("showPrevious", event.target.checked));
   $("zoom-in").addEventListener("click", () => viewer.changeZoom(1.15));
   $("zoom-out").addEventListener("click", () => viewer.changeZoom(1 / 1.15));
   $("reset-view").addEventListener("click", () => viewer.reset());
@@ -3597,6 +4102,8 @@
     state.slicerSavedText = "";
     state.modelCleanSignature = null;
     viewer.clear();
+    viewer.forgetPrevious();  // a model from another storage is not this one's previous version
+    state.offersResult = null;
     renderProjectSource("generated-source", null);
     $("model-result").hidden = true;
     $("outcome-card").hidden = true;

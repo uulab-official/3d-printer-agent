@@ -82,7 +82,7 @@ class Simulator:
             'bed_temper': 54.8 if state == 'RUNNING' else 25.5, 'bed_target_temper': 55 if state == 'RUNNING' else 0,
             'print_error': 0x0300400C if state == 'FAILED' else 0,
             'hms': [{'attr': 0x07008000, 'code': 0x00020001}] if a.hms else [],
-            'nozzle_diameter': '0.4', 'nozzle_type': 'stainless_steel', 'wifi_signal': '-48dBm',
+            'nozzle_diameter': str(a.nozzle), 'nozzle_type': 'stainless_steel', 'wifi_signal': '-48dBm',
             'ams': {'ams': [{'id': '0', 'tray': [
                 {'id': '0', 'tray_type': 'PLA', 'tray_sub_brands': 'PLA Basic', 'tray_color': 'FFFFFFFF', 'tray_info_idx': 'GFA00',
                  'nozzle_temp_min': '190', 'nozzle_temp_max': '230'},
@@ -176,6 +176,7 @@ def main(argv=None):
     parser.add_argument('--cert', choices=('printer', 'other'), default='printer')
     parser.add_argument('--state', choices=('IDLE', 'RUNNING', 'PAUSE', 'FINISH', 'FAILED'), default='RUNNING')
     parser.add_argument('--duration', type=float, default=600, help='seconds for a synthetic RUNNING job to reach 100%%')
+    parser.add_argument('--nozzle', type=float, choices=(0.2, 0.4, 0.6, 0.8), default=0.4, help='reported nozzle diameter')
     parser.add_argument('--hms', action='store_true', help='include one synthetic HMS entry')
     parser.add_argument('--silent', action='store_true', help='accept and subscribe but never report')
     parser.add_argument('--announce', action='store_true', help='send SSDP NOTIFY to host:2021 every second')

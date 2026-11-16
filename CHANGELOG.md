@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.0 — 2026-11-16
+
+- Production-readiness review fixes: laptop/monitor stands are declined and stands for other objects (headphones, cameras) ask instead of becoming phone stands; counts after `x` (“2x3칸”, “6mm x 5개”) are not read as sizes; template words win over everyday item names; “등판 두께” is the wall. Printability reports only thicknesses the solid actually has (no constraint-only “outer wall” for the comb and frame), skips degenerate triangles, and a review failure no longer blocks a valid model. History and the journey no longer call a blocked or failed slice “prepared”; only a prepared project or a successful slice counts. The comparison's model-cost column follows the current model, the previous-model outline compares only the same template and is cleared with storage changes, and only 3MF links mark the preparation step as downloaded. New UI colours meet WCAG AA contrast. SECURITY.md documents the printer LAN boundary.
+
+- Material setup starts with the profile and the printer/material conditions; saving the workspace moves below them. A short guide explains exporting a preset bundle from Bambu Studio (menu names may vary by version). After a printer status read, the setup card offers to fill the printer model and nozzle diameter and to choose an AMS slot's filament identifier, filling empty fields only and asking the user to confirm against the installed hardware.
+
+- Purchase comparison prices the current model: the printability material item carries numeric `grams` (solid-PLA upper bound), the offers view states the current model's grams, and the comparison adds a material-cost upper-bound column per product (shipping-excluded values are labelled) with a note that real usage comes from the slicer. The model card's material line links to the comparison.
+
+- Request parsing for everyday phrases: two-number sizes (“30x20cm”, each number may carry its own unit) are no longer ignored silently; inner sizes are flagged as used for the outside; “케이블 3개” sets the slot count; a stand's bare “두께” is the device thickness; round photo sizes (“10cm 원형”, “지름 50mm”) set the pocket and grow an unspecified frame to fit. Pen holders, business-card holders, earphone trays, photo frames and tablet stands start from announced sizes; monitor and laptop stands are declined because they carry load. Default notes list Korean field names on one line.
+
+- History items carry a display-only `summary` (template's distinguishing dimensions, printability status, slice state) so same-title jobs can be told apart; the list shows those facts, a short outcome note and filters for success, failure and unrecorded results over the loaded pages, stating how many of the loaded records match.
+- A healthy connection with nothing to recover collapses to one line; problems keep the full explanation.
+- When the printer status view has read a finish or failure report, the result card shows it as a hint for the user's own record and never selects a result.
+
+- Journey bar on the model screen: four steps (dimensions, make and check, print preparation, recorded result) with each step's state and one next action that jumps to the right section. It is sticky on desktop and a 2×2 grid on mobile; it resets when inputs change. A printability warning is shown but no longer blocks the next action once the user moves on. Downloading the 3MF marks preparation as “downloaded”, never as printed.
+- “가장 쉬운 출력 방법” guide in the result card: download the 3MF, open it in Bambu Studio, slice and send there, then record the result here. Studio project preparation stays optional.
+
+- New `phone_stand` template: base, front lip and a back plate leaning 50–80° from horizontal, with a slot of device thickness plus clearance. Rule and LLM planning, Korean requests (“휴대폰 거치대”, “각도 70도”, “폰 두께”, “앞턱 높이”), degree-unit contextual edits and a desk starting project. Planning grows an unspecified depth so the back stays over the base and asks for the minimum when the user's depth is too short.
+- The three new fields appear in canonical parameters only for the phone stand (`schemas.LATER_FIELDS`), so existing jobs, starting-project recipes and contextual-edit hashes keep their exact eleven-field shape.
+- Preview: isometric/front/side/top view presets, orange bounding-box dimension lines (hidden for axes facing the viewer), depth-tested crease edges, camera-relative lighting and optional overhang highlighting. The preview stage no longer overflows its card, so the zoom toolbar is no longer clipped.
+- Printability review on every generated model, stored with the job result: thinnest template feature against a stated 0.4 mm nozzle / 0.42 mm line, flat bed contact ratio, height-to-footprint ratio, >45° overhang area, fit clearance (cable comb and frame only) and a solid-PLA material upper bound. Warnings name the parameter to change and offer a jump-to-field action.
+- Recheck a saved job for a 0.2/0.4/0.6/0.8 mm nozzle (`POST /api/jobs/{id}/printability`) without changing the stored job; offer the nozzle reported by the printer status view as an explicit one-click choice, and an explicit check for jobs saved before v0.10.
+- After regenerating with new dimensions, show the previous model as an optional, labelled dashed outline in the same view.
+- Advisory only: generation is never blocked and no slicer or physical result is implied. Installed-package qualification adds one printability check per template.
+
 ## 0.9.0 — 2026-11-16
 
 - Add a read-only **printer status** view: discover Bambu printers announcing on the local network (SSDP) and read one printer's reported state over LAN-mode MQTT/TLS with its access code.

@@ -306,7 +306,7 @@ class SimulatorTests(unittest.TestCase):
         parser_args = ['--port', str(port), '--access-code', CODE, '--hms', '--duration', '60']
         import argparse
         namespace = argparse.Namespace(host='127.0.0.1', port=port, serial='01S00SYNTH000001', access_code=CODE, model='C12',
-                                       cert='printer', state='RUNNING', duration=60.0, hms=True, silent=False, announce=False)
+                                       cert='printer', state='RUNNING', duration=60.0, nozzle=0.6, hms=True, silent=False, announce=False)
         simulator = module.Simulator(namespace)
         threading.Thread(target=simulator.serve, daemon=True).start()
         printer_lan._LAST_STATUS.clear()
@@ -321,4 +321,5 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(result['print']['state'], 'RUNNING')
         self.assertEqual(result['identity']['product_name'], 'Synthetic Bambu-like printer')
         self.assertEqual(result['print']['hms'][0]['hms_code'], '0700_8000_0002_0001')
+        self.assertEqual(result['print']['nozzle']['diameter_mm'], 0.6)
         self.assertEqual(sorted(simulator.requests[-2:]), ['get_version', 'pushall'])

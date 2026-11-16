@@ -29,6 +29,8 @@ RECIPES = [
     ('three-cable-rest', 'cables', 'cable_comb', 50, 18, 12, {'slots': 3}),
     ('five-cable-rest', 'cables', 'cable_comb', 80, 18, 12, {'slots': 5}),
     ('round-insert-frame', 'display', 'magnet_frame', 65, 65, 7, {}),
+    ('desk-phone-stand', 'organization', 'phone_stand', 70, 80, 90,
+     {'wall': 4, 'bottom': 4, 'lean_angle': 65, 'device_thickness': 12, 'lip_height': 12, 'fit_clearance': 1}),
 ]
 
 
@@ -44,13 +46,13 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(catalog['schema_version'], 1)
         self.assertEqual([p['id'] for p in catalog['purposes']],
                          ['all', 'organization', 'cables', 'display'])
-        self.assertEqual(len(catalog['projects']), 6)
+        self.assertEqual(len(catalog['projects']), 7)
         for card, (project_id, purpose, template, width, depth, height, extras) in zip(catalog['projects'], RECIPES):
             with self.subTest(project=project_id):
                 self.assertEqual((card['id'], card['purpose'], card['template']),
                                  (project_id, purpose, template))
                 expected = GeometryRequest(template=template, width=width, depth=depth,
-                                           height=height, wall=2, bottom=2, **extras)
+                                           height=height, **{'wall': 2, 'bottom': 2, **extras})
                 self.assertEqual(card['parameters'], expected.model_dump(mode='json'))
                 for name in ('title', 'description', 'reason', 'measurements', 'limits'):
                     self.assertTrue(card[name])
@@ -87,7 +89,7 @@ class DiscoveryTests(unittest.TestCase):
     def test_no_space_returns_all_in_order_without_claiming_a_fit(self):
         result = self.matches()
         self.assertEqual(result['schema_version'], 1)
-        self.assertEqual(result['total_in_purpose'], 6)
+        self.assertEqual(result['total_in_purpose'], 7)
         self.assertEqual(result['excluded_count'], 0)
         self.assertEqual(result['query'], {'purpose': 'all', 'available_space':
                                         {'width': None, 'depth': None, 'height': None}})
@@ -109,7 +111,7 @@ class DiscoveryTests(unittest.TestCase):
     def test_exact_boundary_prefers_original_orientation(self):
         result = self.matches(purpose='organization', available_space={'width': 90, 'depth': 60, 'height': 18})
         self.assertEqual(len(result['matches']), 1)
-        self.assertEqual(result['excluded_count'], 2)
+        self.assertEqual(result['excluded_count'], 3)
         fit = result['matches'][0]['space_fit']
         self.assertEqual((fit['status'], fit['orientation']), ('fits', 'original'))
         self.assertEqual(fit['checked_axes'], ['width', 'depth', 'height'])
@@ -143,13 +145,13 @@ class DiscoveryTests(unittest.TestCase):
             self.assertEqual(match['space_fit']['checked_axes'], ['height'])
         result = self.matches(purpose='organization', available_space={'width': 1000, 'depth': 1000, 'height': 17.99})
         self.assertEqual(result['matches'], [])
-        self.assertEqual(result['excluded_count'], 3)
+        self.assertEqual(result['excluded_count'], 4)
 
     def test_zero_matches_is_a_successful_comparison(self):
         result = self.matches(available_space={'width': 1})
         self.assertEqual(result['matches'], [])
-        self.assertEqual(result['total_in_purpose'], 6)
-        self.assertEqual(result['excluded_count'], 6)
+        self.assertEqual(result['total_in_purpose'], 7)
+        self.assertEqual(result['excluded_count'], 7)
         self.assertTrue(result['limits'])
 
     def test_space_rejects_coercion_nonfinite_zero_and_unknown_fields(self):

@@ -2,7 +2,7 @@
 
 ## Product goal
 
-Help people discover useful things to print, customize models, prepare settings for their exact printer and filament, and learn from recorded outcomes. The current release is a local web app with three fixed CAD templates. Read README.md and docs/STATUS.md before expanding its capabilities.
+Help people discover useful things to print, customize models, prepare settings for their exact printer and filament, and learn from recorded outcomes. The current release is a local web app with four fixed CAD templates. Fields added after the original eleven appear in canonical parameters only for templates that use them (`schemas.LATER_FIELDS`), so earlier jobs, recipes and review hashes keep their exact shape. Read README.md and docs/STATUS.md before expanding its capabilities.
 
 ## Architecture
 
@@ -10,6 +10,7 @@ Help people discover useful things to print, customize models, prepare settings 
 - `schemas.py`, `planner.py`: typed geometry parameters and rules/optional LLM planning.
 - `model_edits.py`, `geometry_rules.py`: contextual parameter edits, canonical review records and shared pure geometry constraints.
 - `geometry.py`: deterministic CadQuery solids, mesh preview, exports and reproduction source.
+- `printability.py`: advisory pure-geometry printability review (reference 0.4 mm nozzle) stored with each generated result; never blocks generation.
 - `print_volume.py`: bounded recorded build-volume comparison; generated CAD identity and preparation gates stay in the existing parser/adapter boundaries.
 - `profiles.py`: supplied evidence, exact scope matching and calibration review.
 - `preset_library.py`: explicit single-parent values, per-field evidence and original-baseline comparison.
