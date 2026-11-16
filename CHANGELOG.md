@@ -2,6 +2,8 @@
 
 ## 0.10.0 — 2026-11-16
 
+- Material setup starts with the profile and the printer/material conditions; saving the workspace moves below them. A short guide explains exporting a preset bundle from Bambu Studio (menu names may vary by version). After a printer status read, the setup card offers to fill the printer model and nozzle diameter and to choose an AMS slot's filament identifier, filling empty fields only and asking the user to confirm against the installed hardware.
+
 - Purchase comparison prices the current model: the printability material item carries numeric `grams` (solid-PLA upper bound), the offers view states the current model's grams, and the comparison adds a material-cost upper-bound column per product (shipping-excluded values are labelled) with a note that real usage comes from the slicer. The model card's material line links to the comparison.
 
 - Request parsing for everyday phrases: two-number sizes (“30x20cm”, each number may carry its own unit) are no longer ignored silently; inner sizes are flagged as used for the outside; “케이블 3개” sets the slot count; a stand's bare “두께” is the device thickness; round photo sizes (“10cm 원형”, “지름 50mm”) set the pocket and grow an unspecified frame to fit. Pen holders, business-card holders, earphone trays, photo frames and tablet stands start from announced sizes; monitor and laptop stands are declined because they carry load. Default notes list Korean field names on one line.

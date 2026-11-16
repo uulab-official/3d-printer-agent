@@ -272,6 +272,7 @@
     closeMenu();
     if (name === "history") loadHistory();
     if (name === "offers") renderOffersModelHint();
+    if (name === "profiles") renderSetupPrinterFill();
     if (name === "models") viewer.requestDraw();
     window.scrollTo({ top: 0, behavior: "auto" });
   }
@@ -3465,6 +3466,48 @@
     const note = $("offer-model-note");
     note.hidden = !material;
     if (material) note.textContent = `재료비 상한은 지금 만든 “${material.title}”을 속 100% PLA로 채웠을 때의 무게(약 ${numberFormat.format(material.grams)} g) 기준입니다. 실제 사용량은 속채움·지지대 설정에 따라 보통 더 적으니 슬라이서 결과를 보세요.`;
+  }
+
+  function renderSetupPrinterFill() {
+    // Offer values the printer reported, for empty fields only. They describe what the
+    // printer says is installed, so the user is asked to confirm them.
+    const area = $("setup-printer-fill");
+    const status = state.printerStatus;
+    if (status?.connection?.state !== "reporting") { area.hidden = true; return; }
+    const product = status.identity?.product_name;
+    const nozzle = status.print?.nozzle?.diameter_mm;
+    const slots = (status.print?.material_slots || []).filter((slot) => !slot.empty && slot.filament_id);
+    const actions = $("setup-printer-fill-actions");
+    actions.replaceChildren();
+    $("setup-printer-fill-status").textContent = "";
+    const fill = (id, value) => {
+      const input = $(id);
+      if (input.value.trim() || value === null || value === undefined) return false;
+      input.value = String(value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;
+    };
+    if (product || nozzle) {
+      const button = node("button", "button button-secondary", "프린터 모델·노즐 채우기");
+      button.type = "button";
+      button.addEventListener("click", () => {
+        const filled = [fill("setup-printer-model", product) && "프린터 모델", fill("setup-nozzle", nozzle) && "노즐 지름"].filter(Boolean);
+        $("setup-printer-fill-status").textContent = filled.length ? `프린터가 보고한 ${filled.join("·")}을 빈 칸에 채웠습니다. 실제 장착 상태와 같은지 확인하세요.` : "이미 입력한 값은 바꾸지 않았습니다.";
+      });
+      actions.append(button);
+    }
+    for (const slot of slots.slice(0, 5)) {
+      const where = slot.unit === "external" ? "외부 스풀" : `AMS ${Number(slot.unit) + 1}·슬롯 ${Number(slot.slot) + 1}`;
+      const button = node("button", "text-button", `${where}: ${slot.product || slot.material || "재료"} (${slot.filament_id}) 사용`);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        const done = fill("setup-material", slot.filament_id);
+        $("setup-printer-fill-status").textContent = done ? `${where}에 등록된 재료 식별자 ${slot.filament_id}를 채웠습니다. 프린터에 사용자가 설정한 값이므로 실제 스풀과 맞는지 확인하세요.` : "재료 식별자 칸에 이미 값이 있어 바꾸지 않았습니다.";
+      });
+      actions.append(button);
+    }
+    $("setup-printer-fill-text").textContent = `프린터 ${status.target?.serial || ""} 상태(${dateTime(status.observed_at)})에서 읽은 값을 비어 있는 칸에만 채울 수 있습니다.`;
+    area.hidden = !actions.children.length;
   }
 
   function renderOffersModelHint() {

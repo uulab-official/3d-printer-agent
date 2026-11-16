@@ -6,7 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
+names.push('renderPrintVolumeReview','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
 const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -1733,6 +1733,24 @@ const printVolumeReport = (overrides={}) => ({
     c.state.job=null;c.renderOffers({groups:{KRW:[{name:'A',grams:1000,price:20000,delivered_total:20000,price_per_kg:20000,product_price_per_kg:20000}]}});
     assert.doesNotMatch(c.$('offer-comparison').textContent,/재료비 상한/);assert.equal(c.$('offer-model-note').hidden,true);
     c.renderOffersModelHint();assert.equal(c.$('offers-model-hint').hidden,true);
+  });
+  await check('Printer-reported values fill only empty setup fields and each AMS slot is an explicit choice',()=>{
+    const c=fixture();const events=[];c.Event=class{constructor(type){this.type=type;}};
+    for(const id of ['setup-printer-model','setup-nozzle','setup-material']){c.$(id).value='';c.$(id).dispatchEvent=e=>events.push([id,e.type]);}
+    c.state.printerStatus={connection:{state:'access_rejected'}};c.renderSetupPrinterFill();assert.equal(c.$('setup-printer-fill').hidden,true);
+    c.state.printerStatus={connection:{state:'reporting'},observed_at:'2026-11-16T00:00:00Z',target:{serial:'01S00X'},identity:{product_name:'Bambu Lab P1S'},
+      print:{nozzle:{diameter_mm:0.4},material_slots:[{unit:0,slot:0,product:'PLA Basic',filament_id:'GFA00'},{unit:0,slot:1,empty:true},{unit:'external',slot:254,material:'PETG',filament_id:'GFG99'}]}};
+    c.$('setup-printer-model').value='내가 쓴 모델';
+    c.renderSetupPrinterFill();
+    assert.equal(c.$('setup-printer-fill').hidden,false);
+    const buttons=c.$('setup-printer-fill-actions').children;
+    assert.equal(buttons.length,3);assert.match(buttons[1].textContent,/AMS 1·슬롯 1: PLA Basic \(GFA00\)/);assert.match(buttons[2].textContent,/외부 스풀/);
+    buttons[0].listeners.click();
+    assert.equal(c.$('setup-printer-model').value,'내가 쓴 모델');assert.equal(c.$('setup-nozzle').value,'0.4');
+    assert.match(c.$('setup-printer-fill-status').textContent,/노즐 지름/);assert.doesNotMatch(c.$('setup-printer-fill-status').textContent,/프린터 모델·/);
+    buttons[1].listeners.click();assert.equal(c.$('setup-material').value,'GFA00');
+    buttons[2].listeners.click();assert.equal(c.$('setup-material').value,'GFA00');assert.match(c.$('setup-printer-fill-status').textContent,/바꾸지 않았습니다/);
+    assert.deepEqual(events.map(e=>e[0]),['setup-nozzle','setup-material']);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

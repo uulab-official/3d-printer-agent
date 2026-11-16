@@ -214,3 +214,17 @@ test('the material line links to purchase comparison, which prices the current m
   await expect(page.locator('#offer-model-note')).toContainText('슬라이서 결과');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
+
+test('material setup starts with the profile, explains how to get one and saves last', async ({ page }) => {
+  const menu = page.locator('#menu-toggle');
+  if (await menu.isVisible()) await menu.click();
+  await page.locator('.nav-item[data-view="profiles"]').click();
+  const headings = await page.locator('#view-profiles h2').allTextContents();
+  expect(headings.indexOf('필라멘트 프로필')).toBeLessThan(headings.indexOf('다음에도 이어서 편집하세요'));
+  expect(headings.indexOf('내 프린터와 재료')).toBeLessThan(headings.indexOf('다음에도 이어서 편집하세요'));
+  const howto = page.locator('.profile-howto');
+  await howto.locator('summary').click();
+  await expect(howto).toContainText('프리셋 묶음 내보내기');
+  await expect(page.locator('#setup-printer-fill')).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
