@@ -400,12 +400,13 @@
 
       <section id="view-offers" class="view" aria-labelledby="offers-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">COMPARE WHAT MATTERS</p><h1 id="offers-heading">같은 기준으로 비교하세요</h1><p class="page-description">찾아둔 상품의 가격과 중량, 배송비를 넣어 kg당 비용을 비교합니다.</p></div><span class="badge badge-neutral">실시간 가격 미연결</span></div>
+        <p id="offers-model-hint" class="notice notice-info" hidden></p>
         <section class="card" aria-labelledby="offer-input-heading">
           <div class="card-heading"><div><span class="step-label">사용자가 확인한 가격</span><h2 id="offer-input-heading">비교할 필라멘트</h2></div><label for="offer-currency" class="currency-control">통화<select id="offer-currency" form="offers-form"><option value="KRW">KRW · 원</option><option value="USD">USD · 달러</option><option value="EUR">EUR · 유로</option><option value="JPY">JPY · 엔</option><option value="CNY">CNY · 위안</option></select></label></div>
           <form id="offers-form"><div id="offer-rows" class="offer-rows"></div><div class="offer-actions"><p class="field-help">배송비를 모르면 비워 두세요. 무료 배송이 확인된 경우에만 0을 입력합니다.</p><button id="compare-offers" class="button button-primary" type="submit" disabled>배송비 포함 단가 비교 <span aria-hidden="true">→</span></button></div></form>
         </section>
         <div id="offers-feedback" class="notice" role="status" hidden></div>
-        <section id="offers-result" class="card" aria-labelledby="offers-result-heading" hidden><div class="card-heading"><div><span class="step-label">입력한 조건 기준</span><h2 id="offers-result-heading">비교 결과</h2></div><span class="badge badge-neutral">직접 입력한 가격</span></div><div id="offer-comparison"></div><p id="offer-notice" class="field-help"></p></section>
+        <section id="offers-result" class="card" aria-labelledby="offers-result-heading" hidden><div class="card-heading"><div><span class="step-label">입력한 조건 기준</span><h2 id="offers-result-heading">비교 결과</h2></div><span class="badge badge-neutral">직접 입력한 가격</span></div><div id="offer-comparison"></div><p id="offer-model-note" class="notice notice-info" hidden></p><p id="offer-notice" class="field-help"></p></section>
         <div class="plain-note"><strong>가격 다음에는 재료와 사용 조건을 확인하세요.</strong><p>동일 제품·색상·중량인지 살펴보세요. 세금, 쿠폰, 회원 조건, 재고와 장비 호환성은 이 계산에 포함하지 않습니다.</p></div>
       </section>
 

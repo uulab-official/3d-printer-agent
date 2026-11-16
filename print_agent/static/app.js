@@ -271,6 +271,7 @@
     }
     closeMenu();
     if (name === "history") loadHistory();
+    if (name === "offers") renderOffersModelHint();
     if (name === "models") viewer.requestDraw();
     window.scrollTo({ top: 0, behavior: "auto" });
   }
@@ -1170,6 +1171,12 @@
       body.append(head, node("p", "", item.detail));
       if (item.advice) body.append(node("p", "printability-advice", item.advice));
       const input = item.field ? $(`parameter-${item.field}`) : null;
+      if (item.id === "material" && Number.isFinite(item.grams)) {
+        const compare = node("button", "text-button", "구매 비교에서 재료비 보기 →");
+        compare.type = "button";
+        compare.addEventListener("click", () => changeView("offers"));
+        body.append(compare);
+      }
       if (input && item.status !== "pass") {
         const fix = node("button", "text-button", "이 치수 고치기 →");
         fix.type = "button";
@@ -3429,7 +3436,8 @@
       const table = node("table", "offer-result-table");
       const head = node("thead");
       const headings = node("tr");
-      ["상품", "중량", "상품 + 배송비", "배송비 포함 kg당 비용"].forEach((label) => { const th = node("th", "", label); th.scope = "col"; headings.append(th); });
+      const material = currentModelMaterial();
+      ["상품", "중량", "상품 + 배송비", "배송비 포함 kg당 비용", ...(material ? [`현재 모델 재료비 상한 · ${numberFormat.format(material.grams)} g`] : [])].forEach((label) => { const th = node("th", "", label); th.scope = "col"; headings.append(th); });
       head.append(headings);
       table.append(head);
       const body = node("tbody");
@@ -3440,6 +3448,12 @@
         if (offer.price_per_kg !== null && index === 0 && offers.filter((item) => item.price_per_kg !== null).length > 1) unit.append(node("small", "", "입력한 조건 중 최소 단가"));
         if (offer.price_per_kg === null) unit.append(node("small", "", `배송비 제외 ${money(offer.product_price_per_kg, currency)} / kg`));
         row.append(product, node("td", "", `${numberFormat.format(offer.grams)} g`), node("td", "", offer.delivered_total === null ? `${money(offer.price, currency)} + 미확인` : money(offer.delivered_total, currency)), unit);
+        if (material) {
+          const perKg = offer.price_per_kg ?? offer.product_price_per_kg;
+          const cost = node("td", "offer-model-cost", `${money(perKg * material.grams / 1000, currency)}`);
+          if (offer.price_per_kg === null) cost.append(node("small", "", "배송비 제외 금액"));
+          row.append(cost);
+        }
         body.append(row);
       });
       table.append(body);
@@ -3447,6 +3461,21 @@
       area.append(wrap);
     }
     $("offer-notice").textContent = result.notice || "사용자가 입력한 조건으로 계산했습니다. 실시간 가격은 확인하지 않았습니다.";
+    const material = currentModelMaterial();
+    const note = $("offer-model-note");
+    note.hidden = !material;
+    if (material) note.textContent = `재료비 상한은 지금 만든 “${material.title}”을 속 100% PLA로 채웠을 때의 무게(약 ${numberFormat.format(material.grams)} g) 기준입니다. 실제 사용량은 속채움·지지대 설정에 따라 보통 더 적으니 슬라이서 결과를 보세요.`;
+  }
+
+  function renderOffersModelHint() {
+    const material = currentModelMaterial();
+    $("offers-model-hint").hidden = !material;
+    if (material) $("offers-model-hint").textContent = `지금 만든 “${material.title}”은 속을 100% 채워도 PLA 약 ${numberFormat.format(material.grams)} g입니다. 상품을 넣고 비교하면 이 모델 하나의 재료비 상한도 함께 계산합니다.`;
+  }
+
+  function currentModelMaterial() {
+    const item = state.job?.result?.printability?.items?.find((entry) => entry.id === "material");
+    return item && Number.isFinite(item.grams) && item.grams > 0 ? { grams: item.grams, title: state.job.title || "현재 모델" } : null;
   }
 
   function dateTime(value) {

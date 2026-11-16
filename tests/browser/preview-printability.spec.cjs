@@ -185,11 +185,32 @@ test('everyday requests become announced plans that generate valid CAD', async (
   const frame = await generate(page, {});
   expect(frame.dimensions_mm).toEqual({ x: 113, y: 113, z: 7 });
   await page.locator('#request-text').fill('서랍 정리함 3칸, 서랍 안쪽이 30x20cm 높이 6cm');
+  const planned = page.waitForResponse(r => r.url().endsWith('/api/plan'));
   await page.locator('#plan-button').click();
+  await planned;
+  // Replacing a generated model asks first; wait for whichever appears.
   const confirm = page.locator('#model-confirm-replace');
+  await expect(confirm.or(feedback.filter({ hasText: '안쪽 치수' }))).toBeVisible();
   if (await confirm.isVisible()) await confirm.click();
   await expect(feedback).toContainText('안쪽 치수를 모델의 바깥 치수로 사용했습니다');
   await expect(page.locator('#parameter-width')).toHaveValue('300');
   await expect(page.locator('#parameter-depth')).toHaveValue('200');
   await expect(page.locator('#parameter-dividers')).toHaveValue('2');
+});
+
+test('the material line links to purchase comparison, which prices the current model', async ({ page }) => {
+  const result = await generate(page, { width: '120', depth: '80', height: '35', wall: '2' });
+  const grams = result.printability.items.find(item => item.id === 'material').grams;
+  expect(grams).toBeGreaterThan(0);
+  await page.locator('[data-check="material"]').getByRole('button', { name: '구매 비교에서 재료비 보기 →' }).click();
+  await expect(page.locator('#view-offers')).toBeVisible();
+  await expect(page.locator('#offers-model-hint')).toContainText(`약 ${grams} g`);
+  for (const [key, value] of Object.entries({ name: '테스트 PLA', price: '20000', grams: '1000', shipping: '0' })) {
+    await page.locator(`#offer-1-${key}`).fill(value);
+  }
+  await page.locator('#compare-offers').click();
+  await expect(page.locator('#offer-comparison th').last()).toContainText('현재 모델 재료비 상한');
+  await expect(page.locator('.offer-model-cost').first()).toContainText(`₩${Math.round(20 * grams).toLocaleString('ko-KR')}`);
+  await expect(page.locator('#offer-model-note')).toContainText('슬라이서 결과');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });

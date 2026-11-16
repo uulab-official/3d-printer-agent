@@ -149,6 +149,7 @@ def review_mesh(parameters, mesh, volume_mm3, nozzle_mm=REFERENCE_NOZZLE_MM):
     volume_cm3 = volume_mm3 / 1000
     estimate = _item('material', '재료 사용 상한', 'pass', f'약 {volume_cm3 * PLA_DENSITY_G_CM3:.0f} g',
                      f'속을 100% 채운 PLA({PLA_DENSITY_G_CM3} g/cm³) 기준 상한입니다. 실제 사용량은 슬라이서 결과를 보세요.')
+    estimate['grams'] = round(volume_cm3 * PLA_DENSITY_G_CM3, 1)
     items.append(estimate)
 
     worst = max((item['status'] for item in items), key=_STATUS_RANK.get)

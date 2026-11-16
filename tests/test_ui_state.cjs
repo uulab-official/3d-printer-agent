@@ -6,7 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
+names.push('renderPrintVolumeReview','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
 const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -1721,6 +1721,18 @@ const printVolumeReport = (overrides={}) => ({
     assert.equal(c.$('outcome-result').value,'not_tested');
     c.state.printerStatus.print.state='RUNNING';c.renderJourney();assert.equal(c.$('outcome-printer-hint').hidden,true);
     c.state.printerStatus.print.state='FAILED';c.state.job=null;c.renderJourney();assert.equal(c.$('outcome-printer-hint').hidden,true);
+  });
+  await check('Offer comparison adds the current model material-cost upper bound and labels shipping-excluded values',()=>{
+    const c=fixture();
+    c.state.job={id:'j',title:'칸막이 수납함 · 120 × 80 × 35 mm',result:{printability:{items:[{id:'material',grams:50,value:'약 50 g'}]}}};
+    c.renderOffersModelHint();assert.equal(c.$('offers-model-hint').hidden,false);assert.match(c.$('offers-model-hint').textContent,/약 50 g/);
+    c.renderOffers({groups:{KRW:[{name:'A',grams:1000,price:20000,delivered_total:20000,price_per_kg:20000,product_price_per_kg:20000},{name:'B',grams:1000,price:30000,delivered_total:null,price_per_kg:null,product_price_per_kg:30000}]}});
+    const text=c.$('offer-comparison').textContent;
+    assert.match(text,/현재 모델 재료비 상한 · 50 g/);assert.match(text,/₩1,000/);assert.match(text,/₩1,500/);assert.match(text,/배송비 제외 금액/);
+    assert.equal(c.$('offer-model-note').hidden,false);
+    c.state.job=null;c.renderOffers({groups:{KRW:[{name:'A',grams:1000,price:20000,delivered_total:20000,price_per_kg:20000,product_price_per_kg:20000}]}});
+    assert.doesNotMatch(c.$('offer-comparison').textContent,/재료비 상한/);assert.equal(c.$('offer-model-note').hidden,true);
+    c.renderOffersModelHint();assert.equal(c.$('offers-model-hint').hidden,true);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

@@ -44,6 +44,8 @@ class PrintabilityTests(unittest.TestCase):
         self.assertEqual(items['min_thickness']['status'], 'pass')
         self.assertEqual(result['basis']['nozzle_mm'], 0.4)
         self.assertIn('상한', items['material']['detail'])
+        self.assertEqual(round(items['material']['grams']), int(items['material']['value'].split()[1]))
+        self.assertGreater(items['material']['grams'], 0)
         self.assertNotIn('fit_clearance', items)
 
     def test_one_line_wall_warns_with_target_field(self):
