@@ -6,7 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview','renderPrintability');
+names.push('renderPrintVolumeReview','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability');
 const editNames = ['modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -30,7 +30,7 @@ function fixture() {
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
     $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa,
-    state:{offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
+    state:{printabilityRequest:0,printabilityPending:false,printabilityNozzle:0.4,printabilityShown:false,printerStatus:null,offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
     viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},workspaceDirty(){return false;},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
@@ -1646,6 +1646,35 @@ const printVolumeReport = (overrides={}) => ({
     const fixes=[];findElement(area,element=>{if(element.listeners?.click)fixes.push(element);return false;});
     assert.equal(fixes.length,1);fixes[0].listeners.click();assert.equal(focused,'wall');
     c.renderPrintability(undefined);assert.equal(c.$('printability-review').hidden,true);
+  });
+  await check('Nozzle recheck renders the new basis, ignores late results for another job and reverts on failure',async()=>{
+    const c=fixture();c.state.job={id:'job-a',result:{mesh:{vertices:[[0,0,0]],faces:[[0,0,0]]}}};c.$('printability-nozzle').value='0.4';
+    const review=(n,status)=>({status,basis:{nozzle_mm:n,note:`${n} mm`},items:[{id:'min_thickness',label:'가장 얇은 부분',status:status==='ok'?'pass':'warn',value:'1.2 mm',detail:'d',advice:null,field:null}]});
+    c.renderPrintability(review(0.4,'ok'));
+    let bodies=[];c.api=async(path,body)=>{bodies.push([path,plain(body)]);return review(0.8,'review');};
+    await c.recheckPrintability(0.8);
+    assert.deepEqual(bodies[0],['/api/jobs/job-a/printability',{nozzle_mm:0.8}]);
+    assert.equal(c.$('printability-nozzle').value,'0.8');assert.equal(c.$('printability-status').textContent,'확인할 점이 있어요');
+    let finish;c.api=()=>new Promise(done=>{finish=done;});
+    const pending=c.recheckPrintability(0.2);c.state.job={id:'job-b',result:{}};finish(review(0.2,'ok'));await pending;
+    assert.equal(c.$('printability-basis').textContent,'0.8 mm');
+    c.state.job={id:'job-a',result:{mesh:{}}};c.api=async()=>{throw new Error('서버 오류');};
+    await c.recheckPrintability(0.6);
+    assert.equal(c.$('printability-nozzle').value,'0.8');assert.match(c.$('printability-feedback').textContent,/서버 오류/);
+    assert.equal(c.state.printabilityPending,false);
+  });
+  await check('Printer-reported nozzle offers a recheck only when it differs, and old jobs get an explicit check',()=>{
+    const c=fixture();c.state.job={id:'job-a',result:{mesh:{vertices:[[0,0,0]]}}};
+    c.renderPrintability({status:'ok',basis:{nozzle_mm:0.4,note:''},items:[]});
+    assert.equal(c.$('printability-use-printer').hidden,true);
+    c.state.printerStatus={connection:{state:'reporting'},print:{nozzle:{diameter_mm:0.6}}};c.updatePrintabilityControls();
+    assert.equal(c.$('printability-use-printer').hidden,false);assert.match(c.$('printability-use-printer').textContent,/0.6 mm/);
+    c.state.printerStatus={connection:{state:'access_rejected'},print:null};c.updatePrintabilityControls();
+    assert.equal(c.$('printability-use-printer').hidden,true);
+    c.renderPrintability(undefined);
+    assert.equal(c.$('printability-review').hidden,false);assert.equal(c.$('printability-run').hidden,false);
+    assert.equal(c.$('printability-status').textContent,'아직 점검 안 함');
+    c.state.job={id:'job-b',result:{}};c.renderPrintability(undefined);assert.equal(c.$('printability-review').hidden,true);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

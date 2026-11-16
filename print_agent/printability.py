@@ -10,6 +10,7 @@ import math
 
 REFERENCE_NOZZLE_MM = 0.4
 REFERENCE_LINE_MM = 0.42
+SUPPORTED_NOZZLES_MM = (0.2, 0.4, 0.6, 0.8)
 PLA_DENSITY_G_CM3 = 1.24
 OVERHANG_LIMIT_DEG = 45.0
 _STATUS_RANK = {'pass': 0, 'warn': 1, 'fail': 2}
@@ -37,21 +38,26 @@ def _thin_features(p):
     return features
 
 
-def _wall_item(p):
+def line_width(nozzle_mm):
+    # Common default extrusion width is about 105% of the nozzle diameter.
+    return round(nozzle_mm * 1.05, 3)
+
+
+def _wall_item(p, line=REFERENCE_LINE_MM):
     features = _thin_features(p)
     field, name, thinnest = min(features, key=lambda feature: feature[2])
-    lines = thinnest / REFERENCE_LINE_MM
+    lines = thinnest / line
     value = f'{thinnest:.2f} mm ({name})'
-    if thinnest < REFERENCE_LINE_MM:
+    if thinnest < line:
         return _item('min_thickness', '가장 얇은 부분', 'fail', value,
-                     f'기준 압출 폭 {REFERENCE_LINE_MM} mm보다 얇아 이 부분이 출력되지 않을 수 있습니다.',
-                     f'{name} 두께를 {2 * REFERENCE_LINE_MM:.2f} mm 이상으로 늘리세요.', field)
+                     f'압출 폭 {line:.2f} mm보다 얇아 이 부분이 출력되지 않을 수 있습니다.',
+                     f'{name} 두께를 {2 * line:.2f} mm 이상으로 늘리세요.', field)
     if lines < 2:
         return _item('min_thickness', '가장 얇은 부분', 'warn', value,
                      f'압출 선 {lines:.1f}줄 두께라 약하거나 틈이 생길 수 있습니다.',
-                     f'{name} 두께를 {2 * REFERENCE_LINE_MM:.2f} mm 이상(2줄)으로 늘리면 더 튼튼합니다.', field)
+                     f'{name} 두께를 {2 * line:.2f} mm 이상(2줄)으로 늘리면 더 튼튼합니다.', field)
     return _item('min_thickness', '가장 얇은 부분', 'pass', value,
-                 f'기준 노즐로 약 {math.floor(lines)}줄 이상 출력되는 두께입니다.')
+                 f'이 노즐로 약 {math.floor(lines)}줄 이상 출력되는 두께입니다.')
 
 
 def _normal(a, b, c):
@@ -80,11 +86,22 @@ def _mesh_review(mesh, floor_z, footprint_area):
 
 
 def assess_printability(shape, parameters, mesh):
-    bounds = shape.BoundingBox()
-    footprint = bounds.xlen * bounds.ylen
-    contact, overhang = _mesh_review(mesh, bounds.zmin, footprint)
+    return review_mesh(parameters, mesh, shape.Volume())
+
+
+def review_mesh(parameters, mesh, volume_mm3, nozzle_mm=REFERENCE_NOZZLE_MM):
+    """Review from stored values only, so a saved job can be rechecked for another nozzle."""
+    if nozzle_mm not in SUPPORTED_NOZZLES_MM:
+        raise ValueError('점검 노즐은 0.2, 0.4, 0.6, 0.8 mm 중에서 고르세요.')
+    vertices = mesh['vertices']
+    mins = [min(point[axis] for point in vertices) for axis in range(3)]
+    maxs = [max(point[axis] for point in vertices) for axis in range(3)]
+    xlen, ylen, zlen = (maxs[axis] - mins[axis] for axis in range(3))
+    line = line_width(nozzle_mm)
+    footprint = xlen * ylen
+    contact, overhang = _mesh_review(mesh, mins[2], footprint)
     ratio = contact / footprint if footprint else 0
-    items = [_wall_item(parameters)]
+    items = [_wall_item(parameters, line)]
 
     if ratio >= 0.5:
         items.append(_item('bed_contact', '바닥 접촉면', 'pass', f'{contact / 100:.1f} cm² ({ratio:.0%})',
@@ -98,8 +115,8 @@ def assess_printability(shape, parameters, mesh):
                            '평평하게 베드에 닿는 면이 거의 없습니다.',
                            '모델을 눕히거나 평평한 바닥을 추가하세요.'))
 
-    short_side = min(bounds.xlen, bounds.ylen)
-    slenderness = bounds.zlen / short_side if short_side else math.inf
+    short_side = min(xlen, ylen)
+    slenderness = zlen / short_side if short_side else math.inf
     if slenderness > 3:
         items.append(_item('stability', '세운 비율', 'warn', f'높이/짧은 변 {slenderness:.1f}',
                            '가늘고 높아 출력 중 흔들리거나 넘어질 수 있습니다.',
@@ -127,7 +144,7 @@ def assess_printability(shape, parameters, mesh):
             items.append(_item('fit_clearance', '끼움 여유', 'pass', f'{clearance:.2f} mm',
                                '일반적인 시작 범위의 여유입니다. 실제 맞춤은 시험 출력으로 확인하세요.'))
 
-    volume_cm3 = shape.Volume() / 1000
+    volume_cm3 = volume_mm3 / 1000
     estimate = _item('material', '재료 사용 상한', 'pass', f'약 {volume_cm3 * PLA_DENSITY_G_CM3:.0f} g',
                      f'속을 100% 채운 PLA({PLA_DENSITY_G_CM3} g/cm³) 기준 상한입니다. 실제 사용량은 슬라이서 결과를 보세요.')
     items.append(estimate)
@@ -136,8 +153,8 @@ def assess_printability(shape, parameters, mesh):
     return {
         'schema_version': 1,
         'status': {'pass': 'ok', 'warn': 'review', 'fail': 'needs_change'}[worst],
-        'basis': {'nozzle_mm': REFERENCE_NOZZLE_MM, 'line_width_mm': REFERENCE_LINE_MM,
+        'basis': {'nozzle_mm': nozzle_mm, 'line_width_mm': line,
                   'overhang_limit_deg': OVERHANG_LIMIT_DEG,
-                  'note': '기준 0.4 mm 노즐로 형상만 검토한 조언입니다. 실제 장비·설정·슬라이싱 결과가 아닙니다.'},
+                  'note': f'{nozzle_mm} mm 노즐(압출 폭 {line:.2f} mm) 기준으로 형상만 검토한 조언입니다. 실제 장비·설정·슬라이싱 결과가 아닙니다.'},
         'items': items,
     }

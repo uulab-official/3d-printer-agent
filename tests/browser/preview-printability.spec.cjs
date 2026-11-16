@@ -68,3 +68,34 @@ test('preview view presets, toggles and toolbar stay inside the stage', async ({
   await page.mouse.up();
   await expect(page.locator('[data-preview-view][aria-pressed="true"]')).toHaveCount(0);
 });
+
+test('regenerating with new dimensions shows the previous model as a labelled, optional outline', async ({ page }) => {
+  await generate(page, { width: '120', depth: '80', height: '35' });
+  await expect(page.locator('#preview-previous-toggle')).toBeHidden();
+  await page.locator('#parameter-height').fill('55');
+  await generate(page, {});
+  const toggle = page.locator('#preview-previous-toggle');
+  await expect(toggle).toBeVisible();
+  await expect(page.locator('#preview-previous-label')).toHaveText('이전 120 × 80 × 35 mm');
+  const box = await toggle.boundingBox();
+  expect(box.height).toBeLessThan(34);
+  await page.locator('#preview-previous').uncheck();
+  await expect(page.locator('#preview-previous')).not.toBeChecked();
+  // Same dimensions again: no outline of an identical model.
+  await generate(page, {});
+  await expect(toggle).toBeHidden();
+});
+
+test('choosing another nozzle rechecks the saved job without regenerating it', async ({ page }) => {
+  const result = await generate(page, { width: '60', depth: '40', height: '20', wall: '1.2' });
+  expect(result.printability.basis.nozzle_mm).toBe(0.4);
+  const rechecked = page.waitForResponse(r => /\/api\/jobs\/[^/]+\/printability$/.test(r.url()));
+  await page.locator('#printability-nozzle').selectOption('0.8');
+  const response = await rechecked;
+  expect(response.status()).toBe(200);
+  await expect(page.locator('#printability-basis')).toContainText('0.8 mm 노즐');
+  await expect(page.locator('[data-check="min_thickness"]')).toHaveClass(/is-warn/);
+  await expect(page.locator('#printability-status')).toHaveText('확인할 점이 있어요');
+  await page.locator('#printability-nozzle').selectOption('0.4');
+  await expect(page.locator('#printability-status')).toHaveText('형상 점검 통과');
+});

@@ -145,8 +145,10 @@ main { max-width: 1460px; padding: 37px 42px 24px; margin: 0 auto; }
 .view-chip { min-width: 40px; height: 28px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: #5c6f8c; font-size: 12px; font-weight: 600; }
 .view-chip:hover { background: #edf3ff; color: var(--blue); }
 .view-chip[aria-pressed="true"] { background: var(--blue); color: #fff; }
-.preview-toggles { position: absolute; right: 14px; top: 14px; display: flex; gap: 6px; }
-.toggle-chip { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 9px; border: 1px solid #e0e6f0; border-radius: 8px; background: #fffffff2; color: #5c6f8c; font-size: 11px; font-weight: 600; cursor: pointer; }
+.preview-toggles { position: absolute; right: 14px; top: 14px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 55%; }
+.toggle-chip { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; height: 28px; padding: 0 9px; border: 1px solid #e0e6f0; border-radius: 8px; background: #fffffff2; color: #5c6f8c; font-size: 11px; font-weight: 600; cursor: pointer; }
+.toggle-previous { border-style: dashed; border-color: #8a96a8; color: #475569; }
+.toggle-chip[hidden] { display: none; }
 .toggle-chip input { margin: 0; accent-color: var(--blue); }
 .preview-stage:has(#model-canvas[hidden]) .preview-views, .preview-stage:has(#model-canvas[hidden]) .preview-toggles { display: none; }
 .preview-tools { position: absolute; right: 15px; bottom: 15px; display: flex; align-items: center; padding: 3px; border: 1px solid #e0e6f0; border-radius: 9px; background: #fffffff2; box-shadow: 0 4px 14px #233c6410; }
@@ -321,6 +323,10 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .printability { margin: 18px 0 6px; padding: 16px 16px 6px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe; }
 .printability-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .printability-heading h3 { margin: 0; font-size: 14px; }
+.printability-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; margin-top: 10px; }
+.printability-controls label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.printability-controls select { width: auto; min-width: 92px; }
+.printability-controls .text-button { font-size: 12px; padding: 0; }
 .printability-items { margin: 10px 0 0; padding: 0; list-style: none; }
 .printability-item { display: grid; grid-template-columns: 24px 1fr; gap: 10px; padding: 11px 0; border-top: 1px solid #edf1f6; }
 .printability-mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 800; color: #fff; background: #3aa572; }

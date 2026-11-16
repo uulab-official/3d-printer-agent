@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -1009,9 +1009,64 @@
   const printabilityStatus = { ok: ["형상 점검 통과", "success"], review: ["확인할 점이 있어요", "warning"], needs_change: ["수정을 권해요", "error"] };
   const printabilityMarks = { pass: "✓", warn: "!", fail: "×" };
 
+  function printerReportedNozzle() {
+    const value = state.printerStatus?.connection?.state === "reporting" ? state.printerStatus.print?.nozzle?.diameter_mm : null;
+    return [0.2, 0.4, 0.6, 0.8].includes(value) ? value : null;
+  }
+
+  function updatePrintabilityControls() {
+    const pending = Boolean(state.printabilityPending);
+    const reported = printerReportedNozzle();
+    const current = Number($("printability-nozzle").value);
+    $("printability-nozzle").disabled = pending || !state.job || !state.token;
+    $("printability-run").disabled = pending || !state.job || !state.token;
+    const usePrinter = $("printability-use-printer");
+    usePrinter.hidden = !reported || reported === current || !state.printabilityShown;
+    usePrinter.disabled = pending;
+    if (reported) usePrinter.textContent = `프린터가 보고한 ${reported} mm 노즐로 점검 →`;
+  }
+
+  async function recheckPrintability(nozzle) {
+    const job = state.job;
+    if (!job) return;
+    const request = ++state.printabilityRequest;
+    const previous = state.printabilityNozzle;
+    state.printabilityPending = true;
+    $("printability-nozzle").value = String(nozzle);
+    hideNotice("printability-feedback");
+    updatePrintabilityControls();
+    try {
+      const review = await api(`/api/jobs/${encodeURIComponent(job.id)}/printability`, { nozzle_mm: nozzle });
+      if (request !== state.printabilityRequest || state.job?.id !== job.id) return;
+      renderPrintability(review);
+    } catch (error) {
+      if (request !== state.printabilityRequest || state.job?.id !== job.id) return;
+      $("printability-nozzle").value = String(previous);
+      showNotice("printability-feedback", error.message, "error");
+    } finally {
+      if (request === state.printabilityRequest) { state.printabilityPending = false; updatePrintabilityControls(); }
+    }
+  }
+
   function renderPrintability(review) {
     const section = $("printability-review");
-    if (!review || !Array.isArray(review.items)) { section.hidden = true; return; }
+    if (!review || !Array.isArray(review.items)) {
+      // Jobs saved before v0.10 have no stored review; offer an explicit check.
+      state.printabilityShown = false;
+      state.printabilityNozzle = 0.4;
+      $("printability-nozzle").value = "0.4";
+      setBadge("printability-status", "아직 점검 안 함");
+      $("printability-basis").textContent = "이전 버전에서 만든 작업입니다. 노즐을 고르고 점검하면 저장된 형상으로 계산합니다.";
+      $("printability-items").replaceChildren();
+      $("printability-run").hidden = !state.job?.result?.mesh;
+      section.hidden = !state.job?.result?.mesh;
+      updatePrintabilityControls();
+      return;
+    }
+    state.printabilityShown = true;
+    state.printabilityNozzle = review.basis?.nozzle_mm ?? 0.4;
+    $("printability-nozzle").value = String(state.printabilityNozzle);
+    $("printability-run").hidden = true;
     const [label, tone] = printabilityStatus[review.status] || ["확인 필요", "neutral"];
     setBadge("printability-status", label, tone);
     $("printability-basis").textContent = review.basis?.note || "";
@@ -1036,6 +1091,7 @@
       return row;
     }));
     section.hidden = false;
+    updatePrintabilityControls();
   }
 
   function renderJob(job) {
@@ -1067,6 +1123,9 @@
       return element;
     }));
     $("model-warnings").replaceChildren(...(result.warnings || []).map((text) => node("p", "", text)));
+    state.printabilityRequest += 1;
+    state.printabilityPending = false;
+    hideNotice("printability-feedback");
     renderPrintability(result.printability);
     renderDownloads(job);
     viewer.setMesh(result.mesh, job.title);
@@ -3159,6 +3218,7 @@
         if (result.connection?.state === "reporting" && result.certificate?.sha256 && !state.printerPins[key]) state.printerPins[key] = result.certificate.sha256;
         state.printerStatus = result;
         renderPrinterStatus(result);
+        if (typeof updatePrintabilityControls === "function") updatePrintabilityControls();
       });
     } catch (error) {
       if (request === state.printerRequest) showNotice("printer-feedback", error.message, error.code === "printer_busy" ? "warning" : "error");
@@ -3414,6 +3474,9 @@
       this.zoom = 1;
       this.showDimensions = true;
       this.showOverhangs = true;
+      this.showPrevious = true;
+      this.previous = null;
+      this.lastMesh = null;
       this.pending = false;
       this.drag = null;
       new ResizeObserver(() => this.requestDraw()).observe($("preview-stage"));
@@ -3458,16 +3521,24 @@
         $("preview-tools").hidden = true;
         return;
       }
+      // Keep the model shown just before as a labelled outline for comparison.
+      const earlier = this.mesh || this.lastMesh;
+      const bounds = MeshViewer.bounds(mesh);
+      if (earlier && earlier !== mesh && JSON.stringify(MeshViewer.bounds(earlier)) !== JSON.stringify(bounds)) {
+        this.previous = { mesh: earlier, edges: MeshViewer.featureEdges(earlier), bounds: MeshViewer.bounds(earlier), title: this.title };
+      } else if (earlier !== mesh) {
+        this.previous = null;
+      }
       this.mesh = mesh;
-      const mins = [Infinity, Infinity, Infinity], maxs = [-Infinity, -Infinity, -Infinity];
-      mesh.vertices.forEach((point) => point.forEach((value, axis) => { mins[axis] = Math.min(mins[axis], value); maxs[axis] = Math.max(maxs[axis], value); }));
-      this.center = mins.map((value, axis) => (value + maxs[axis]) / 2);
-      this.extents = mins.map((value, axis) => maxs[axis] - value);
-      this.radius = Math.hypot(...this.extents) / 2 || 1;
+      this.title = title;
+      this.lastMesh = null;
+      const [mins, maxs] = bounds;
       this.floor = mins[2];
       this.mins = mins;
       this.maxs = maxs;
+      this.frame();
       this.featureEdges = MeshViewer.featureEdges(mesh);
+      MeshViewer.renderPreviousControl(this.previous);
       this.canvas.hidden = false;
       this.canvas.setAttribute("aria-label", `${title || "생성한 모델"}. 방향키로 회전, 더하기와 빼기로 확대, 0으로 기본 시점.`);
       $("preview-empty").hidden = true;
@@ -3475,7 +3546,33 @@
       this.reset();
     }
 
+    static bounds(mesh) {
+      const mins = [Infinity, Infinity, Infinity], maxs = [-Infinity, -Infinity, -Infinity];
+      mesh.vertices.forEach((point) => point.forEach((value, axis) => { mins[axis] = Math.min(mins[axis], value); maxs[axis] = Math.max(maxs[axis], value); }));
+      return [mins, maxs];
+    }
+
+    frame() {
+      // Frame the union of the current and (when shown) previous model.
+      const mins = [...this.mins], maxs = [...this.maxs];
+      if (this.previous && this.showPrevious) this.previous.bounds[0].forEach((value, axis) => {
+        mins[axis] = Math.min(mins[axis], value); maxs[axis] = Math.max(maxs[axis], this.previous.bounds[1][axis]);
+      });
+      this.center = mins.map((value, axis) => (value + maxs[axis]) / 2);
+      this.extents = mins.map((value, axis) => maxs[axis] - value);
+      this.radius = Math.hypot(...this.extents) / 2 || 1;
+    }
+
+    static renderPreviousControl(previous) {
+      $("preview-previous-toggle").hidden = !previous;
+      if (!previous) return;
+      const [mins, maxs] = previous.bounds;
+      const size = mins.map((value, axis) => numberFormat.format(Math.round((maxs[axis] - value) * 10) / 10)).join(" × ");
+      $("preview-previous-label").textContent = `이전 ${size} mm`;
+    }
+
     clear() {
+      if (this.mesh) this.lastMesh = this.mesh;
       this.mesh = null;
       this.drag = null;
       this.canvas.hidden = true;
@@ -3526,7 +3623,7 @@
       document.querySelectorAll("[data-preview-view]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.previewView === name)));
     }
 
-    setOption(name, value) { this[name] = value; this.requestDraw(); }
+    setOption(name, value) { this[name] = value; if (name === "showPrevious" && this.mesh) this.frame(); this.requestDraw(); }
     changeZoom(factor) { this.zoom = Math.max(0.45, Math.min(2.8, this.zoom * factor)); this.requestDraw(); }
     requestDraw() {
       if (this.pending) return;
@@ -3631,6 +3728,21 @@
         }
       }
       ctx.putImageData(raster, 0, 0);
+      if (this.previous && this.showPrevious) {
+        // Previous model: dashed grey outline drawn over everything and never
+        // shaded, so it cannot be mistaken for the current CAD.
+        ctx.save();
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = "rgba(71, 85, 105, 0.7)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (const [start, end] of this.previous.edges) {
+          const a = project(this.previous.mesh.vertices[start]), b = project(this.previous.mesh.vertices[end]);
+          ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
       if (this.showDimensions) this.drawDimensions(ctx, project);
       const origin = [31, height - 31];
       const axes = [["X", cy, -se * sy, "#bb8391"], ["Y", -sy, -se * cy, "#79a190"], ["Z", 0, ce, "#7898c8"]];
@@ -3687,10 +3799,15 @@
     ctx.restore();
   };
 
+  $("printability-nozzle").addEventListener("change", (event) => recheckPrintability(Number(event.target.value)));
+  $("printability-run").addEventListener("click", () => recheckPrintability(Number($("printability-nozzle").value)));
+  $("printability-use-printer").addEventListener("click", () => { const nozzle = printerReportedNozzle(); if (nozzle) recheckPrintability(nozzle); });
+
   const viewer = new MeshViewer($("model-canvas"));
   document.querySelectorAll("[data-preview-view]").forEach((button) => button.addEventListener("click", () => viewer.setView(button.dataset.previewView)));
   $("preview-dimensions").addEventListener("change", (event) => viewer.setOption("showDimensions", event.target.checked));
   $("preview-overhangs").addEventListener("change", (event) => viewer.setOption("showOverhangs", event.target.checked));
+  $("preview-previous").addEventListener("change", (event) => viewer.setOption("showPrevious", event.target.checked));
   $("zoom-in").addEventListener("click", () => viewer.changeZoom(1.15));
   $("zoom-out").addEventListener("click", () => viewer.changeZoom(1 / 1.15));
   $("reset-view").addEventListener("click", () => viewer.reset());

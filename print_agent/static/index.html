@@ -172,6 +172,7 @@
                 <div class="preview-toggles">
                   <label class="toggle-chip"><input id="preview-dimensions" type="checkbox" checked> 치수</label>
                   <label class="toggle-chip"><input id="preview-overhangs" type="checkbox" checked> 돌출부</label>
+                  <label id="preview-previous-toggle" class="toggle-chip toggle-previous" hidden><input id="preview-previous" type="checkbox" checked> <span id="preview-previous-label">이전 모델</span></label>
                 </div>
                 <div id="preview-tools" class="preview-tools" hidden>
                   <button id="zoom-out" class="icon-button" type="button" aria-label="모델 축소">−</button>
@@ -191,7 +192,13 @@
               <div id="model-checks" class="check-list"></div>
               <section id="printability-review" class="printability" aria-labelledby="printability-heading" hidden>
                 <div class="printability-heading"><h3 id="printability-heading">출력 전 형상 점검</h3><span id="printability-status" class="badge badge-neutral">확인 전</span></div>
+                <div class="printability-controls">
+                  <label for="printability-nozzle">점검할 노즐<select id="printability-nozzle"><option value="0.2">0.2 mm</option><option value="0.4" selected>0.4 mm</option><option value="0.6">0.6 mm</option><option value="0.8">0.8 mm</option></select></label>
+                  <button id="printability-use-printer" class="text-button" type="button" hidden></button>
+                  <button id="printability-run" class="button button-secondary" type="button" hidden>이 작업 점검하기</button>
+                </div>
                 <p id="printability-basis" class="field-help"></p>
+                <div id="printability-feedback" class="notice" role="status" hidden></div>
                 <ul id="printability-items" class="printability-items"></ul>
               </section>
               <div id="model-warnings" class="warning-list"></div>

@@ -4,6 +4,8 @@
 
 - Preview: isometric/front/side/top view presets, orange bounding-box dimension lines (hidden for axes facing the viewer), depth-tested crease edges, camera-relative lighting and optional overhang highlighting. The preview stage no longer overflows its card, so the zoom toolbar is no longer clipped.
 - Printability review on every generated model, stored with the job result: thinnest template feature against a stated 0.4 mm nozzle / 0.42 mm line, flat bed contact ratio, height-to-footprint ratio, >45° overhang area, fit clearance (cable comb and frame only) and a solid-PLA material upper bound. Warnings name the parameter to change and offer a jump-to-field action.
+- Recheck a saved job for a 0.2/0.4/0.6/0.8 mm nozzle (`POST /api/jobs/{id}/printability`) without changing the stored job; offer the nozzle reported by the printer status view as an explicit one-click choice, and an explicit check for jobs saved before v0.10.
+- After regenerating with new dimensions, show the previous model as an optional, labelled dashed outline in the same view.
 - Advisory only: generation is never blocked and no slicer or physical result is implied. Installed-package qualification adds one printability check per template.
 
 ## 0.9.0 — 2026-11-16

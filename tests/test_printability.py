@@ -19,6 +19,22 @@ def by_id(result):
 
 
 class PrintabilityTests(unittest.TestCase):
+    def test_nozzle_choice_changes_only_the_thickness_basis(self):
+        from print_agent.printability import review_mesh
+        with tempfile.TemporaryDirectory() as folder:
+            result = generate_model(GeometryRequest(template='tray', width=120, depth=80, height=35, wall=1.2,
+                                                    bottom=2, dividers=0), Path(folder))
+        base = result['printability']
+        self.assertEqual(base, review_mesh(result['parameters'], result['mesh'], result['volume_mm3']))
+        small = by_id(review_mesh(result['parameters'], result['mesh'], result['volume_mm3'], 0.2))
+        large = review_mesh(result['parameters'], result['mesh'], result['volume_mm3'], 0.8)
+        self.assertEqual(small['min_thickness']['status'], 'pass')
+        self.assertEqual(by_id(large)['min_thickness']['status'], 'warn')
+        self.assertEqual((large['basis']['nozzle_mm'], large['basis']['line_width_mm']), (0.8, 0.84))
+        self.assertEqual(by_id(large)['bed_contact'], by_id(base)['bed_contact'])
+        with self.assertRaises(ValueError):
+            review_mesh(result['parameters'], result['mesh'], result['volume_mm3'], 0.5)
+
     def test_default_tray_is_ok_with_full_bed_contact_and_no_overhang(self):
         result = review(template='tray', width=120, depth=80, height=35, wall=2, bottom=2, dividers=2)
         items = by_id(result)
