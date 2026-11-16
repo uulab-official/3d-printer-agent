@@ -2,6 +2,7 @@
 import asyncio
 from decimal import Decimal, localcontext
 import json
+import math
 import os
 import re
 from urllib.parse import urlsplit
@@ -9,6 +10,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import ValidationError
 
+from .geometry_rules import _validate_geometry
 from .schemas import GeometryRequest
 
 
@@ -16,8 +18,9 @@ DEFAULTS = {
     'tray': {'width':120,'depth':80,'height':35,'wall':2,'bottom':2,'dividers':0},
     'cable_comb': {'width':80,'depth':18,'height':12,'wall':2,'bottom':2,'slots':5,'cable_diameter':6,'fit_clearance':0.3},
     'magnet_frame': {'width':65,'depth':65,'height':7,'wall':2,'bottom':2,'inset_diameter':52,'inset_depth':2,'fit_clearance':0.3},
+    'phone_stand': {'width':70,'depth':80,'height':90,'wall':4,'bottom':4,'lean_angle':65,'device_thickness':12,'lip_height':12,'fit_clearance':1},
 }
-LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임'}
+LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대'}
 NUMBER = r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'
 UNIT = r'\s*(mm|cm|밀리미터|센티미터|밀리|센티)?'
 MAX_LLM_RESPONSE_BYTES = 100_000
@@ -58,15 +61,17 @@ def plan_from_text(text: str) -> dict:
         return routed
     lowered=text.lower()
     if any(word in lowered for word in ('뚜껑','경첩','방수','피규어','dragon','hinge','lid','손잡이','handle','나사','screw','곡면','둥근 모서리','rounded corner','구멍')):
-        return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임을 지원합니다. 지원 템플릿으로 바꿀까요?')
-    if any(word in lowered for word in ('프레임','마그넷','magnet','frame')):
+        return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임, 휴대폰 거치대를 지원합니다. 지원 템플릿으로 바꿀까요?')
+    if any(word in lowered for word in ('거치대','스탠드','stand','폰 받침','휴대폰 받침','태블릿')):
+        template='phone_stand'
+    elif any(word in lowered for word in ('프레임','마그넷','magnet','frame')):
         template='magnet_frame'
     elif any(word in lowered for word in ('케이블','cable','콤','comb')):
         template='cable_comb'
     elif any(word in lowered for word in ('수납','트레이','정리함','tray','box','상자')):
         template='tray'
     else:
-        return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
+        return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임, 휴대폰 거치대 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
     if template=='tray' and any(word in lowered for word in ('원형','동그란','원통','circular','round','cylinder')):
         return _question('수납함 템플릿은 직사각형입니다. 원형 수납함은 아직 지원하지 않습니다. 직사각형으로 만들까요?')
     if re.search(r'\b(inch|inches)\b|인치|\d\s*m\b',lowered):
@@ -81,6 +86,8 @@ def plan_from_text(text: str) -> dict:
         'inset_diameter':r'(?:인셋\s*지름|디스크\s*지름|마그넷\s*지름|inset\s*diameter)',
         'inset_depth':r'(?:인셋\s*깊이|포켓\s*깊이|inset\s*depth)',
         'fit_clearance':r'(?:여유|공차|clearance)',
+        'device_thickness':r'(?:기기|폰|휴대폰|스마트폰|케이스)\s*(?:포함\s*)?두께',
+        'lip_height':r'(?:앞\s*턱(?:\s*높이)?|턱\s*높이)',
     }
     occupied=[]
     # Parse the qualified dimensions first so "인셋 깊이" is not also overall depth.
@@ -106,6 +113,13 @@ def plan_from_text(text: str) -> dict:
             if field in explicit and values[field]!=converted:
                 return _question('표기한 가로·세로·높이가 서로 다릅니다. 사용할 치수 하나를 알려주세요.')
             values[field]=converted;explicit.add(field)
+    if template=='phone_stand':
+        angles={float(m.group(1)) for m in re.finditer(r'(?:각도|기울기)\s*(?:는|은|을|를|:|=)?\s*'+NUMBER+r'\s*(?:도|°)',lowered)}
+        angles|={float(m.group(1)) for m in re.finditer(NUMBER+r'\s*(?:도|°)\s*(?:각도|기울기|로\s*기울)',lowered)}
+        if len(angles)>1:
+            return _question('등판 각도를 하나로 알려주세요. 50~80도 사이를 지원합니다.')
+        if angles:
+            values['lean_angle']=_mm(next(iter(angles)),None);explicit.add('lean_angle')
     if template=='magnet_frame' and 'inset_diameter' not in explicit:
         match=re.search(NUMBER+r'\s*(mm|cm|밀리미터|센티미터)\s*(?:원형\s*)?(?:포토)?마그넷',lowered)
         if match:
@@ -135,15 +149,34 @@ def plan_from_text(text: str) -> dict:
         if template!='cable_comb' or ('slots' in explicit and values['slots']!=count):
             return _question('케이블 받침에 만들 홈 개수를 하나로 알려주세요.')
         values['slots']=count;explicit.add('slots')
+    if template=='phone_stand' and not 50<=values['lean_angle']<=80:
+        return _question('등판 각도는 바닥에서 50~80도 사이를 지원합니다. 사용할 각도를 알려주세요.')
     try:
         parameters=GeometryRequest(**values).model_dump()
     except ValidationError:
         return _question('치수가 지원 범위를 벗어났습니다. 가로·세로 10~500 mm, 높이 2~300 mm, 양수 두께를 사용해주세요.')
+    adjusted=[]
+    if template=='phone_stand' and 'depth' not in explicit:
+        # Blockout rule: a default depth may grow so the leaning back stays over the
+        # base. A depth the user wrote is never changed; generation reports it instead.
+        lean=math.radians(90-parameters['lean_angle'])
+        reach=(parameters['wall']+parameters['device_thickness']+parameters['fit_clearance']
+               +(parameters['height']-parameters['bottom'])*math.tan(lean)+parameters['wall']/math.cos(lean))
+        if reach>parameters['depth']:
+            parameters['depth']=float(math.ceil(reach)+2)
+            if parameters['depth']>500:
+                return _question('높이에 비해 등판이 길어 바닥 깊이가 500 mm를 넘습니다. 높이를 줄이거나 각도를 키워 주세요.')
+            explicit.add('depth')
+            adjusted.append(f'등판이 바닥 안에 오도록 세로(깊이)를 {parameters["depth"]:g} mm로 늘렸습니다.')
+    try:
+        _validate_geometry(parameters)
+    except ValueError as exc:
+        return _question(str(exc))
     defaults={key:value for key,value in DEFAULTS[template].items() if key not in explicit}
     return {
         'status':'ready','engine':'template_rules','message':f'{LABELS[template]}의 제작안을 준비했습니다. 입력하지 않은 치수는 표시된 기본값을 사용합니다.',
         'parameters':parameters,'questions':[],
-        'assumptions':[f'기본값: {key} = {value}'+(' mm' if key not in ('slots','dividers') else '') for key,value in defaults.items()],
+        'assumptions':adjusted+[f'기본값: {key} = {value}'+(' mm' if key not in ('slots','dividers','lean_angle') else '°' if key=='lean_angle' else '') for key,value in defaults.items()],
         'capability':'supported_template_only',
     }
 
@@ -201,7 +234,7 @@ async def plan_with_llm(text: str) -> dict:
     system=(
         'You plan parameterized 3D-printing models. Return only a JSON object with parameters, explanation in Korean, and questions (array). '
         'Never return code, commands, temperatures, prices or claims of printing success. '
-        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim). '
+        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim), phone_stand (base, front lip and back plate leaning at lean_angle degrees from horizontal; device_thickness plus fit_clearance sets the slot; no tipping or charging-port guarantee). '
         'All dimensions in mm; convert units explicitly. If the user requests unsupported objects, moving joints, load/safety guarantees, lids or unsupported edits, ask a clarification in questions and do not generate parameters. '
         'For N tray compartments use dividers=N-1. fit_clearance adds to diameter. Missing dimensions must be described as assumptions in explanation. '
         'Allowed parameter schema: '+json.dumps(GeometryRequest.model_json_schema(),ensure_ascii=False)

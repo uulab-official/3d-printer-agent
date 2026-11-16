@@ -369,6 +369,8 @@ def qualify(args, report):
               'project_selection': {'id': selected['id'], 'recipe_sha256': selected['recipe_sha256']}}, (92, 60, 18)),
             ({'template': 'cable_comb', 'width': 80, 'depth': 18, 'height': 12, 'slots': 5}, (80, 18, 12)),
             ({'template': 'magnet_frame', 'width': 65, 'depth': 65, 'height': 7}, (65, 65, 7)),
+            ({'template': 'phone_stand', 'width': 70, 'depth': 80, 'height': 90, 'wall': 4, 'bottom': 4,
+              'lean_angle': 65, 'device_thickness': 12, 'lip_height': 12, 'fit_clearance': 1}, (70, 80, 90)),
         ]
         models = []
         for payload, dimensions in requests:
@@ -664,7 +666,8 @@ def qualify(args, report):
         servers.append(restarted)
         refreshed = restarted.wait_ready()
         recovery = refreshed['storage']['recovery']
-        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 5
+        # The phone stand model adds one completed job to the earlier five.
+        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 6
               and recovery['interrupted'] == 1 and recovery['unreadable'] == 0, json.dumps(recovery))
         check('restart_rotates_session', refreshed['session_token'] != token)
         old_session = get_json(restarted, '/api/discovery', method='POST', payload={}, token=token, expected=403)
@@ -719,7 +722,7 @@ def qualify(args, report):
             cursor = page['next_cursor']
             if cursor is None:
                 break
-        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 5
+        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 6
               and set(paged_ids) == {model['id'] for model in models} | {interrupted_id, contextual_job['id']})
 
         def backup_command(name, arguments, expected_exit=0):
@@ -775,7 +778,7 @@ def qualify(args, report):
             restored_model = get_json(restored_server, '/api/jobs/' + model['id'])
             code, content, _ = request(restored_server.base, restored_model['artifacts']['three_mf'])
             verified_downloads.append(code == 200 and sha256(content) == model['artifacts']['three_mf']['sha256'])
-        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == 3)
+        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == len(models) == 4)
         restored_source = get_json(restored_server, '/api/studio-projects/' + imported['source_id'])
         restored_project = get_json(restored_server, '/api/jobs/' + models[1]['id'])
         source_code, restored_source_bytes, _ = request(restored_server.base, imported['archive_url'])

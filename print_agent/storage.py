@@ -214,7 +214,7 @@ class JobStore:
                 raise ValueError('Record identity or fields differ')
             if (not _valid_timestamp(job['created_at']) or not isinstance(job['title'], str)
                     or job['status'] not in _JOB_STATUSES
-                    or job['template'] not in (None, 'tray', 'cable_comb', 'magnet_frame')
+                    or job['template'] not in (None, 'tray', 'cable_comb', 'magnet_frame', 'phone_stand')
                     or not isinstance(job['events'], list)
                     or any(not isinstance(event, dict) or not isinstance(event.get('type'), str) for event in job['events'])
                     or not isinstance(job['_files'], dict) or not isinstance(job['artifacts'], dict)
@@ -452,7 +452,7 @@ class JobStore:
             job['bundle_url'] = f'/api/jobs/{job_id}/bundle'
             job['result'] = copy.deepcopy(result)
             job['template'] = result['template']
-            title = {'tray': '칸막이 수납함', 'cable_comb': '열린 케이블 받침', 'magnet_frame': '원형 인셋 프레임'}[result['template']]
+            title = {'tray': '칸막이 수납함', 'cable_comb': '열린 케이블 받침', 'magnet_frame': '원형 인셋 프레임', 'phone_stand': '휴대폰 거치대'}[result['template']]
             size = result['dimensions_mm']
             job['title'] = f"{title} · {size['x']:g} × {size['y']:g} × {size['z']:g} mm"
             job['status'] = 'geometry_validated'

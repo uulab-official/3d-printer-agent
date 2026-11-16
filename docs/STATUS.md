@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.10 improves the model preview (view presets, dimension lines, crease edges, overhang highlighting) and adds an advisory [printability review](PRINTABILITY.md) to every generated model, measured against a stated 0.4 mm reference nozzle and linked to the parameter to change. It is not a slicer or physical result. Not yet released.
+Version 0.10 adds a fourth template, a phone stand with a leaning back plate (50–80°), a device-thickness slot and a front lip; planning grows an unspecified depth so the back stays over the base. It also improves the model preview (view presets, dimension lines, crease edges, overhang highlighting) and adds an advisory [printability review](PRINTABILITY.md) to every generated model, measured against a stated 0.4 mm reference nozzle and linked to the parameter to change. It is not a slicer or physical result. Not yet released.
 
 Version 0.9 adds a [read-only printer status view](PRINTER_STATUS.md). It listens for Bambu SSDP announcements and reads one printer's LAN-mode MQTT/TLS report with a user-entered access code. Connection stages, the device certificate fingerprint and printer-reported state stay separate; only fixed `pushall`/`get_version` requests are sent, targets are limited to private IP literals, and access codes are never stored or returned. Fixture tests use a loopback fake broker; no physical printer has been qualified yet. Not yet released: CI, installed qualification and promotion for v0.9.0 are pending.
 
@@ -215,7 +215,7 @@ Source authenticity checks, Studio default/include/variant resolution, MakerWorl
 Development priorities set on 2026-11-16. Each item lands as its own verified release; a later stage is never claimed from evidence of an earlier one.
 
 1. **Real Bambu printer integration:** v0.9 implements read-only identification, connection state and reported print status. Next: live qualification on one physical printer/firmware, an optional saved printer list without stored access codes, and linking a reported job state to a stored CAD/slice job (still separate from measured outcomes).
-2. **Natural-language CAD beyond three templates:** typed, validated new geometry families and edits; no LLM-generated code execution.
+2. **Natural-language CAD beyond the fixed templates** (v0.10 adds the phone stand as the fourth): typed, validated new geometry families and edits; no LLM-generated code execution.
 3. **Filament automation:** check profile compatibility across printer, nozzle and material (including AMS-reported slots as unverified input), then resolve full preset inheritance and show unknown/conflicting values.
 4. **Print failure recovery:** classify user-reported and printer-reported (HMS/error code) failures, keep setting-change history, and prepare a re-print with only the affected settings rechecked.
 5. **Operational completeness:** physical-device tests, install/update/recovery qualification on each desktop platform, and recorded native/printer evidence per version.

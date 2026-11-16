@@ -125,7 +125,8 @@ def review_model_edit(selection: dict) -> dict:
         proposed[field] = value
     parameters = normalize_parameters(proposed)
     changes = [{'field':field, 'before':base[field], 'after':parameters[field]}
-               for field in GeometryRequest.model_fields if base[field] != parameters[field]]
+               for field in GeometryRequest.model_fields
+               if field in parameters and base[field] != parameters[field]]
     if not changes:
         raise ValueError('실제로 달라지는 치수가 없습니다.')
     hashed = {'schema_version':1, 'selection':selection, 'base_sha256':_hash(base),
@@ -169,9 +170,13 @@ _ALIASES = {
     'inset_diameter':r'(?:인셋|디스크|마그넷)\s*지름|inset\s*diameter',
     'inset_depth':r'(?:인셋|포켓)\s*깊이|inset\s*depth',
     'fit_clearance':r'여유|공차|clearance', 'dividers':r'칸막이|dividers?', 'slots':r'슬롯|홈|slots?',
+    'lean_angle':r'(?:등판\s*)?(?:각도|기울기)|lean\s*angle',
+    'device_thickness':r'(?:기기|폰|휴대폰|스마트폰|케이스)\s*(?:포함\s*)?두께|device\s*thickness',
+    'lip_height':r'앞\s*턱(?:\s*높이)?|턱\s*높이|lip\s*height',
 }
+_ANGLES = {'lean_angle'}
 _NUMBER = r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)'
-_UNIT = r'mm|cm|밀리미터|센티미터|밀리|센티'
+_UNIT = r'mm|cm|밀리미터|센티미터|밀리|센티|도|°'
 _ACTION = r'늘려(?:줘|주세요)?|늘려|증가(?:시켜)?(?:줘|주세요)?|줄여(?:줘|주세요)?|감소(?:시켜)?(?:줘|주세요)?|더해(?:줘|주세요)?|빼(?:줘|주세요)?'
 _TAIL = r'(?:(?:으)?로\s*)?(?:바꿔(?:줘|주세요)?|변경해(?:줘|주세요)?|설정해(?:줘|주세요)?|해(?:줘|주세요)?)?'
 
@@ -189,9 +194,13 @@ def _rule_operations(text, template):
             if unit or match.group('action') or value != value.to_integral_value():
                 raise ValueError('개수는 절대 정수로 지정하세요.')
             value = int(value)
+        elif field in _ANGLES:
+            if match.group('count_unit') or (unit and unit not in ('도', '°')):
+                raise ValueError('각도는 도(°) 단위로 지정하세요.')
+            value = float(value)
         else:
-            if match.group('count_unit'):
-                raise ValueError('치수에 개수 단위를 사용할 수 없습니다.')
+            if match.group('count_unit') or unit in ('도', '°'):
+                raise ValueError('길이에는 mm 또는 cm 단위를 사용하세요.')
             if unit and unit.lower() in ('cm','센티미터','센티'):
                 value *= 10
             value = float(value)

@@ -16,7 +16,12 @@
     inset_diameter: { label: "원판 지름", min: 5, max: 450, step: 0.1 },
     inset_depth: { label: "포켓 깊이", min: 0.5, max: 30, step: 0.1 },
     fit_clearance: { label: "지름 여유", min: 0, max: 3, step: 0.05 },
+    lean_angle: { label: "등판 각도", min: 50, max: 80, step: 1, unit: "°" },
+    device_thickness: { label: "기기 두께(케이스 포함)", min: 4, max: 30, step: 0.1 },
+    lip_height: { label: "앞턱 높이", min: 3, max: 60, step: 0.1 },
   };
+  // Same field, different meaning per template.
+  const templateFieldLabels = { phone_stand: { fit_clearance: "홈 여유", wall: "등판·앞턱 두께" } };
   const fieldNames = {
     ...Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.label])),
     printer_model: "프린터 모델", printer_preset: "프린터 프리셋", nozzle_diameter: "노즐 지름",
@@ -539,9 +544,12 @@
 
   function validateEditParameters(parameters) {
     const defaults = { width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
-    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"] };
-    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== 12 || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
-    for (const [key, neutral] of Object.entries(defaults)) {
+    // Fields added later appear only in templates that use them (see schemas.LATER_FIELDS).
+    const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 } };
+    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"] };
+    const expected = { ...defaults, ...(laterFields[parameters?.template] || {}) };
+    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== Object.keys(expected).length + 1 || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
+    for (const [key, neutral] of Object.entries(expected)) {
       const value = parameters[key];
       if (!Object.hasOwn(parameters, key) || typeof value !== "number" || !Number.isFinite(value) || ((key === "dividers" || key === "slots") && !Number.isSafeInteger(value)) || (!applicable[parameters.template].includes(key) && value !== neutral)) throw new Error("수정 제안의 치수 응답이 올바르지 않습니다.");
       const definition = fields[key];
@@ -550,8 +558,15 @@
     return applicable[parameters.template];
   }
 
+  function parameterKeys(template) {
+    // The eleven original fields for every template, plus later fields only where used.
+    const later = { phone_stand: ["lean_angle", "device_thickness", "lip_height"] };
+    return ["template", "width", "depth", "height", "wall", "bottom", "dividers", "slots", "cable_diameter", "inset_diameter", "inset_depth", "fit_clearance", ...(later[template] || [])];
+  }
+
   function currentEditParameters() {
     const parameters = { template: state.template, width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
+    if (state.template === "phone_stand") Object.assign(parameters, { lean_angle: 65, device_thickness: 12, lip_height: 12 });
     const template = state.templates.find(item => item.id === state.template);
     if (!template) throw new Error("수정할 템플릿을 먼저 선택해 주세요.");
     for (const key of template.editable_fields) {
@@ -581,7 +596,7 @@
     if (!exact(review, ["schema_version", "selection", "base_sha256", "parameters", "parameters_sha256", "changes", "review_sha256"]) || review.schema_version !== 1 || !hash(review.base_sha256) || !hash(review.parameters_sha256) || !hash(review.review_sha256) || !exact(selection, ["schema_version", "request_text", "base_parameters", "operations", "parent"]) || selection.schema_version !== 1 || selection.request_text !== context.text) fail();
     let editable;
     try { editable = validateEditParameters(review.parameters); validateEditParameters(selection.base_parameters); } catch { fail(); }
-    const keys = ["template", "width", "depth", "height", "wall", "bottom", "dividers", "slots", "cable_diameter", "inset_diameter", "inset_depth", "fit_clearance"];
+    const keys = parameterKeys(context.base.template);
     if (review.parameters.template !== context.base.template || keys.some(key => selection.base_parameters[key] !== context.base[key])) fail();
     if (context.parent) {
       const parent = selection.parent;
@@ -616,7 +631,7 @@
     $("model-edit-cancel").disabled = busy;
     $("model-edit-changes").replaceChildren();
     if (candidate) {
-      for (const change of candidate.review.changes) $("model-edit-changes").append(node("li", "", `${fieldNames[change.field] || change.field}: ${change.before} → ${change.after} ${["dividers", "slots"].includes(change.field) ? "개" : "mm"}`));
+      for (const change of candidate.review.changes) $("model-edit-changes").append(node("li", "", `${fieldNames[change.field] || change.field}: ${change.before} → ${change.after} ${fields[change.field]?.unit || "mm"}`));
     }
     $("model-edit-selected").hidden = !state.modelEditApplied;
     $("model-edit-selected").textContent = state.modelEditApplied ? `적용한 최신 수정: ${state.modelEditApplied.request_text} · 다음 생성에 기록됩니다. 치수를 직접 바꾸면 이 수정 선택은 해제됩니다.` : "";
@@ -878,7 +893,8 @@
       const definition = fields[key];
       if (!definition) continue;
       const container = node("div", "parameter-field");
-      const label = node("label", "", `${definition.label} · ${definition.unit || "mm"}`);
+      const labelText = templateFieldLabels[template.id]?.[key] || definition.label;
+      const label = node("label", "", `${labelText} · ${definition.unit || "mm"}`);
       const input = node("input");
       input.id = `parameter-${key}`;
       input.name = key;
@@ -3524,7 +3540,7 @@
       // Keep the model shown just before as a labelled outline for comparison.
       const earlier = this.mesh || this.lastMesh;
       const bounds = MeshViewer.bounds(mesh);
-      if (earlier && earlier !== mesh && JSON.stringify(MeshViewer.bounds(earlier)) !== JSON.stringify(bounds)) {
+      if (earlier && earlier !== mesh && MeshViewer.signature(earlier) !== MeshViewer.signature(mesh)) {
         this.previous = { mesh: earlier, edges: MeshViewer.featureEdges(earlier), bounds: MeshViewer.bounds(earlier), title: this.title };
       } else if (earlier !== mesh) {
         this.previous = null;
@@ -3538,12 +3554,20 @@
       this.maxs = maxs;
       this.frame();
       this.featureEdges = MeshViewer.featureEdges(mesh);
-      MeshViewer.renderPreviousControl(this.previous);
+      MeshViewer.renderPreviousControl(this.previous, bounds);
       this.canvas.hidden = false;
       this.canvas.setAttribute("aria-label", `${title || "생성한 모델"}. 방향키로 회전, 더하기와 빼기로 확대, 0으로 기본 시점.`);
       $("preview-empty").hidden = true;
       $("preview-tools").hidden = false;
       this.reset();
+    }
+
+    static signature(mesh) {
+      // Same-size models can still differ (for example a changed angle), so
+      // compare vertex count and per-axis coordinate sums, not only the box.
+      const sums = [0, 0, 0];
+      mesh.vertices.forEach((point) => point.forEach((value, axis) => { sums[axis] += value; }));
+      return JSON.stringify([mesh.vertices.length, mesh.faces.length, ...sums.map((value) => Math.round(value * 1000))]);
     }
 
     static bounds(mesh) {
@@ -3563,12 +3587,12 @@
       this.radius = Math.hypot(...this.extents) / 2 || 1;
     }
 
-    static renderPreviousControl(previous) {
+    static renderPreviousControl(previous, currentBounds) {
       $("preview-previous-toggle").hidden = !previous;
       if (!previous) return;
-      const [mins, maxs] = previous.bounds;
-      const size = mins.map((value, axis) => numberFormat.format(Math.round((maxs[axis] - value) * 10) / 10)).join(" × ");
-      $("preview-previous-label").textContent = `이전 ${size} mm`;
+      const size = ([mins, maxs]) => mins.map((value, axis) => numberFormat.format(Math.round((maxs[axis] - value) * 10) / 10)).join(" × ");
+      const before = size(previous.bounds);
+      $("preview-previous-label").textContent = currentBounds && before === size(currentBounds) ? "이전 모델 · 같은 크기" : `이전 ${before} mm`;
     }
 
     clear() {

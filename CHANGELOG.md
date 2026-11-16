@@ -2,6 +2,8 @@
 
 ## 0.10.0 — 2026-11-16
 
+- New `phone_stand` template: base, front lip and a back plate leaning 50–80° from horizontal, with a slot of device thickness plus clearance. Rule and LLM planning, Korean requests (“휴대폰 거치대”, “각도 70도”, “폰 두께”, “앞턱 높이”), degree-unit contextual edits and a desk starting project. Planning grows an unspecified depth so the back stays over the base and asks for the minimum when the user's depth is too short.
+- The three new fields appear in canonical parameters only for the phone stand (`schemas.LATER_FIELDS`), so existing jobs, starting-project recipes and contextual-edit hashes keep their exact eleven-field shape.
 - Preview: isometric/front/side/top view presets, orange bounding-box dimension lines (hidden for axes facing the viewer), depth-tested crease edges, camera-relative lighting and optional overhang highlighting. The preview stage no longer overflows its card, so the zoom toolbar is no longer clipped.
 - Printability review on every generated model, stored with the job result: thinnest template feature against a stated 0.4 mm nozzle / 0.42 mm line, flat bed contact ratio, height-to-footprint ratio, >45° overhang area, fit clearance (cable comb and frame only) and a solid-PLA material upper bound. Warnings name the parameter to change and offer a jump-to-field action.
 - Recheck a saved job for a 0.2/0.4/0.6/0.8 mm nozzle (`POST /api/jobs/{id}/printability`) without changing the stored job; offer the nozzle reported by the printer status view as an explicit one-click choice, and an explicit check for jobs saved before v0.10.

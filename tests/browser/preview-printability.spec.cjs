@@ -99,3 +99,22 @@ test('choosing another nozzle rechecks the saved job without regenerating it', a
   await page.locator('#printability-nozzle').selectOption('0.4');
   await expect(page.locator('#printability-status')).toHaveText('형상 점검 통과');
 });
+
+test('phone stand starts from discovery, edits its angle in degrees and outlines the previous back', async ({ page }) => {
+  await page.locator('[data-project-id="desk-phone-stand"]').click();
+  await page.locator('#discovery-detail').getByRole('button', { name: /이 시작점으로 치수 준비/ }).click();
+  await expect(page.locator('label[for="parameter-lean_angle"]')).toHaveText('등판 각도 · °');
+  await expect(page.locator('label[for="parameter-fit_clearance"]')).toHaveText('홈 여유 · mm');
+  const first = await generate(page, {});
+  expect(first.template).toBe('phone_stand');
+  expect(first.printability.status).toBe('ok');
+  await page.locator('#model-edit-text').fill('각도를 75도로 바꿔줘');
+  await page.locator('#model-edit-panel').getByRole('button', { name: '수정 제안 검토' }).click();
+  await expect(page.locator('#model-edit-changes')).toHaveText('등판 각도: 65 → 75 °');
+  await page.locator('#model-edit-review').getByRole('button', { name: '치수 수정 적용' }).click();
+  await expect(page.locator('#parameter-lean_angle')).toHaveValue('75');
+  const second = await generate(page, {});
+  expect(second.parameters.lean_angle).toBe(75);
+  expect(second.dimensions_mm).toEqual(first.dimensions_mm);
+  await expect(page.locator('#preview-previous-label')).toHaveText('이전 모델 · 같은 크기');
+});

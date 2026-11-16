@@ -31,6 +31,8 @@ def _thin_features(p):
         diameter = p['cable_diameter'] + p['fit_clearance']
         gap = (w - p['slots'] * diameter) / (p['slots'] + 1)
         features.append(('slots', '케이블 홈 사이 벽', gap))
+    elif p['template'] == 'phone_stand':
+        features = [('wall', '등판·앞턱', wall), ('bottom', '바닥', bottom)]
     elif p['template'] == 'magnet_frame':
         diameter = p['inset_diameter'] + p['fit_clearance']
         features.append(('inset_diameter', '포켓 둘레 벽', (min(w, d) - diameter) / 2))
@@ -134,7 +136,7 @@ def review_mesh(parameters, mesh, volume_mm3, nozzle_mm=REFERENCE_NOZZLE_MM):
                            '지지대 없이 쌓을 수 있는 형상입니다.'))
 
     # Only templates with a fitted insert or cable use the clearance parameter.
-    clearance = parameters.get('fit_clearance') if parameters['template'] in ('cable_comb', 'magnet_frame') else None
+    clearance = parameters.get('fit_clearance') if parameters['template'] in ('cable_comb', 'magnet_frame', 'phone_stand') else None
     if clearance is not None:
         if clearance < 0.2:
             items.append(_item('fit_clearance', '끼움 여유', 'warn', f'{clearance:.2f} mm',

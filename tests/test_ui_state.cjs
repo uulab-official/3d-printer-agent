@@ -7,7 +7,7 @@ const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutco
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
 names.push('renderPrintVolumeReview','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability');
-const editNames = ['modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
+const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
 names.push(...libraryNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
@@ -37,7 +37,7 @@ function fixture() {
   };
   $('parameter-width').value='120';$('outcome-result').value='not_tested';$('offer-currency').value='KRW';
   vm.createContext(context);
-  for (const name of ['printabilityStatus','printabilityMarks']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
+  for (const name of ['printabilityStatus','printabilityMarks','templateFieldLabels']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if (!match) throw new Error('Missing controller function: '+name);
