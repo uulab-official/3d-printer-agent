@@ -127,7 +127,24 @@ main { max-width: 1460px; padding: 37px 42px 24px; margin: 0 auto; }
 .text-button:hover:not(:disabled) { color: var(--blue); }
 .button.is-loading::before { content: ""; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
 .parameter-card .card-heading { margin-bottom: 11px; }
-.parameter-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 17px 12px; margin-top: 22px; }
+.parameter-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 17px 12px; margin-top: 10px; }
+.parameter-group { min-width: 0; margin: 18px 0 0; padding: 12px 14px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.parameter-group .parameter-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 16px 14px; }
+.parameter-card .card-heading { flex-wrap: wrap; row-gap: 6px; }
+#parameter-fields.parameter-grid { display: block; margin-top: 4px; }
+.parameter-actions { flex-wrap: wrap; }
+.parameter-group legend { padding: 0 6px; font-size: 12px; font-weight: 800; color: #405573; }
+.parameter-desc { margin: 3px 0 0; font-size: 11px; line-height: 1.4; color: #66758b; }
+.parameter-stepper { display: grid; grid-template-columns: 36px minmax(0, 1fr) 36px; gap: 4px; align-items: center; margin-top: 6px; }
+.parameter-stepper input { width: 100%; margin-top: 0; text-align: center; min-width: 0; }
+.step-button { height: 36px; border: 1px solid var(--line); border-radius: 8px; background: #f6f8fc; color: #405573; font-size: 16px; font-weight: 700; line-height: 1; cursor: pointer; }
+.step-button:hover:not(:disabled) { background: #edf3ff; color: var(--blue); }
+.step-button:disabled { opacity: .5; cursor: default; }
+.parameter-slider { width: 100%; margin: 8px 0 0; accent-color: var(--blue); }
+.parameter-actions { display: flex; gap: 12px; align-items: center; }
+.paste-panel { margin: 12px 0 0; padding: 12px 14px; border: 1px dashed #b9c8e4; border-radius: 10px; background: #fbfcff; }
+.paste-panel h3 { margin: 0 0 4px; font-size: 13px; }
+.paste-panel textarea { width: 100%; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .parameter-field label { font-size: 11px; }
 .parameter-field input { margin-top: 7px; padding: 10px 10px; font-size: 14px; font-variant-numeric: tabular-nums; }
 .parameter-field small { display: block; margin-top: 5px; color: #98a4b4; font-size: 9px; }

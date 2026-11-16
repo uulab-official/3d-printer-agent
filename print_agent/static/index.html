@@ -127,7 +127,14 @@
             </section>
 
             <section class="card parameter-card" aria-labelledby="parameter-heading">
-              <div class="card-heading"><div><span class="step-label">02 · 치수 확인</span><h2 id="parameter-heading" tabindex="-1">내게 맞게 조정하기</h2></div><button id="reset-parameters" class="text-button" type="button" disabled>기본값으로</button></div>
+              <div class="card-heading"><div><span class="step-label">02 · 치수 확인</span><h2 id="parameter-heading" tabindex="-1">내게 맞게 조정하기</h2></div><div class="parameter-actions"><button id="copy-parameters" class="text-button" type="button" disabled>설정 복사</button><button id="paste-parameters" class="text-button" type="button" disabled>붙여넣기</button><button id="reset-parameters" class="text-button" type="button" disabled>기본값으로</button></div></div>
+              <section id="paste-panel" class="paste-panel" aria-labelledby="paste-heading" hidden>
+                <h3 id="paste-heading">복사한 설정 붙여넣기</h3>
+                <p class="field-help">“설정 복사”로 복사한 텍스트를 붙여 넣으세요. 템플릿과 치수를 검사한 뒤 적용합니다.</p>
+                <textarea id="paste-text" rows="4" spellcheck="false" placeholder='{"format":"3d-printer-agent/parameters", ...}'></textarea>
+                <div class="button-row"><button id="paste-apply" class="button button-primary" type="button">이 설정 적용</button><button id="paste-cancel" class="button button-secondary" type="button">닫기</button></div>
+              </section>
+              <div id="parameter-share-feedback" class="notice" role="status" hidden></div>
               <p id="parameter-description" class="muted compact">템플릿을 선택하면 수정할 치수가 표시됩니다.</p>
               <div class="source-details draft-source-details"><p class="source-label">현재 제작안의 시작 설계</p><div id="draft-source" class="project-source" hidden></div><button id="detach-source" class="text-button" type="button" hidden>출처 연결 해제 · 치수 유지</button><p class="muted compact">시작점을 적용하면 출처가 함께 기록됩니다. 기본 템플릿과 요청 해석은 새 제작안으로 시작합니다.</p></div>
               <form id="model-form">

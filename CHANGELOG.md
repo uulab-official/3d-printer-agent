@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0 — 2026-11-16
+
+- Reconnect no longer stays “연결 확인 중” while the saved filament and Studio lists load after a successful bootstrap. A list request cut off by a server restart had kept the reconnect control disabled; this caused the intermittent CI failure in the restart-recovery browser case.
+- MakerWorld-style parameter panel: the current template's dimensions are grouped into size, thickness and shape; each field has a one-line explanation, -/+ steppers with a per-field step clamped to the allowed range, and a synced slider. Existing number inputs keep their ids and behaviour.
+- Copy and paste settings: “설정 복사” copies the template and dimensions as a small JSON document (falling back to a selected text box when the clipboard is refused); “붙여넣기” validates the format, template, fields, ranges and integer counts and applies through the existing replacement confirmation.
+
 ## 0.10.0 — 2026-11-16
 
 - Production-readiness review fixes: laptop/monitor stands are declined and stands for other objects (headphones, cameras) ask instead of becoming phone stands; counts after `x` (“2x3칸”, “6mm x 5개”) are not read as sizes; template words win over everyday item names; “등판 두께” is the wall. Printability reports only thicknesses the solid actually has (no constraint-only “outer wall” for the comb and frame), skips degenerate triangles, and a review failure no longer blocks a valid model. History and the journey no longer call a blocked or failed slice “prepared”; only a prepared project or a successful slice counts. The comparison's model-cost column follows the current model, the previous-model outline compares only the same template and is cleared with storage changes, and only 3MF links mark the preparation step as downloaded. New UI colours meet WCAG AA contrast. SECURITY.md documents the printer LAN boundary.
