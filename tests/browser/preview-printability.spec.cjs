@@ -228,3 +228,26 @@ test('material setup starts with the profile, explains how to get one and saves 
   await expect(page.locator('#setup-printer-fill')).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
+
+test('review regressions: comparison follows the current model and only 3MF counts as downloaded', async ({ page }) => {
+  const first = await generate(page, { width: '120', depth: '80', height: '35', wall: '2' });
+  const stl = page.waitForEvent('download');
+  await page.locator('#download-links a', { hasText: 'STL' }).click();
+  await stl;
+  await expect(page.locator('#journey-steps .journey-step').nth(2)).not.toContainText('3MF 내려받음');
+  const menu = page.locator('#menu-toggle');
+  const open = async view => { if (await menu.isVisible()) await menu.click(); await page.locator(`.nav-item[data-view="${view}"]`).click(); };
+  await open('offers');
+  for (const [key, value] of Object.entries({ name: '테스트 PLA', price: '20000', grams: '1000', shipping: '0' })) await page.locator(`#offer-1-${key}`).fill(value);
+  await page.locator('#compare-offers').click();
+  const firstGrams = first.printability.items.find(item => item.id === 'material').grams;
+  await expect(page.locator('#offer-comparison th').last()).toContainText(`${firstGrams} g`);
+  await open('models');
+  await page.locator('#parameter-height').fill('70');
+  const second = await generate(page, {});
+  const secondGrams = second.printability.items.find(item => item.id === 'material').grams;
+  expect(secondGrams).not.toBe(firstGrams);
+  await open('offers');
+  await expect(page.locator('#offer-comparison th').last()).toContainText(`${secondGrams} g`);
+  await expect(page.locator('#offer-model-note')).toContainText(`${secondGrams} g`);
+});

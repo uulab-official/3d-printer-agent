@@ -151,12 +151,17 @@ def _history_summary(job):
     latest = job.get('latest_slice')
     if isinstance(latest, dict):
         execution = latest.get('execution') if isinstance(latest.get('execution'), dict) else None
+        plan = latest.get('plan') if isinstance(latest.get('plan'), dict) else {}
         if latest.get('phase') in ('running', 'interrupted'):
             summary['slice'] = latest['phase']
         elif execution and execution.get('status') in ('sliced', 'needs_review', 'failed', 'blocked'):
             summary['slice'] = execution['status']
-        elif latest.get('phase') == 'finished' and latest.get('plan'):
+        elif latest.get('phase') == 'finished' and plan.get('project_prepared') is True:
             summary['slice'] = 'prepared'
+        elif latest.get('phase') == 'finished' and plan.get('ready') is True:
+            summary['slice'] = 'planned'
+        elif latest.get('phase') == 'finished':
+            summary['slice'] = 'blocked'
     return summary
 
 

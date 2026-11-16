@@ -23,20 +23,22 @@ def _item(item_id, label, status, value, detail, advice=None, field=None):
 
 def _thin_features(p):
     """Minimum printed thicknesses that the template parameters define exactly."""
+    # Only thicknesses the built solid actually has. For the cable comb and frame,
+    # `wall` is a minimum constraint, not a printed wall, so it is not reported.
     w, d, h, wall, bottom = (p[key] for key in ('width', 'depth', 'height', 'wall', 'bottom'))
-    features = [('wall', '바깥 벽', wall), ('bottom', '바닥', bottom)]
-    if p['template'] == 'tray' and p['dividers']:
-        features.append(('wall', '칸막이', wall))
-    elif p['template'] == 'cable_comb':
+    if p['template'] == 'cable_comb':
         diameter = p['cable_diameter'] + p['fit_clearance']
         gap = (w - p['slots'] * diameter) / (p['slots'] + 1)
-        features.append(('slots', '케이블 홈 사이 벽', gap))
-    elif p['template'] == 'phone_stand':
-        features = [('wall', '등판·앞턱', wall), ('bottom', '바닥', bottom)]
-    elif p['template'] == 'magnet_frame':
+        return [('bottom', '홈 아래 바닥', bottom), ('slots', '케이블 홈 사이 벽', gap)]
+    if p['template'] == 'magnet_frame':
         diameter = p['inset_diameter'] + p['fit_clearance']
-        features.append(('inset_diameter', '포켓 둘레 벽', (min(w, d) - diameter) / 2))
-        features.append(('inset_depth', '포켓 아래 바닥', h - p['inset_depth']))
+        return [('inset_diameter', '포켓 둘레 벽', (min(w, d) - diameter) / 2),
+                ('inset_depth', '포켓 아래 바닥', h - p['inset_depth'])]
+    if p['template'] == 'phone_stand':
+        return [('wall', '등판·앞턱', wall), ('bottom', '바닥', bottom)]
+    features = [('wall', '바깥 벽', wall), ('bottom', '바닥', bottom)]
+    if p['dividers']:
+        features.append(('wall', '칸막이', wall))
     return features
 
 
@@ -67,6 +69,8 @@ def _normal(a, b, c):
     v = [c[i] - a[i] for i in range(3)]
     n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
     length = math.hypot(*n)
+    if not length:
+        return [0.0, 0.0, 0.0], 0.0  # degenerate triangle: no area, no direction
     return [value / length for value in n], length / 2
 
 

@@ -30,10 +30,10 @@ function fixture() {
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
     $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa,
-    state:{historyFilter:'all',downloadedJobId:null,printabilityReview:null,printabilityRequest:0,printabilityPending:false,printabilityNozzle:0.4,printabilityShown:false,printerStatus:null,offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
+    state:{offersResult:null,historyFilter:'all',downloadedJobId:null,printabilityReview:null,printabilityRequest:0,printabilityPending:false,printabilityNozzle:0.4,printabilityShown:false,printerStatus:null,offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
-    viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},workspaceDirty(){return false;},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
+    viewer:{setMesh(){},clear(){this.mesh=null;},forgetPrevious(){this.forgotten=true;},mesh:'old'},workspaceDirty(){return false;},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
   };
   $('parameter-width').value='120';$('outcome-result').value='not_tested';$('offer-currency').value='KRW';
   vm.createContext(context);
@@ -1690,7 +1690,13 @@ const printVolumeReport = (overrides={}) => ({
     assert.equal(c.$('journey-steps').children[3].attributes['aria-current'],'step');
     c.state.downloadedJobId='other-job';c.renderJourney();
     assert.equal(c.$('journey-next-button').dataset.target,'printability-review');
-    c.state.job={...job,user_outcome:{result:'failure'}};c.state.slicePrepared=true;c.renderJourney();
+    c.state.job={...job,user_outcome:{result:'failure'}};c.state.slicePrepared=true;c.state.downloadedJobId=null;c.renderJourney();
+    // A reviewed plan alone is not a prepared file.
+    assert.equal(c.$('journey-next-button').dataset.target,'printability-review');
+    c.state.job={...job,user_outcome:{result:'failure'},latest_slice:{phase:'finished',plan:{ready:false},execution:{status:'failed'}}};c.renderJourney();
+    assert.equal(c.$('journey-next-button').dataset.target,'printability-review');
+    c.state.job={...job,user_outcome:{result:'failure'},latest_slice:{phase:'finished',plan:{ready:true},execution:{status:'sliced'}}};c.renderJourney();
+    assert.match(c.$('journey-steps').textContent,/슬라이스 파일 있음/);
     assert.match(c.$('journey-steps').textContent,/실패로 기록/);assert.equal(c.$('journey-next-button').dataset.target,'parameter-heading');
     c.state.slicePrepared=false;c.state.job=null;c.renderJourney();
     assert.equal(c.$('journey-next-button').dataset.target,'parameter-heading');assert.doesNotMatch(c.$('journey-steps').textContent,/실패로 기록/);

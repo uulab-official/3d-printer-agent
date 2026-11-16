@@ -127,6 +127,14 @@ def _reproduction_source(parameters: dict) -> str:
     return preamble + functions + runner
 
 
+def _safe_printability(shape, parameters, mesh):
+    """The review is advice; an unexpected failure must not block a valid CAD result."""
+    try:
+        return assess_printability(shape, parameters, mesh)
+    except Exception:  # noqa: BLE001 - reported as an absent review
+        return None
+
+
 def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
     spec = GeometryRequest.model_validate(spec.model_dump())
     parameters = spec.model_dump(mode="json")
@@ -172,4 +180,4 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
     return {"template": spec.template, "parameters": parameters, "dimensions_mm": dimensions,
             "volume_mm3": volume, "geometry_status": "validated", "print_status": "not_tested",
             "checks": checks, "files": files, "mesh": mesh, "warnings": warnings,
-            "printability": assess_printability(shape, parameters, mesh)}
+            "printability": _safe_printability(shape, parameters, mesh)}

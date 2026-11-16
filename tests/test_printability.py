@@ -55,11 +55,13 @@ class PrintabilityTests(unittest.TestCase):
         self.assertEqual(result['status'], 'review')
 
     def test_frame_pocket_floor_is_measured_from_parameters(self):
-        result = review(template='magnet_frame', width=65, depth=65, height=4, wall=2, bottom=0.8,
-                        inset_diameter=52, inset_depth=3, fit_clearance=0.1)
+        # `bottom` only constrains the frame; the printed floor is under the pocket.
+        result = review(template="magnet_frame", width=65, depth=65, height=2.6, wall=2, bottom=0.8,
+                        inset_diameter=52, inset_depth=1.8, fit_clearance=0.1)
         items = by_id(result)
         self.assertEqual(items['min_thickness']['status'], 'warn')
-        self.assertEqual(items['min_thickness']['value'], '0.80 mm (바닥)')
+        self.assertEqual(items['min_thickness']['value'], '0.80 mm (포켓 아래 바닥)')
+        self.assertEqual(items['min_thickness']['field'], 'inset_depth')
         self.assertEqual(items['fit_clearance']['status'], 'warn')
         self.assertEqual(items['fit_clearance']['field'], 'fit_clearance')
         self.assertEqual(result['status'], 'review')

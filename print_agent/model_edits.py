@@ -165,7 +165,7 @@ def _response(engine, review=None):
 
 _ALIASES = {
     'width':r'가로|너비|폭|width', 'depth':r'세로|깊이|depth', 'height':r'높이|height',
-    'wall':r'벽\s*두께|벽|wall', 'bottom':r'바닥\s*두께|바닥|bottom',
+    'wall':r'벽\s*두께|등판\s*두께|앞턱\s*두께|벽|wall', 'bottom':r'바닥\s*두께|바닥|bottom',
     'cable_diameter':r'케이블\s*(?:지름|직경)|cable\s*diameter',
     'inset_diameter':r'(?:인셋|디스크|마그넷)\s*지름|inset\s*diameter',
     'inset_depth':r'(?:인셋|포켓)\s*깊이|inset\s*depth',

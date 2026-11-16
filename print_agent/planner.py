@@ -36,10 +36,16 @@ ITEM_RECIPES = (
     (('태블릿','아이패드','ipad','tablet'), 'phone_stand', {'width':160,'height':120,'device_thickness':10},
      '태블릿 거치대는 폭 160 mm, 높이 120 mm, 기기 두께 10 mm로 시작합니다.'),
 )
+STAND_WORDS = ('거치대','스탠드','stand','받침대','폰 받침','휴대폰 받침')
+# "폰" alone counts as a phone, but not inside 헤드폰/이어폰/마이크폰-style words.
+DEVICE_PATTERN = re.compile(r'휴대폰|핸드폰|스마트폰|아이폰|갤럭시|(?<![가-힣])폰|phone|태블릿|아이패드|ipad|tablet')
 UNSUPPORTED_ITEMS = (
     (('모니터 받침','모니터 스탠드','노트북 받침','노트북 스탠드','monitor stand','laptop stand'),
      '모니터·노트북 받침대는 무게를 받치는 구조라 이 버전에서 만들지 않습니다. 휴대폰·태블릿 거치대, 수납함, 케이블 받침, 원형 인셋 프레임을 지원합니다.'),
 )
+HEAVY_WORDS = ('모니터','노트북','랩탑','laptop','monitor','맥북','macbook')
+# A stand for some other object is not a phone stand; ask instead of guessing.
+OTHER_HOLDER_WORDS = ('헤드폰','헤드셋','이어폰','카메라','게임기','컨트롤러','키보드','마우스','스피커','시계','안경','책','공구','headphone','camera')
 UNIT = r'\s*(mm|cm|밀리미터|센티미터|밀리|센티)?'
 MAX_LLM_RESPONSE_BYTES = 100_000
 LLM_DEADLINE_SECONDS = 60
@@ -95,14 +101,16 @@ def plan_from_text(text: str) -> dict:
     for words,message in UNSUPPORTED_ITEMS:
         if any(word in lowered for word in words):
             return _question(message)
-    recipe=next(((template,overrides,note) for words,template,overrides,note in ITEM_RECIPES
-                 if any(word in lowered for word in words)),None)
-    notes=[]
-    if recipe:
-        template,recipe_defaults,note=recipe
-        notes.append(note)
-    elif any(word in lowered for word in ('거치대','스탠드','stand','폰 받침','휴대폰 받침')):
+    stand_requested=any(word in lowered for word in STAND_WORDS)
+    if stand_requested and any(word in lowered for word in HEAVY_WORDS):
+        return _question(UNSUPPORTED_ITEMS[0][1])
+    # Words that name a template win; an everyday item only supplies starting sizes
+    # when it agrees with that template, or when no template word was written.
+    other_template=any(word in lowered for word in ('케이블','cable','수납','트레이','정리함','프레임','액자'))
+    if stand_requested and (DEVICE_PATTERN.search(lowered) or not (other_template or any(word in lowered for word in OTHER_HOLDER_WORDS))):
         template='phone_stand'
+    elif stand_requested and any(word in lowered for word in OTHER_HOLDER_WORDS):
+        return _question('어떤 물건을 올릴 거치대인가요? 이 버전은 휴대폰·태블릿 거치대만 만듭니다. 무게를 받치는 거치대는 지원하지 않습니다.')
     elif any(word in lowered for word in ('프레임','마그넷','magnet','frame')):
         template='magnet_frame'
     elif any(word in lowered for word in ('케이블','cable','콤','comb')):
@@ -110,9 +118,16 @@ def plan_from_text(text: str) -> dict:
     elif any(word in lowered for word in ('수납','트레이','정리함','tray','box','상자')):
         template='tray'
     else:
+        template=None
+    recipe=next(((recipe_template,overrides,note) for words,recipe_template,overrides,note in ITEM_RECIPES
+                 if any(word in lowered for word in words) and template in (None,recipe_template)),None)
+    notes=[]
+    recipe_defaults={}
+    if recipe:
+        template,recipe_defaults,note=recipe
+        notes.append(note)
+    elif template is None:
         return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임, 휴대폰 거치대 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
-    if not recipe:
-        recipe_defaults={}
     if template=='tray' and any(word in lowered for word in ('원형','동그란','원통','circular','round','cylinder')):
         return _question('수납함 템플릿은 직사각형입니다. 원형 수납함은 아직 지원하지 않습니다. 직사각형으로 만들까요?')
     if re.search(r'\b(inch|inches)\b|인치|\d\s*m\b',lowered):
@@ -122,7 +137,7 @@ def plan_from_text(text: str) -> dict:
     explicit=set()
     aliases={
         'width':r'(?:가로|너비|폭|width)', 'depth':r'(?:세로|깊이|depth)',
-        'height':r'(?:높이|height)', 'wall':r'(?:벽\s*두께|벽|wall)',
+        'height':r'(?:높이|height)', 'wall':r'(?:벽\s*두께|등판\s*두께|앞턱\s*두께|벽|wall)',
         'bottom':r'(?:바닥\s*두께|바닥|bottom)',
         'cable_diameter':r'(?:케이블\s*지름|케이블\s*직경|cable\s*diameter)',
         'inset_diameter':r'(?:인셋\s*지름|디스크\s*지름|마그넷\s*지름|inset\s*diameter)',
@@ -167,10 +182,12 @@ def plan_from_text(text: str) -> dict:
                 return _question('표기한 가로·세로·높이가 서로 다릅니다. 사용할 치수 하나를 알려주세요.')
             values[field]=converted;explicit.add(field)
     # Two numbers ("30x20cm") give width and depth; previously they were ignored silently.
-    for pair in re.finditer(NUMBER+UNIT+r'\s*[x×*]\s*'+NUMBER+UNIT,lowered):
+    for pair in re.finditer(NUMBER+UNIT+r'\s*[x×*]\s*'+NUMBER+UNIT+r'(?!\s*(?:칸|개|줄|가닥|[x×*]))',lowered):
         if any(pair.start()<end and pair.end()>start for start,end in triple_spans):
             continue
         units=pair.groups()[1::2]
+        if not any(units):
+            continue  # "2x3칸" or bare counts are not sizes; sizes need a unit.
         normalized={_mm(1,unit) for unit in units if unit}
         if len(normalized)>1 and any(unit is None for unit in units):
             return _question('단위가 섞여 있습니다. 각 치수에 mm 또는 cm를 붙여주세요.')
