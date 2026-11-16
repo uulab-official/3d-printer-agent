@@ -287,3 +287,38 @@ class PrinterLanTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SimulatorTests(unittest.TestCase):
+    """The local flow simulator must stay compatible with the real client."""
+
+    def test_fake_printer_script_serves_a_synthetic_report(self):
+        import importlib.util
+        import sys
+        spec = importlib.util.spec_from_file_location('fake_bambu_printer', Path(__file__).resolve().parents[1] / 'scripts' / 'fake_bambu_printer.py')
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        probe = socket.socket()
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        parser_args = ['--port', str(port), '--access-code', CODE, '--hms', '--duration', '60']
+        import argparse
+        namespace = argparse.Namespace(host='127.0.0.1', port=port, serial='01S00SYNTH000001', access_code=CODE, model='C12',
+                                       cert='printer', state='RUNNING', duration=60.0, hms=True, silent=False, announce=False)
+        simulator = module.Simulator(namespace)
+        threading.Thread(target=simulator.serve, daemon=True).start()
+        printer_lan._LAST_STATUS.clear()
+        for _ in range(50):
+            try:
+                socket.create_connection(('127.0.0.1', port), timeout=0.2).close()
+                break
+            except OSError:
+                threading.Event().wait(0.05)
+        result = printer_lan.read_status('127.0.0.1', '01S00SYNTH000001', CODE, port=port, timeout=3, report_window=0.3)
+        self.assertEqual(result['connection']['state'], 'reporting', parser_args)
+        self.assertEqual(result['print']['state'], 'RUNNING')
+        self.assertEqual(result['identity']['product_name'], 'Synthetic Bambu-like printer')
+        self.assertEqual(result['print']['hms'][0]['hms_code'], '0700_8000_0002_0001')
+        self.assertEqual(sorted(simulator.requests[-2:]), ['get_version', 'pushall'])

@@ -12,7 +12,7 @@ names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
 names.push(...libraryNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 class Element {
-  constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
+  constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.style={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
   set textContent(value) { this._text=String(value); this.children=[]; }
   get textContent() { return this._text + this.children.map(x=>x.textContent || '').join(' '); }
   append(...nodes) { this.children.push(...nodes); }
@@ -51,6 +51,7 @@ function fixture() {
 function printerFixture() {
   const c=fixture();
   Object.assign(c.state,{printerPins:{},printerStatus:null,printerRequest:0});
+  vm.runInContext(/^  const printerNozzleTypes = .*$/m.exec(source)[0],c);
   vm.runInContext(/^  const printerConnectionTones = .*$/m.exec(source)[0],c);
   for(const name of ['printerTarget','printerPinKey','updatePrinterControls','selectPrinterDevice','renderPrinterDevices','printerNumber','printerTemperature','renderPrinterStatus','discoverPrinters','checkPrinterStatus','printerInputChanged','clearPrinterPin','metric','dateTime']) {
     const match=new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
@@ -1602,6 +1603,8 @@ const printVolumeReport = (overrides={}) => ({
     assert.doesNotMatch(text,/SECRET-CODE/);assert.equal(c.$('printer-result').hidden,false);assert.equal(c.$('printer-unpin').hidden,false);
     await c.checkPrinterStatus();
     assert.equal(bodies[1].pinned_certificate_sha256,'a'.repeat(64));
+    c.printerInputChanged();assert.equal(c.state.printerStatus,null);assert.equal(c.$('printer-result').attributes['aria-hidden'],'true');
+    assert.match(c.$('printer-feedback').textContent,/이전 대상의 확인 결과/);assert.equal(c.$('printer-status-badge').textContent,'입력이 바뀌어 다시 확인 필요');
   });
   await check('A changed certificate or non-reporting read never renders print values or replaces the pin',async()=>{
     const c=printerFixture();c.state.printerPins['192.168.0.20|01S00TEST000001']='b'.repeat(64);
@@ -1611,6 +1614,7 @@ const printVolumeReport = (overrides={}) => ({
     assert.equal(c.state.printerPins['192.168.0.20|01S00TEST000001'],'b'.repeat(64));
     assert.doesNotMatch(c.$('printer-result').textContent,/진행률/);
     assert.match(c.$('printer-feedback').textContent,/인증서와 다릅니다/);
+    assert.match(c.$('printer-result').textContent,/고정한 인증서와 다름/);assert.doesNotMatch(c.$('printer-result').textContent,/처음 확인한 인증서/);
     c.clearPrinterPin();assert.equal(c.state.printerPins['192.168.0.20|01S00TEST000001'],undefined);
   });
   await check('Editing printer inputs during a read discards the late result',async()=>{

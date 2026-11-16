@@ -82,8 +82,13 @@ test('synthetic reporting response renders reported values and pins its certific
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await page.locator('#printer-check').click();
   await expect(result).toContainText('고정한 인증서와 일치');
+  await expect(result.locator('progress')).toHaveAttribute('aria-label', '프린터 보고 진행률 42%');
+  await expect(result.locator('.printer-swatch')).toHaveCount(1);
+  await expect(result).toContainText('스테인리스강');
   expect(bodies[1].pinned_certificate_sha256).toBe(fingerprint);
   await page.locator('#printer-host').fill('127.0.0.2');
-  await expect(result).toBeHidden();
+  await expect(result).toHaveClass(/is-stale/);
+  await expect(result).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('#printer-feedback')).toContainText('이전 대상의 확인 결과');
   await expect(page.locator('#printer-status-badge')).toHaveText('입력이 바뀌어 다시 확인 필요');
 });

@@ -2959,6 +2959,7 @@
     $("profile-report").textContent = JSON.stringify(result, null, 2);
   }
 
+  const printerNozzleTypes = { stainless_steel: "스테인리스강", hardened_steel: "경화강", tungsten_carbide: "텅스텐 카바이드", brass: "황동" };
   const printerConnectionTones = { reporting: "success", certificate_changed: "error", access_rejected: "warning" };
 
   function printerTarget() {
@@ -2984,6 +2985,7 @@
     $("printer-serial").value = device.serial;
     state.printerStatus = null;
     $("printer-result").hidden = true;
+    hideNotice("printer-feedback");
     setBadge("printer-status-badge", "아직 확인 전");
     updatePrinterControls();
     $("printer-access-code").focus();
@@ -3032,18 +3034,27 @@
     const connection = result?.connection || {};
     const area = $("printer-result");
     area.replaceChildren();
+    area.classList.remove("is-stale");
+    area.removeAttribute("aria-hidden");
     const reporting = connection.state === "reporting";
     setBadge("printer-status-badge", reporting ? (result.print?.state_label || "상태 보고됨") : "상태를 받지 못함", printerConnectionTones[connection.state] || "neutral");
     showNotice("printer-feedback", connection.detail || "확인 결과를 해석하지 못했습니다.", reporting ? "info" : printerConnectionTones[connection.state] || "warning");
     const certificate = result?.certificate;
     if (certificate?.sha256) {
-      const pinned = certificate.pinned && certificate.matches_pin;
-      area.append(node("p", "field-help", `${pinned ? "고정한 인증서와 일치" : "처음 확인한 인증서"} · SHA-256 ${certificate.sha256.slice(0, 16)}… · 발급 기관은 확인하지 않았습니다.`));
+      const label = !certificate.pinned ? "처음 확인한 인증서" : certificate.matches_pin ? "고정한 인증서와 일치" : "고정한 인증서와 다름 · 이번에 받은 인증서";
+      area.append(node("p", "field-help", `${label} · SHA-256 ${certificate.sha256.slice(0, 16)}… · 발급 기관은 확인하지 않았습니다.`));
     }
     if (!reporting) { area.hidden = !certificate?.sha256; return; }
     const status = result.print || {};
     const progress = typeof status.progress_percent === "number" ? `${status.progress_percent}%` : "보고되지 않음";
     const layers = typeof status.layer === "number" && typeof status.total_layers === "number" ? `${status.layer} / ${status.total_layers}` : "보고되지 않음";
+    if (typeof status.progress_percent === "number") {
+      const bar = node("progress", "printer-progress");
+      bar.max = 100;
+      bar.value = status.progress_percent;
+      bar.setAttribute("aria-label", `프린터 보고 진행률 ${status.progress_percent}%`);
+      area.append(bar);
+    }
     const grid = node("div", "metric-grid printer-metrics");
     grid.append(
       metric("프린터 보고 상태", status.state_label || "보고되지 않음"),
@@ -3058,7 +3069,7 @@
     const facts = [`시리얼 ${result.target?.serial} 주제로 보고 수신`];
     if (identity.product_name) facts.push(`제품 보고: ${identity.product_name}`);
     if (identity.firmware) facts.push(`펌웨어 보고: ${identity.firmware}`);
-    if (status.nozzle?.diameter_mm) facts.push(`노즐 보고: ${status.nozzle.diameter_mm} mm${status.nozzle.type ? ` · ${status.nozzle.type}` : ""}`);
+    if (status.nozzle?.diameter_mm) facts.push(`노즐 보고: ${status.nozzle.diameter_mm} mm${status.nozzle.type ? ` · ${printerNozzleTypes[status.nozzle.type] || status.nozzle.type}` : ""}`);
     if (status.job_name) facts.push(`작업: ${status.job_name}`);
     area.append(node("p", "field-help", facts.join(" · ")));
     if (status.error_code || (status.hms || []).length) {
@@ -3071,7 +3082,16 @@
       const list = node("ul", "printer-slots");
       for (const slot of slots) {
         const where = slot.unit === "external" ? "외부 스풀" : `AMS ${Number(slot.unit) + 1} · 슬롯 ${Number(slot.slot) + 1}`;
-        list.append(node("li", "", `${where}: ${[slot.product || slot.material || "재료 미보고", slot.filament_id, slot.color ? `#${slot.color}` : null].filter(Boolean).join(" · ")}`));
+        const item = node("li", "");
+        if (slot.color) {
+          const swatch = node("span", "printer-swatch");
+          // CSSOM assignment is permitted by the page CSP; the value is a validated hex colour.
+          swatch.style.backgroundColor = `#${slot.color.slice(0, 6)}`;
+          swatch.setAttribute("aria-hidden", "true");
+          item.append(swatch);
+        }
+        item.append(node("span", "", `${where}: ${[slot.product || slot.material || "재료 미보고", slot.filament_id, slot.color ? `#${slot.color}` : null].filter(Boolean).join(" · ")}`));
+        list.append(item);
       }
       area.append(node("p", "field-help", "프린터에 등록된 재료 정보(사용자가 설정한 값일 수 있음):"), list);
     }
@@ -3116,8 +3136,9 @@
     state.printerRequest += 1;
     if (state.printerStatus) {
       state.printerStatus = null;
-      $("printer-result").hidden = true;
-      hideNotice("printer-feedback");
+      $("printer-result").classList.add("is-stale");
+      $("printer-result").setAttribute("aria-hidden", "true");
+      showNotice("printer-feedback", "입력이 바뀌었습니다. 흐리게 표시한 아래 값은 이전 대상의 확인 결과이며 현재 입력의 상태가 아닙니다. 다시 읽어 주세요.", "warning");
       setBadge("printer-status-badge", "입력이 바뀌어 다시 확인 필요");
     }
     updatePrinterControls();
