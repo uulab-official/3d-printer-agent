@@ -6,7 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
+names.push('renderPrintVolumeReview','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget');
 const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -30,7 +30,7 @@ function fixture() {
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
     $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa,
-    state:{downloadedJobId:null,printabilityReview:null,printabilityRequest:0,printabilityPending:false,printabilityNozzle:0.4,printabilityShown:false,printerStatus:null,offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
+    state:{historyFilter:'all',downloadedJobId:null,printabilityReview:null,printabilityRequest:0,printabilityPending:false,printabilityNozzle:0.4,printabilityShown:false,printerStatus:null,offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
     viewer:{setMesh(){},clear(){this.mesh=null;},mesh:'old'},workspaceDirty(){return false;},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
@@ -1694,6 +1694,33 @@ const printVolumeReport = (overrides={}) => ({
     assert.match(c.$('journey-steps').textContent,/실패로 기록/);assert.equal(c.$('journey-next-button').dataset.target,'parameter-heading');
     c.state.slicePrepared=false;c.state.job=null;c.renderJourney();
     assert.equal(c.$('journey-next-button').dataset.target,'parameter-heading');assert.doesNotMatch(c.$('journey-steps').textContent,/실패로 기록/);
+  });
+  await check('History tells same-title records apart, filters loaded results honestly and escapes notes',()=>{
+    const c=fixture();c.state.historyLoaded=true;c.state.historyCursor='next';
+    Object.assign(c.fields,{wall:{label:'벽 두께',min:0.8,max:20,step:0.1},bottom:{label:'바닥 두께',min:0.8,max:20,step:0.1},dividers:{label:'칸막이 수',min:0,max:12,step:1,unit:'개'}});
+    const base={title:'칸막이 수납함 · 120 × 80 × 35 mm',template:'tray',status:'geometry_validated',created_at:'2026-11-16T00:00:00Z'};
+    c.state.historyItems=[
+      {...base,id:'a',summary:{parameters:{wall:0.8,bottom:2,dividers:0},printability:'review'},user_outcome:null},
+      {...base,id:'b',summary:{parameters:{wall:2,bottom:2,dividers:2},printability:'ok',slice:'sliced'},user_outcome:{result:'success',notes:'<b>딱</b> 맞음'}},
+      {...base,id:'c',user_outcome:{result:'failure',notes:''}}];
+    c.renderHistory();
+    const text=c.$('history-list').textContent;
+    assert.match(text,/벽 두께 0.8 mm/);assert.match(text,/칸막이 수 2개/);assert.match(text,/슬라이스 완료/);assert.match(text,/메모: <b>딱<\/b> 맞음/);assert.match(text,/점검 확인할 점/);
+    c.setHistoryFilter('success');
+    assert.match(c.$('history-list').textContent,/불러온 3개 중 1개/);assert.match(c.$('history-list').textContent,/이전 기록을 더 불러오면/);
+    assert.equal(c.$('history-list').children.filter(x=>x.dataset?.jobId).map(x=>x.dataset.jobId).join(),'b');
+    c.setHistoryFilter('unrecorded');assert.equal(c.$('history-list').children.filter(x=>x.dataset?.jobId).map(x=>x.dataset.jobId).join(),'a');
+    c.state.historyItems=[];c.setHistoryFilter('failure');assert.match(c.$('history-list').textContent,/아직 만들어 둔 모델이 없어요/);
+  });
+  await check('A printer finish report hints at the outcome without selecting it',()=>{
+    const c=fixture();c.$('outcome-result').value='not_tested';
+    c.state.job={id:'job-a',result:{dimensions_mm:{x:1,y:1,z:1}},user_outcome:null};
+    c.state.printerStatus={connection:{state:'reporting'},observed_at:'2026-11-16T00:00:00Z',target:{serial:'01S00X'},print:{state:'FINISH',state_label:'프린터가 완료를 보고함',job_name:'tray'}};
+    c.renderJourney();
+    assert.equal(c.$('outcome-printer-hint').hidden,false);assert.match(c.$('outcome-printer-hint').textContent,/상태: 출력 완료 보고/);assert.match(c.$('outcome-printer-hint').textContent,/자동으로 선택하지 않습니다/);
+    assert.equal(c.$('outcome-result').value,'not_tested');
+    c.state.printerStatus.print.state='RUNNING';c.renderJourney();assert.equal(c.$('outcome-printer-hint').hidden,true);
+    c.state.printerStatus.print.state='FAILED';c.state.job=null;c.renderJourney();assert.equal(c.$('outcome-printer-hint').hidden,true);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

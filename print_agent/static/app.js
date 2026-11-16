@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { historyFilter: "all", downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -102,6 +102,9 @@
     const recovery = storage?.recovery || {};
     const count = (key) => Number.isInteger(recovery[key]) && recovery[key] >= 0 ? recovery[key] : 0;
     $("storage-recovery").textContent = storage ? `시작할 때 확인한 기록 ${count("indexed")}개 · 중단 처리 ${count("interrupted")}개 · 읽기 확인 필요 ${count("unreadable")}개. 중단되거나 손상된 기록의 원본은 보존합니다.` : "연결되면 현재 앱 데이터 위치와 시작 시 복구 결과를 보여줍니다.";
+    // Healthy and nothing to recover: keep the card to one quiet line so the
+    // first screen starts with the work. Problems keep the full explanation.
+    $("local-runtime").classList.toggle("is-quiet", connected && Boolean(storage) && !count("interrupted") && !count("unreadable"));
     updateConnectionActions();
   }
 
@@ -1092,7 +1095,20 @@
     return { text: "이 작업의 기록까지 마쳤어요. 고칠 점이 있으면 치수를 바꿔 다시 만드세요.", label: "치수 바꾸러 가기", target: "parameter-heading" };
   }
 
+  function renderOutcomePrinterHint() {
+    // A printer's finish/fail report is a hint for the user's own record, never the record itself.
+    const hint = $("outcome-printer-hint");
+    const status = state.printerStatus;
+    const reported = status?.connection?.state === "reporting" ? status.print?.state : null;
+    if (!state.job || !["FINISH", "FAILED"].includes(reported)) { hint.hidden = true; return; }
+    const job = status.print.job_name ? ` (프린터의 작업 이름: ${status.print.job_name})` : "";
+    const verdict = reported === "FINISH" ? "출력 완료" : "출력 실패";
+    hint.textContent = `${dateTime(status.observed_at)}에 읽은 프린터 ${status.target?.serial || ""}의 상태: ${verdict} 보고${job}. 이 모델을 출력한 것이 맞는지, 실물을 직접 확인한 뒤 아래 결과를 골라 주세요. 자동으로 선택하지 않습니다.`;
+    hint.hidden = false;
+  }
+
   function renderJourney() {
+    renderOutcomePrinterHint();
     const steps = journeySteps();
     const current = steps.findIndex((step, index) => !step.done || (step.attention && !steps[index + 1]?.done));
     $("journey-steps").replaceChildren(...steps.map((step, index) => {
@@ -3477,6 +3493,33 @@
     }
   }
 
+  function historyMatches(job) {
+    const outcome = job.user_outcome?.result;
+    if (state.historyFilter === "success") return outcome === "success";
+    if (state.historyFilter === "failure") return outcome === "failure";
+    if (state.historyFilter === "unrecorded") return !outcome || outcome === "not_tested";
+    return true;
+  }
+
+  function historyFacts(job) {
+    // Short facts that distinguish records with the same title.
+    const parameters = job.summary?.parameters || {};
+    const facts = Object.entries(parameters).map(([key, value]) => {
+      const definition = fields[key];
+      const label = templateFieldLabels[job.template]?.[key] || definition?.label || key;
+      return `${label} ${numberFormat.format(value)}${definition?.unit === "개" ? "개" : definition?.unit || " mm"}`;
+    });
+    const slice = { sliced: "슬라이스 완료", needs_review: "슬라이스 확인 필요", failed: "슬라이스 실패", blocked: "슬라이스 차단", prepared: "설정 포함 3MF 준비", running: "슬라이스 기록 실행 중", interrupted: "슬라이스 중단" }[job.summary?.slice];
+    if (slice) facts.push(slice);
+    return facts;
+  }
+
+  function setHistoryFilter(filter) {
+    state.historyFilter = filter;
+    document.querySelectorAll("[data-history-filter]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.historyFilter === filter)));
+    renderHistory();
+  }
+
   function renderHistory() {
     const container = $("history-list");
     container.replaceChildren();
@@ -3490,10 +3533,26 @@
       container.append(empty);
       return;
     }
-    state.historyItems.forEach((job) => {
+    const visible = state.historyItems.filter(historyMatches);
+    if (state.historyFilter !== "all") {
+      const more = state.historyCursor ? " 이전 기록을 더 불러오면 함께 거릅니다." : "";
+      container.append(node("p", "history-filter-note", `불러온 ${state.historyItems.length}개 중 ${visible.length}개가 조건에 맞습니다.${more}`));
+    }
+    if (!visible.length) {
+      const empty = node("div", "history-empty");
+      empty.append(node("h3", "", "조건에 맞는 기록이 없어요"), node("p", "", "출력한 뒤 모델을 열어 결과를 기록하면 여기에서 찾을 수 있습니다."));
+      container.append(empty);
+      return;
+    }
+    visible.forEach((job) => {
       const card = node("article", "history-item");
+      card.dataset.jobId = job.id;
       const title = node("div");
       title.append(node("h3", "", job.title || "생성한 모델"), node("p", "", dateTime(job.created_at)));
+      const facts = historyFacts(job);
+      if (facts.length) title.append(node("p", "history-facts", facts.join(" · ")));
+      const notes = typeof job.user_outcome?.notes === "string" ? job.user_outcome.notes.trim() : "";
+      if (notes) title.append(node("p", "history-notes", `메모: ${notes.length > 80 ? `${notes.slice(0, 80)}…` : notes}`));
       if (job.model_edit) {
         const edit = node("div", "history-model-edit");
         edit.id = `history-model-edit-${job.id}`;
@@ -3507,6 +3566,8 @@
       statuses.append(node("span", `badge badge-${warning ? "warning" : job.status === "geometry_validated" ? "blue" : "neutral"}`, statusLabel));
       const outcome = job.user_outcome?.result;
       statuses.append(node("span", `badge badge-${outcome === "success" ? "success" : outcome === "failure" ? "warning" : "neutral"}`, outcome === "success" ? "출력 성공 · 사용자 보고" : outcome === "failure" ? "출력 실패 · 사용자 보고" : "실물 출력 미기록"));
+      const review = job.summary?.printability;
+      if (review) statuses.append(node("span", `badge badge-${review === "ok" ? "success" : review === "review" ? "warning" : "error"}`, review === "ok" ? "형상 점검 통과" : review === "review" ? "점검 확인할 점" : "점검 수정 권장"));
       const open = node("button", "button button-secondary", warning ? "기록 보기 ↗" : "열기 ↗");
       open.type = "button";
       open.disabled = state.workflowBusy;
@@ -3884,6 +3945,7 @@
   };
 
   $("journey-next-button").addEventListener("click", goToJourneyTarget);
+  document.querySelectorAll("[data-history-filter]").forEach((button) => button.addEventListener("click", () => setHistoryFilter(button.dataset.historyFilter)));
   renderJourney();
   $("download-links").addEventListener("click", (event) => {
     // Remember only that this page offered the file and it was clicked; not that it was printed.

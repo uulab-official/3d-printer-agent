@@ -2,6 +2,10 @@
 
 ## 0.10.0 — 2026-11-16
 
+- History items carry a display-only `summary` (template's distinguishing dimensions, printability status, slice state) so same-title jobs can be told apart; the list shows those facts, a short outcome note and filters for success, failure and unrecorded results over the loaded pages, stating how many of the loaded records match.
+- A healthy connection with nothing to recover collapses to one line; problems keep the full explanation.
+- When the printer status view has read a finish or failure report, the result card shows it as a hint for the user's own record and never selects a result.
+
 - Journey bar on the model screen: four steps (dimensions, make and check, print preparation, recorded result) with each step's state and one next action that jumps to the right section. It is sticky on desktop and a 2×2 grid on mobile; it resets when inputs change. A printability warning is shown but no longer blocks the next action once the user moves on. Downloading the 3MF marks preparation as “downloaded”, never as printed.
 - “가장 쉬운 출력 방법” guide in the result card: download the 3MF, open it in Bambu Studio, slice and send there, then record the result here. Studio project preparation stays optional.
 

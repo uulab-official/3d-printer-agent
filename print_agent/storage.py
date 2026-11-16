@@ -134,6 +134,32 @@ def _atomic_write(path, content):
         temporary.unlink(missing_ok=True)
 
 
+def _history_summary(job):
+    """Small display-only facts that tell otherwise identical history titles apart."""
+    from .schemas import TEMPLATE_SPECIFIC_FIELDS
+    result = job.get('result') if isinstance(job.get('result'), dict) else None
+    if not result or not isinstance(result.get('parameters'), dict):
+        return None
+    parameters = result['parameters']
+    template = parameters.get('template')
+    names = ['wall', 'bottom', *sorted(TEMPLATE_SPECIFIC_FIELDS.get(template, ()))]
+    summary = {'parameters': {name: parameters[name] for name in names
+                              if isinstance(parameters.get(name), (int, float)) and not isinstance(parameters.get(name), bool)}}
+    review = result.get('printability')
+    if isinstance(review, dict) and review.get('status') in ('ok', 'review', 'needs_change'):
+        summary['printability'] = review['status']
+    latest = job.get('latest_slice')
+    if isinstance(latest, dict):
+        execution = latest.get('execution') if isinstance(latest.get('execution'), dict) else None
+        if latest.get('phase') in ('running', 'interrupted'):
+            summary['slice'] = latest['phase']
+        elif execution and execution.get('status') in ('sliced', 'needs_review', 'failed', 'blocked'):
+            summary['slice'] = execution['status']
+        elif latest.get('phase') == 'finished' and latest.get('plan'):
+            summary['slice'] = 'prepared'
+    return summary
+
+
 class JobStore:
     def __init__(self, root: Path):
         self.root = Path(root).expanduser().resolve()
@@ -521,6 +547,9 @@ class JobStore:
                     else:
                         if 'model_edit' in job:
                             item['model_edit'] = copy.deepcopy(job['model_edit'])
+                        summary = _history_summary(job)
+                        if summary:
+                            item['summary'] = summary
                 if item['status'] == 'unreadable':
                     item['diagnostic'] = _UNREADABLE_MESSAGE
                 jobs.append(item)

@@ -144,3 +144,32 @@ test('journey bar walks an owner from dimensions to a recorded result and resets
   await expect(page.locator('#journey-steps .is-done')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
+
+test('history tells same-size jobs apart, filters by recorded result and the healthy connection stays one line', async ({ page }) => {
+  await expect(page.locator('#local-runtime')).toHaveClass(/is-quiet/);
+  await expect(page.locator('#connection-detail')).toBeHidden();
+  await generate(page, { width: '120', depth: '80', height: '35', wall: '0.8' });
+  await page.locator('#parameter-wall').fill('2');
+  await generate(page, {});
+  await page.locator('#outcome-result').selectOption('success');
+  await page.locator('#outcome-notes').fill('딱 맞음');
+  await page.locator('#save-outcome').click();
+  await expect(page.locator('#outcome-feedback')).toContainText('기록했습니다');
+  const menu = page.locator('#menu-toggle');
+  if (await menu.isVisible()) await menu.click();
+  await page.locator('.nav-item[data-view="history"]').click();
+  // The browser project shares one server, so check this case's two newest jobs only.
+  const items = page.locator('#history-list .history-item');
+  await expect(items.nth(0)).toContainText('벽 두께 2 mm');
+  await expect(items.nth(0)).toContainText('메모: 딱 맞음');
+  await expect(items.nth(1)).toContainText('벽 두께 0.8 mm');
+  await expect(items.nth(1)).toContainText('점검 확인할 점');
+  await page.locator('[data-history-filter="success"]').click();
+  await expect(items.nth(0)).toContainText('메모: 딱 맞음');
+  await expect(page.locator('.history-filter-note')).toHaveText(/^불러온 \d+개 중 \d+개가 조건에 맞습니다\./);
+  for (const item of await items.all()) await expect(item).toContainText('출력 성공 · 사용자 보고');
+  await page.locator('[data-history-filter="unrecorded"]').click();
+  for (const item of await items.all()) await expect(item).toContainText('실물 출력 미기록');
+  await expect(items.nth(0)).toContainText('벽 두께 0.8 mm');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});

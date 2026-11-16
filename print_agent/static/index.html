@@ -303,6 +303,7 @@
 
         <section id="outcome-card" class="card" aria-labelledby="outcome-heading" hidden>
           <div class="card-heading"><div><span class="step-label">실물 출력 후</span><h2 id="outcome-heading">직접 확인한 결과를 남겨 주세요</h2></div><span class="badge badge-neutral">사용자 기록</span></div>
+          <p id="outcome-printer-hint" class="notice notice-info" role="status" hidden></p>
           <form id="outcome-form" class="outcome-form">
             <label for="outcome-result">출력 결과<select id="outcome-result"><option value="not_tested">아직 출력하지 않음</option><option value="success">출력 성공</option><option value="failure">출력 실패</option></select></label>
             <label for="outcome-notes">메모<textarea id="outcome-notes" rows="2" maxlength="2000" placeholder="맞춤 정도나 다음에 바꾸고 싶은 점을 적어 주세요."></textarea></label>
@@ -433,6 +434,12 @@
       <section id="view-history" class="view" aria-labelledby="history-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">YOUR MAKING JOURNAL</p><h1 id="history-heading">만든 과정을 남겨 두세요</h1><p class="page-description">모델 파일과 준비 상태, 직접 기록한 실물 출력 결과를 다시 확인할 수 있습니다.</p></div><button id="refresh-history" class="button button-secondary" type="button">새로고침 <span aria-hidden="true">↻</span></button></div>
         <div id="history-feedback" class="notice" role="status" hidden></div>
+        <div id="history-filters" class="history-filters" role="group" aria-label="출력 결과로 거르기">
+          <button class="filter-chip" type="button" data-history-filter="all" aria-pressed="true">전체</button>
+          <button class="filter-chip" type="button" data-history-filter="success" aria-pressed="false">출력 성공</button>
+          <button class="filter-chip" type="button" data-history-filter="failure" aria-pressed="false">출력 실패</button>
+          <button class="filter-chip" type="button" data-history-filter="unrecorded" aria-pressed="false">결과 미기록</button>
+        </div>
         <p id="history-summary" class="history-summary" role="status">작업 기록을 아직 불러오지 않았습니다.</p>
         <div id="history-list" class="history-list"></div>
         <div class="history-pagination"><button id="history-more" class="button button-secondary" type="button" hidden>이전 기록 더 보기</button></div>
