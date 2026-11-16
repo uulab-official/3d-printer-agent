@@ -13,6 +13,8 @@ from typing import Annotated, Literal
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -28,6 +30,7 @@ from .model_edits import model_edit_record, normalize_parameters, plan_model_edi
 from .offers import compare_offers
 from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
+from . import printer_lan
 from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
 from .runtime import DataDirectoryLease, require_compatible_data, resolve_data_directory
@@ -247,6 +250,18 @@ class SlicerProbePayload(StrictPayload):
     """Only the server-configured executable may be probed."""
 
 
+class PrinterDiscoveryPayload(StrictPayload):
+    seconds: int = Field(default=4, ge=1, le=10)
+
+
+class PrinterStatusPayload(StrictPayload):
+    """The access code is used for one read and is never stored or returned."""
+    host: str = Field(max_length=64)
+    serial: str = Field(max_length=64)
+    access_code: str = Field(max_length=64)
+    pinned_certificate_sha256: str | None = Field(default=None, max_length=64)
+
+
 class OutcomePayload(StrictPayload):
     result: Literal['success','failure','not_tested']
     notes: str = Field(default='', max_length=4000)
@@ -335,6 +350,17 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     async def stale_project_selection(_request, exception):
         return JSONResponse({'detail': str(exception)}, status_code=409)
 
+    @app.exception_handler(printer_lan.PrinterBusy)
+    async def printer_busy(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'printer_busy'}, status_code=409, headers={'Retry-After': '5'})
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation(request, exception):
+        if request.url.path.startswith('/api/printers/'):
+            # Never echo submitted printer access codes back in validation details.
+            return JSONResponse({'detail': '프린터 주소·시리얼·액세스 코드 입력 형식을 확인하세요.'}, status_code=422)
+        return await request_validation_exception_handler(request, exception)
+
     @app.exception_handler(ValueError)
     async def value_error(_request, exception):
         return JSONResponse({'detail':str(exception)}, status_code=422)
@@ -366,6 +392,15 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             return probe_environment()
         finally:
             SLICER_LOCK.release()
+
+    @app.post('/api/printers/discover')
+    def printer_discover(payload: PrinterDiscoveryPayload):
+        return printer_lan.discover(payload.seconds)
+
+    @app.post('/api/printers/status')
+    def printer_status(payload: PrinterStatusPayload):
+        return printer_lan.read_status(payload.host, payload.serial, payload.access_code,
+                                       pinned_sha256=payload.pinned_certificate_sha256)
 
     @app.post('/api/plan')
     async def plan(payload: PlanPayload):

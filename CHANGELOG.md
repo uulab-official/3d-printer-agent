@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 — 2026-11-16
+
+- Add a read-only **printer status** view: discover Bambu printers announcing on the local network (SSDP) and read one printer's reported state over LAN-mode MQTT/TLS with its access code.
+- Report connection stages separately (`unreachable`, `tls_failed`, `certificate_changed`, `access_rejected`, `subscribe_rejected`, `no_report`, `protocol_error`, `reporting`) and keep printer-reported print state, progress, layers, temperatures, nozzle, error/HMS codes, AMS slot materials and firmware distinct from measured outcomes. Missing fields stay unknown.
+- Publish only two fixed requests (`pushall`, `get_version`); no print, motion, temperature or file command can be constructed. Accept private, link-local and loopback IP literals only, one reader at a time and at most one read per printer every 5 s.
+- Show the device certificate fingerprint (issuer not verified) and pin it per host/serial for the page session; a different certificate stops before the access code is sent. Access codes are never stored, logged or returned, including in validation errors.
+- Implement the bounded MQTT 3.1.1 subset with the standard library (no new dependency). Fixture tests use a loopback fake TLS broker with test-only certificates; installed-package qualification adds two printer-status checks. Physical printer connection remains separately qualified.
+
 ## 0.8.0 — 2026-11-15
 
 - Review the actual generated CAD envelope against recorded printer volume before Studio composition and the application's full-config preparation. Reject height overflow and unresolved placement without staging or native execution.

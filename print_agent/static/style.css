@@ -298,6 +298,18 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .offer-result-table td { font-variant-numeric: tabular-nums; }
 .offer-result-table tbody tr:first-child td { background: #f8fbff; }
 .offer-result-table td:first-child { color: #4f6685; font-weight: 600; }
+.view > .card + .card { margin-top: 18px; }
+.printer-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 6px; }
+.printer-form .button-row { grid-column: 1 / -1; margin-top: 0; align-items: center; }
+.printer-devices { display: grid; gap: 10px; margin-top: 12px; }
+.printer-device { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; }
+.printer-device .button { justify-self: start; margin-top: 6px; }
+.printer-result { margin-top: 14px; }
+.printer-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.printer-result.is-stale { opacity: .4; filter: grayscale(1); pointer-events: none; user-select: none; }
+.printer-progress { display: block; width: 100%; height: 8px; margin: 12px 0 4px; accent-color: #3b5bdb; }
+.printer-swatch { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; border: 1px solid #c9d3e0; border-radius: 3px; }
+.printer-slots { margin: 6px 0 0; padding-left: 0; list-style: none; line-height: 2; font-size: 12px; color: #4c5e76; overflow-wrap: anywhere; }
 .plain-note { margin: 27px 4px; font-size: 12px; color: #8292a9; }
 .plain-note strong { font-size: 12px; font-weight: 600; color: #657c9d; }
 .plain-note p { margin-top: 8px; line-height: 1.8; font-size: 11px; }
@@ -365,6 +377,7 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
   .history-item > .button { grid-column: 3; grid-row: 1 / 3; }
 }
 @media (max-width: 760px) {
+  .printer-form, .printer-metrics { grid-template-columns: 1fr; }
   .sidebar { width: 242px; transform: translateX(-100%); transition: transform .2s ease; z-index: 80; box-shadow: 15px 0 50px #1f345c14; }
   body.nav-open .sidebar { transform: translateX(0); }
   body.nav-open { overflow: hidden; }

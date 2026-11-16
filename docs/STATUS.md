@@ -1,10 +1,12 @@
 # Development status
 
-Date: 2026-11-15 (Asia/Seoul).
+Date: 2026-11-16 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.8 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.9 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.9 adds a [read-only printer status view](PRINTER_STATUS.md). It listens for Bambu SSDP announcements and reads one printer's LAN-mode MQTT/TLS report with a user-entered access code. Connection stages, the device certificate fingerprint and printer-reported state stay separate; only fixed `pushall`/`get_version` requests are sent, targets are limited to private IP literals, and access codes are never stored or returned. Fixture tests use a loopback fake broker; no physical printer has been qualified yet. Not yet released: CI, installed qualification and promotion for v0.9.0 are pending.
 
 Version 0.8 adds a [recorded print-volume review](PRINT_VOLUME.md) before generated-CAD preparation. The server compares verified mesh dimensions with recorded rectangular areas, heights and supported exclusions, retains identity-bound reports, and rejects unknown or oversized preparation without launching native code. Both Studio-project and manual app paths use the gate; the UI shows dimensions, orientation results and a return-to-edit action. This is a bounded CAD-envelope check, not native placement or hardware qualification. The exact qualified wheel is published in [v0.8.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.8.0); source-bound evidence appears below. Earlier release evidence remains historical.
 
@@ -208,10 +210,12 @@ Source authenticity checks, Studio default/include/variant resolution, MakerWorl
 
 ## Next product milestones
 
-1. **Exact filament to usable settings:** identify a product and hardware setup, retrieve attributable source material, resolve full preset inheritance, and show unknown/conflicting values.
-2. **One real Bambu setup:** verify the installed Studio version, full configuration, slice read-back and measured physical result for one known printer/nozzle/plate/filament combination.
-3. **Broader beginner discovery and customization:** extend the implemented six local starting projects with verified external sources and additional supported edits, recording original files and reuse conditions.
-4. **Website and local companion:** add a hosted discovery surface with an explicitly paired local execution component; keep heavy CAD/native work on the user's machine.
-5. **Condition-aware shopping and memory:** compare observed offers under matching purchase conditions and reuse outcomes only for matching setups.
+Development priorities set on 2026-11-16. Each item lands as its own verified release; a later stage is never claimed from evidence of an earlier one.
 
-The detailed scope is in [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md). [BENCHMARKS.md](BENCHMARKS.md) defines proposed future evaluations, not achieved scores.
+1. **Real Bambu printer integration:** v0.9 implements read-only identification, connection state and reported print status. Next: live qualification on one physical printer/firmware, an optional saved printer list without stored access codes, and linking a reported job state to a stored CAD/slice job (still separate from measured outcomes).
+2. **Natural-language CAD beyond three templates:** typed, validated new geometry families and edits; no LLM-generated code execution.
+3. **Filament automation:** check profile compatibility across printer, nozzle and material (including AMS-reported slots as unverified input), then resolve full preset inheritance and show unknown/conflicting values.
+4. **Print failure recovery:** classify user-reported and printer-reported (HMS/error code) failures, keep setting-change history, and prepare a re-print with only the affected settings rechecked.
+5. **Operational completeness:** physical-device tests, install/update/recovery qualification on each desktop platform, and recorded native/printer evidence per version.
+
+Earlier roadmap items (website/local companion, condition-aware shopping, external model sources) remain in [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md). [BENCHMARKS.md](BENCHMARKS.md) defines proposed future evaluations, not achieved scores.

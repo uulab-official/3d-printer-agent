@@ -12,7 +12,7 @@ names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
 names.push(...libraryNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 class Element {
-  constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
+  constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.style={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
   set textContent(value) { this._text=String(value); this.children=[]; }
   get textContent() { return this._text + this.children.map(x=>x.textContent || '').join(' '); }
   append(...nodes) { this.children.push(...nodes); }
@@ -47,6 +47,29 @@ function fixture() {
   vm.runInContext(source.slice(source.indexOf('  function renderOfferRows()'),source.indexOf('  function dateTime(')),context);
   Object.assign(context.state,{studioSettingsOpen:false,studioSettingsDescriptor:null,studioSettingsDraft:null,studioSettingsReview:null,studioSettingsReviewContext:null,studioSettingsPending:false,studioSettingsApplied:null,studioSettingsCandidate:null,studioSettingsRecorded:null,studioSettingsRecordedReview:null,studioRequest:0,studioRevision:0,studioPending:false,studioCandidate:null,studioCandidateEpoch:null,studioCandidateStorage:null,studioApplied:null,studioAppliedEpoch:null,studioAppliedStorage:null,studioRecorded:null,studioSlicePrepared:false,studioPreparedSignature:null,studioSavedIdentity:null});
   return context;
+}
+function printerFixture() {
+  const c=fixture();
+  Object.assign(c.state,{printerPins:{},printerStatus:null,printerRequest:0});
+  vm.runInContext(/^  const printerNozzleTypes = .*$/m.exec(source)[0],c);
+  vm.runInContext(/^  const printerConnectionTones = .*$/m.exec(source)[0],c);
+  for(const name of ['printerTarget','printerPinKey','updatePrinterControls','selectPrinterDevice','renderPrinterDevices','printerNumber','printerTemperature','renderPrinterStatus','discoverPrinters','checkPrinterStatus','printerInputChanged','clearPrinterPin','metric','dateTime']) {
+    const match=new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
+    if(!match)throw new Error('Missing printer controller function: '+name);
+    const tail=source.slice(match.index),end=/\n  \}(?=\n|$)/.exec(tail);
+    vm.runInContext(tail.slice(0,end.index+4),c);
+  }
+  c.$('printer-host').value='192.168.0.20';c.$('printer-serial').value='01s00test000001';c.$('printer-access-code').value='SECRET-CODE';
+  return c;
+}
+function printerReport(overrides={}) {
+  return {schema_version:1,observed_at:'2026-11-16T00:00:00Z',target:{host:'192.168.0.20',serial:'01S00TEST000001',port:8883},
+    connection:{state:'reporting',detail:'프린터가 현재 상태를 보고했습니다.'},certificate:{sha256:'a'.repeat(64),issuer_verified:false,pinned:false,matches_pin:null},
+    identity:{product_name:'Bambu Lab P1S',firmware:'01.08.00.00',modules:[]},
+    print:{state:'RUNNING',state_label:'출력 중',progress_percent:42,remaining_minutes:37,layer:51,total_layers:120,error_code:0,hms:[{hms_code:'0700_8000_0002_0001'}],
+      temperatures_c:{nozzle:219.6,nozzle_target:220,bed:55,bed_target:55,chamber:null},nozzle:{diameter_mm:0.4,type:'stainless_steel'},
+      material_slots:[{unit:0,slot:0,material:'PLA',product:'PLA Basic',color:'FFFFFFFF',filament_id:'GFA00'},{unit:0,slot:1,empty:true}]},
+    scope:'읽기 전용',...overrides};
 }
 function profileFixture() {
   const context=fixture();
@@ -1568,6 +1591,48 @@ const printVolumeReport = (overrides={}) => ({
     assert(findElement(area,element=>element.dataset.evidencePath==='scope.printer_model'));
     c.renderProfileResolution({status:'needs_input',edit_review:{status:'unchanged',changed_fields:[],evidence_status:'compared',evidence_changes:[]}});
     assert.equal(c.$('profile-evidence-review').hidden,true);assert.equal(c.$('profile-evidence-changes').textContent,'');
+  });
+  await check('Printer status pins the first reporting certificate and sends it on the next read only',async()=>{
+    const c=printerFixture(),bodies=[];
+    c.api=async(path,body)=>{bodies.push(plain(body));return printerReport();};
+    await c.checkPrinterStatus();
+    assert.deepEqual(bodies[0],{host:'192.168.0.20',serial:'01S00TEST000001',access_code:'SECRET-CODE'});
+    assert.equal(c.state.printerPins['192.168.0.20|01S00TEST000001'],'a'.repeat(64));
+    const text=c.$('printer-result').textContent;
+    assert.match(text,/출력 중/);assert.match(text,/42%/);assert.match(text,/51 \/ 120/);assert.match(text,/0700_8000_0002_0001/);assert.match(text,/GFA00/);
+    assert.doesNotMatch(text,/SECRET-CODE/);assert.equal(c.$('printer-result').hidden,false);assert.equal(c.$('printer-unpin').hidden,false);
+    await c.checkPrinterStatus();
+    assert.equal(bodies[1].pinned_certificate_sha256,'a'.repeat(64));
+    c.printerInputChanged();assert.equal(c.state.printerStatus,null);assert.equal(c.$('printer-result').attributes['aria-hidden'],'true');
+    assert.match(c.$('printer-feedback').textContent,/이전 대상의 확인 결과/);assert.equal(c.$('printer-status-badge').textContent,'입력이 바뀌어 다시 확인 필요');
+  });
+  await check('A changed certificate or non-reporting read never renders print values or replaces the pin',async()=>{
+    const c=printerFixture();c.state.printerPins['192.168.0.20|01S00TEST000001']='b'.repeat(64);
+    c.api=async()=>printerReport({connection:{state:'certificate_changed',detail:'이전에 확인한 인증서와 다릅니다.'},print:null,identity:null,
+      certificate:{sha256:'c'.repeat(64),issuer_verified:false,pinned:true,matches_pin:false}});
+    await c.checkPrinterStatus();
+    assert.equal(c.state.printerPins['192.168.0.20|01S00TEST000001'],'b'.repeat(64));
+    assert.doesNotMatch(c.$('printer-result').textContent,/진행률/);
+    assert.match(c.$('printer-feedback').textContent,/인증서와 다릅니다/);
+    assert.match(c.$('printer-result').textContent,/고정한 인증서와 다름/);assert.doesNotMatch(c.$('printer-result').textContent,/처음 확인한 인증서/);
+    c.clearPrinterPin();assert.equal(c.state.printerPins['192.168.0.20|01S00TEST000001'],undefined);
+  });
+  await check('Editing printer inputs during a read discards the late result',async()=>{
+    const c=printerFixture();let finish;
+    c.api=()=>new Promise(done=>{finish=done;});
+    const pending=c.checkPrinterStatus();
+    c.$('printer-host').value='192.168.0.21';c.printerInputChanged();
+    finish(printerReport());await pending;
+    assert.equal(c.state.printerStatus,null);assert.deepEqual(plain(c.state.printerPins),{});
+  });
+  await check('Printer discovery explains unavailable listeners and lets a device fill the target',async()=>{
+    const c=printerFixture();
+    c.renderPrinterDevices({state:'listen_unavailable',devices:[]});
+    assert.match(c.$('printer-discover-feedback').textContent,/직접 입력/);
+    c.renderPrinterDevices({state:'listened',seconds:4,devices:[{host:'10.0.0.9',serial:'01P00ABCDEF0001',model_code:'C12',model_name:'P1S',name:'Shop',location_matches_sender:false}]});
+    const area=c.$('printer-devices');assert.match(area.textContent,/P1S \(C12\)/);assert.match(area.textContent,/주소가 다릅니다/);
+    findElement(area,element=>element.listeners?.click).listeners.click();
+    assert.equal(c.$('printer-host').value,'10.0.0.9');assert.equal(c.$('printer-serial').value,'01P00ABCDEF0001');
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();
