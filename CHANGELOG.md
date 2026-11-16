@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0 — 2026-11-16
+
+- New `name_tag` template (이름 키링): raised text of 1–20 letters (Hangul, Latin, digits, spaces and a few marks) on a rounded plate with a ring-hole tab, always one solid. Width and depth follow the text; height is base plus letter height. Letters use the platform's system font (Arial bold or a system fallback), and the result says another computer may draw slightly different letters. Requests such as “이름이 민수인 키링”, “"Samantha" 키링” and “서연이라고 적힌 키링” set the text; letter size, height, plate thickness, border and hole size are editable and copy/paste as text. Contextual edits set a new text string. Printability estimates the letter stroke at about 10% of the letter height.
+- `text` is the first non-numeric parameter (`schemas.TEXT_FIELDS`); like the other later fields it appears only in this template's canonical parameters, so earlier jobs and hashes keep their shape.
+- Fix a mirrored model preview: the projection now places the camera on the −Y side (CAD front), so the top view shows +Y up and text reads normally. Symmetric templates hid this before.
+- Installed-package qualification creates a name tag on each platform and compares STEP and 3MF sizes with the job's reported size.
+
 ## 0.11.0 — 2026-11-16
 
 - Reconnect no longer stays “연결 확인 중” while the saved filament and Studio lists load after a successful bootstrap. A list request cut off by a server restart had kept the reconnect control disabled; this caused the intermittent CI failure in the restart-recovery browser case.

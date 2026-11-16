@@ -140,6 +140,8 @@ main { max-width: 1460px; padding: 37px 42px 24px; margin: 0 auto; }
 .step-button { height: 36px; border: 1px solid var(--line); border-radius: 8px; background: #f6f8fc; color: #405573; font-size: 16px; font-weight: 700; line-height: 1; cursor: pointer; }
 .step-button:hover:not(:disabled) { background: #edf3ff; color: var(--blue); }
 .step-button:disabled { opacity: .5; cursor: default; }
+.parameter-text { grid-column: 1 / -1; }
+.parameter-text input { width: 100%; margin-top: 6px; font-size: 16px; font-weight: 700; letter-spacing: .02em; }
 .parameter-slider { width: 100%; margin: 8px 0 0; accent-color: var(--blue); }
 .parameter-actions { display: flex; gap: 12px; align-items: center; }
 .paste-panel { margin: 12px 0 0; padding: 12px 14px; border: 1px dashed #b9c8e4; border-radius: 10px; background: #fbfcff; }

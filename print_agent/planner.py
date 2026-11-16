@@ -19,8 +19,10 @@ DEFAULTS = {
     'cable_comb': {'width':80,'depth':18,'height':12,'wall':2,'bottom':2,'slots':5,'cable_diameter':6,'fit_clearance':0.3},
     'magnet_frame': {'width':65,'depth':65,'height':7,'wall':2,'bottom':2,'inset_diameter':52,'inset_depth':2,'fit_clearance':0.3},
     'phone_stand': {'width':70,'depth':80,'height':90,'wall':4,'bottom':4,'lean_angle':65,'device_thickness':12,'lip_height':12,'fit_clearance':1},
+    'name_tag': {'text':'MINSU','text_size':12,'text_depth':2,'wall':3,'bottom':2,'hole_diameter':4},
 }
-LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대'}
+KEYCHAIN_WORDS = ('키링','키홀더','열쇠고리','이름표','네임택','name tag','keychain','key ring')
+LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대','name_tag':'이름 키링'}
 NUMBER = r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'
 # Everyday names mapped to the closest supported template. Each starting size is
 # announced in the plan; the user's own numbers always override it.
@@ -55,10 +57,13 @@ FIELD_LABELS = {
     'width':'가로','depth':'세로','height':'높이','wall':'벽 두께','bottom':'바닥 두께','dividers':'칸막이',
     'slots':'케이블 홈','cable_diameter':'케이블 지름','inset_diameter':'원판 지름','inset_depth':'포켓 깊이',
     'fit_clearance':'여유','lean_angle':'등판 각도','device_thickness':'기기 두께','lip_height':'앞턱 높이',
+    'text':'글자','text_size':'글자 크기','text_depth':'글자 높이','hole_diameter':'고리 구멍 지름',
 }
 
 
 def _default_text(key, value):
+    if key == 'text':
+        return f'글자 “{value}”'
     unit = '개' if key in ('slots', 'dividers') else '°' if key == 'lean_angle' else ' mm'
     return f'{FIELD_LABELS.get(key, key)} {float(value):g}{unit}'
 
@@ -96,6 +101,8 @@ def plan_from_text(text: str) -> dict:
     if routed is not None:
         return routed
     lowered=text.lower()
+    if any(word in lowered for word in KEYCHAIN_WORDS):
+        return _plan_name_tag(text)
     if any(word in lowered for word in ('뚜껑','경첩','방수','피규어','dragon','hinge','lid','손잡이','handle','나사','screw','곡면','둥근 모서리','rounded corner','구멍')):
         return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임, 휴대폰 거치대를 지원합니다. 지원 템플릿으로 바꿀까요?')
     for words,message in UNSUPPORTED_ITEMS:
@@ -279,6 +286,61 @@ def plan_from_text(text: str) -> dict:
     }
 
 
+def _plan_name_tag(text: str) -> dict:
+    """Name keychain: the text comes from quotes or "이름/글자 …", sizes from qualified words."""
+    lowered=text.lower()
+    values=dict(DEFAULTS['name_tag'])
+    explicit=set()
+    notes=[]
+    quoted=re.findall(r'[“"\'「『]([^”"\'」』]{1,20})[”"\'」』]',text)
+    token=r'([0-9A-Za-z가-힣&!.\-]{1,20})'
+    keychain=r'(?:키링|키홀더|열쇠고리|이름표|네임택)'
+    stop={'크기','높이','두께','지름','구멍','키링','키홀더','열쇠고리','이름표','네임택','이름','글자','글씨','만들어줘','만들어','넣어줘','넣어서','고리','받침',
+          '적힌','새긴','새겨진','쓴','써진','들어간'}
+    def clean(word, after):
+        # "민수인 키링" / "민수라고": drop a trailing particle before the keychain word.
+        word=re.sub(r'(이라고|라고|으로|로)$','',word) if len(word)>2 else word
+        if word.endswith('인') and len(word)>1 and re.match(r'\s*'+keychain, after):
+            word=word[:-1]
+        return word
+    candidates=[value.strip() for value in quoted]
+    for pattern in (r'(?:이름(?!표)|글자|글씨|문구|텍스트)\s*(?:은|는|이|가|을|를|:|=)?\s*'+token, token+r'(?=\s*'+keychain+')',
+                    token+r'(?=\s*(?:이라고|라고)?\s*(?:적힌|새긴|새겨진|쓴|써진|들어간))'):
+        for match in re.finditer(pattern,text):
+            word=clean(match.group(1), text[match.end():])
+            if word and word not in stop and not re.fullmatch(r'\d+(?:mm|cm)?',word):
+                candidates.append(word)
+    candidates=list(dict.fromkeys(candidates))
+    if len(candidates)>1:
+        return _question(f'키링에 넣을 글자가 여러 개입니다({", ".join(candidates)}). 하나를 따옴표로 알려주세요.')
+    if candidates:
+        values['text']=candidates[0];explicit.add('text')
+    else:
+        notes.append('넣을 글자를 찾지 못해 “MINSU”로 시작합니다. 원하는 글자를 따옴표로 적거나 글자 칸에서 바꾸세요.')
+    aliases={'text_size':r'(?:글자|글씨)\s*크기','text_depth':r'(?:글자|글씨)\s*높이','hole_diameter':r'(?:고리\s*)?구멍\s*(?:지름|크기)?',
+             'bottom':r'(?:받침|바닥)\s*두께','wall':r'(?:테두리|여백)'}
+    for field,pattern in aliases.items():
+        found={_mm(m.group(1),m.group(2)) for m in re.finditer(pattern+r'\s*(?:는|은|을|를|:|=)?\s*'+NUMBER+UNIT,lowered)}
+        if len(found)>1:
+            return _question(f'{FIELD_LABELS[field]} 값이 여러 개입니다. 하나만 알려주세요.')
+        if found:
+            values[field]=next(iter(found));explicit.add(field)
+    try:
+        parameters=GeometryRequest(template='name_tag',**values).model_dump()
+        _validate_geometry(parameters)
+    except ValidationError:
+        return _question('키링 글자는 한글·영문·숫자·공백과 일부 기호로 1~20자, 글자 크기는 6~40 mm, 구멍 지름은 2~10 mm로 알려주세요.')
+    except ValueError as exc:
+        return _question(str(exc))
+    defaults={key:value for key,value in DEFAULTS['name_tag'].items() if key not in explicit and key!='text'}
+    return {
+        'status':'ready','engine':'template_rules','message':'이름 키링의 제작안을 준비했습니다. 가로·세로는 글자 길이에 맞춰 정해집니다.',
+        'parameters':parameters,'questions':[],
+        'assumptions':notes+([f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value) for key,value in defaults.items())] if defaults else []),
+        'capability':'supported_template_only',
+    }
+
+
 def validate_llm_plan(raw: dict) -> dict:
     if not isinstance(raw,dict) or set(raw)-{'parameters','explanation','questions'}:
         raise ValueError('LLM이 허용된 제작안 형식을 반환하지 않았습니다.')
@@ -333,7 +395,7 @@ async def plan_with_llm(text: str) -> dict:
     system=(
         'You plan parameterized 3D-printing models. Return only a JSON object with parameters, explanation in Korean, and questions (array). '
         'Never return code, commands, temperatures, prices or claims of printing success. '
-        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim), phone_stand (base, front lip and back plate leaning at lean_angle degrees from horizontal; device_thickness plus fit_clearance sets the slot; no tipping or charging-port guarantee). '
+        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim), phone_stand (base, front lip and back plate leaning at lean_angle degrees from horizontal; device_thickness plus fit_clearance sets the slot; no tipping or charging-port guarantee), name_tag (raised text of 1-20 letters on a rounded plate with a ring hole; width and depth follow the text). '
         'All dimensions in mm; convert units explicitly. If the user requests unsupported objects, moving joints, load/safety guarantees, lids or unsupported edits, ask a clarification in questions and do not generate parameters. '
         'For N tray compartments use dividers=N-1. fit_clearance adds to diameter. Missing dimensions must be described as assumptions in explanation. '
         'Allowed parameter schema: '+json.dumps(GeometryRequest.model_json_schema(),ensure_ascii=False)

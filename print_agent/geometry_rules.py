@@ -13,6 +13,9 @@ def _validate_geometry(p: dict) -> None:
             raise ValueError("케이블 홈 사이와 양끝에 지정한 벽 두께를 확보할 수 없습니다.")
         if h < bottom + diameter / 2:
             raise ValueError("둥근 케이블 홈과 지정한 바닥 두께에 비해 높이가 부족합니다.")
+    elif p["template"] == "name_tag":
+        if p["hole_diameter"] > p["text_size"]:
+            raise ValueError("고리 구멍이 글자 높이보다 클 수 없습니다. 구멍 지름을 줄이거나 글자를 키우세요.")
     elif p["template"] == "phone_stand":
         import math
         slot_front = wall + p["device_thickness"] + p["fit_clearance"]
