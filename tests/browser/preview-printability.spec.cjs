@@ -173,3 +173,23 @@ test('history tells same-size jobs apart, filters by recorded result and the hea
   await expect(items.nth(0)).toContainText('벽 두께 0.8 mm');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
+
+test('everyday requests become announced plans that generate valid CAD', async ({ page }) => {
+  await page.locator('#request-text').fill('사진 넣는 액자 10cm 원형');
+  await page.locator('#plan-button').click();
+  const feedback = page.locator('#plan-feedback');
+  await expect(feedback).toContainText('113 × 113 mm로 키웠습니다');
+  await expect(feedback).toContainText('입력하지 않아 기본값을 쓴 치수: 높이 7 mm');
+  await expect(feedback).not.toContainText('width');
+  await expect(page.locator('#parameter-inset_diameter')).toHaveValue('100');
+  const frame = await generate(page, {});
+  expect(frame.dimensions_mm).toEqual({ x: 113, y: 113, z: 7 });
+  await page.locator('#request-text').fill('서랍 정리함 3칸, 서랍 안쪽이 30x20cm 높이 6cm');
+  await page.locator('#plan-button').click();
+  const confirm = page.locator('#model-confirm-replace');
+  if (await confirm.isVisible()) await confirm.click();
+  await expect(feedback).toContainText('안쪽 치수를 모델의 바깥 치수로 사용했습니다');
+  await expect(page.locator('#parameter-width')).toHaveValue('300');
+  await expect(page.locator('#parameter-depth')).toHaveValue('200');
+  await expect(page.locator('#parameter-dividers')).toHaveValue('2');
+});

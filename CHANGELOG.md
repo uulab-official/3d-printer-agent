@@ -2,6 +2,8 @@
 
 ## 0.10.0 — 2026-11-16
 
+- Request parsing for everyday phrases: two-number sizes (“30x20cm”, each number may carry its own unit) are no longer ignored silently; inner sizes are flagged as used for the outside; “케이블 3개” sets the slot count; a stand's bare “두께” is the device thickness; round photo sizes (“10cm 원형”, “지름 50mm”) set the pocket and grow an unspecified frame to fit. Pen holders, business-card holders, earphone trays, photo frames and tablet stands start from announced sizes; monitor and laptop stands are declined because they carry load. Default notes list Korean field names on one line.
+
 - History items carry a display-only `summary` (template's distinguishing dimensions, printability status, slice state) so same-title jobs can be told apart; the list shows those facts, a short outcome note and filters for success, failure and unrecorded results over the loaded pages, stating how many of the loaded records match.
 - A healthy connection with nothing to recover collapses to one line; problems keep the full explanation.
 - When the printer status view has read a finish or failure report, the result card shows it as a hint for the user's own record and never selects a result.

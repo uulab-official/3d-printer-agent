@@ -22,9 +22,39 @@ DEFAULTS = {
 }
 LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대'}
 NUMBER = r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'
+# Everyday names mapped to the closest supported template. Each starting size is
+# announced in the plan; the user's own numbers always override it.
+ITEM_RECIPES = (
+    (('펜꽂이','펜 꽂이','연필꽂이','pen holder'), 'tray', {'width':80,'depth':80,'height':100,'dividers':0},
+     '펜꽂이는 위가 열린 수납함(80 × 80 × 100 mm)으로 시작합니다.'),
+    (('명함꽂이','명함 꽂이','명함 정리','명함'), 'tray', {'width':100,'depth':65,'height':35,'dividers':0},
+     '명함 꽂이는 위가 열린 수납함(100 × 65 × 35 mm)으로 시작합니다. 실제 명함 크기를 재서 조정하세요.'),
+    (('이어폰','에어팟','airpods'), 'tray', {'width':90,'depth':70,'height':30,'dividers':1},
+     '이어폰 정리는 두 칸 수납함(90 × 70 × 30 mm)으로 시작합니다.'),
+    (('액자','사진 프레임','포토 프레임'), 'magnet_frame', {},
+     '사진 액자는 원형 사진을 넣는 인셋 프레임으로 만듭니다. 사각 액자는 아직 지원하지 않습니다.'),
+    (('태블릿','아이패드','ipad','tablet'), 'phone_stand', {'width':160,'height':120,'device_thickness':10},
+     '태블릿 거치대는 폭 160 mm, 높이 120 mm, 기기 두께 10 mm로 시작합니다.'),
+)
+UNSUPPORTED_ITEMS = (
+    (('모니터 받침','모니터 스탠드','노트북 받침','노트북 스탠드','monitor stand','laptop stand'),
+     '모니터·노트북 받침대는 무게를 받치는 구조라 이 버전에서 만들지 않습니다. 휴대폰·태블릿 거치대, 수납함, 케이블 받침, 원형 인셋 프레임을 지원합니다.'),
+)
 UNIT = r'\s*(mm|cm|밀리미터|센티미터|밀리|센티)?'
 MAX_LLM_RESPONSE_BYTES = 100_000
 LLM_DEADLINE_SECONDS = 60
+
+
+FIELD_LABELS = {
+    'width':'가로','depth':'세로','height':'높이','wall':'벽 두께','bottom':'바닥 두께','dividers':'칸막이',
+    'slots':'케이블 홈','cable_diameter':'케이블 지름','inset_diameter':'원판 지름','inset_depth':'포켓 깊이',
+    'fit_clearance':'여유','lean_angle':'등판 각도','device_thickness':'기기 두께','lip_height':'앞턱 높이',
+}
+
+
+def _default_text(key, value):
+    unit = '개' if key in ('slots', 'dividers') else '°' if key == 'lean_angle' else ' mm'
+    return f'{FIELD_LABELS.get(key, key)} {float(value):g}{unit}'
 
 
 def _question(message, *, action=None, engine='template_rules'):
@@ -62,7 +92,16 @@ def plan_from_text(text: str) -> dict:
     lowered=text.lower()
     if any(word in lowered for word in ('뚜껑','경첩','방수','피규어','dragon','hinge','lid','손잡이','handle','나사','screw','곡면','둥근 모서리','rounded corner','구멍')):
         return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임, 휴대폰 거치대를 지원합니다. 지원 템플릿으로 바꿀까요?')
-    if any(word in lowered for word in ('거치대','스탠드','stand','폰 받침','휴대폰 받침','태블릿')):
+    for words,message in UNSUPPORTED_ITEMS:
+        if any(word in lowered for word in words):
+            return _question(message)
+    recipe=next(((template,overrides,note) for words,template,overrides,note in ITEM_RECIPES
+                 if any(word in lowered for word in words)),None)
+    notes=[]
+    if recipe:
+        template,recipe_defaults,note=recipe
+        notes.append(note)
+    elif any(word in lowered for word in ('거치대','스탠드','stand','폰 받침','휴대폰 받침')):
         template='phone_stand'
     elif any(word in lowered for word in ('프레임','마그넷','magnet','frame')):
         template='magnet_frame'
@@ -72,11 +111,14 @@ def plan_from_text(text: str) -> dict:
         template='tray'
     else:
         return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임, 휴대폰 거치대 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
+    if not recipe:
+        recipe_defaults={}
     if template=='tray' and any(word in lowered for word in ('원형','동그란','원통','circular','round','cylinder')):
         return _question('수납함 템플릿은 직사각형입니다. 원형 수납함은 아직 지원하지 않습니다. 직사각형으로 만들까요?')
     if re.search(r'\b(inch|inches)\b|인치|\d\s*m\b',lowered):
         return _question('이 버전의 대화 입력은 mm 또는 cm를 지원합니다. 치수를 해당 단위로 알려주세요.')
-    values={'template':template,**DEFAULTS[template]}
+    start={**DEFAULTS[template],**recipe_defaults}
+    values={'template':template,**start}
     explicit=set()
     aliases={
         'width':r'(?:가로|너비|폭|width)', 'depth':r'(?:세로|깊이|depth)',
@@ -100,8 +142,19 @@ def plan_from_text(text: str) -> dict:
             m=matches[-1]
             values[field]=_mm(m.group(1),m.group(2)); explicit.add(field)
             occupied.extend(match.span() for match in matches)
+    if template=='phone_stand' and 'device_thickness' not in explicit:
+        # For a stand, a bare "두께" (not wall/base thickness) means the device with its case.
+        bare=[m for m in re.finditer(r'(?<!벽)(?<!벽 )(?<!바닥)(?<!바닥 )두께\s*(?:는|은|:|=)?\s*'+NUMBER+UNIT,lowered)
+              if not any(m.start()<end and m.end()>start for start,end in occupied)]
+        if len({_mm(m.group(1),m.group(2)) for m in bare})>1:
+            return _question('기기 두께가 여러 개입니다. 케이스를 포함한 두께 하나를 알려주세요.')
+        if bare:
+            values['device_thickness']=_mm(bare[-1].group(1),bare[-1].group(2));explicit.add('device_thickness')
+            occupied.extend(m.span() for m in bare)
+    triple_spans=[]
     triples=re.finditer(NUMBER+UNIT+r'\s*[x×*]\s*'+NUMBER+UNIT+r'\s*[x×*]\s*'+NUMBER+UNIT,lowered)
     for triple in triples:
+        triple_spans.append(triple.span())
         groups=triple.groups()
         units=groups[1::2]
         normalized={_mm(1,unit) for unit in units if unit}
@@ -113,6 +166,22 @@ def plan_from_text(text: str) -> dict:
             if field in explicit and values[field]!=converted:
                 return _question('표기한 가로·세로·높이가 서로 다릅니다. 사용할 치수 하나를 알려주세요.')
             values[field]=converted;explicit.add(field)
+    # Two numbers ("30x20cm") give width and depth; previously they were ignored silently.
+    for pair in re.finditer(NUMBER+UNIT+r'\s*[x×*]\s*'+NUMBER+UNIT,lowered):
+        if any(pair.start()<end and pair.end()>start for start,end in triple_spans):
+            continue
+        units=pair.groups()[1::2]
+        normalized={_mm(1,unit) for unit in units if unit}
+        if len(normalized)>1 and any(unit is None for unit in units):
+            return _question('단위가 섞여 있습니다. 각 치수에 mm 또는 cm를 붙여주세요.')
+        shared=next((unit for unit in reversed(units) if unit),None)
+        for field,number,unit in zip(('width','depth'),pair.groups()[0::2],units):
+            converted=_mm(number,unit or shared)
+            if field in explicit and values[field]!=converted:
+                return _question('표기한 가로·세로가 서로 다릅니다. 사용할 치수 하나를 알려주세요.')
+            values[field]=converted;explicit.add(field)
+    if {'width','depth'}&explicit and any(word in lowered for word in ('안쪽','내부','안 치수','내경')):
+        notes.append('안쪽 치수를 모델의 바깥 치수로 사용했습니다. 넣을 공간에 꼭 맞으므로 1~2 mm 줄이는 것을 권합니다.')
     if template=='phone_stand':
         angles={float(m.group(1)) for m in re.finditer(r'(?:각도|기울기)\s*(?:는|은|을|를|:|=)?\s*'+NUMBER+r'\s*(?:도|°)',lowered)}
         angles|={float(m.group(1)) for m in re.finditer(NUMBER+r'\s*(?:도|°)\s*(?:각도|기울기|로\s*기울)',lowered)}
@@ -121,9 +190,21 @@ def plan_from_text(text: str) -> dict:
         if angles:
             values['lean_angle']=_mm(next(iter(angles)),None);explicit.add('lean_angle')
     if template=='magnet_frame' and 'inset_diameter' not in explicit:
-        match=re.search(NUMBER+r'\s*(mm|cm|밀리미터|센티미터)\s*(?:원형\s*)?(?:포토)?마그넷',lowered)
+        match=(re.search(NUMBER+r'\s*(mm|cm|밀리미터|센티미터)\s*(?:원형\s*)?(?:포토)?마그넷',lowered)
+               or re.search(NUMBER+r'\s*(mm|cm|밀리미터|센티미터)\s*(?:짜리\s*)?(?:원형|동그란)',lowered)
+               or re.search(r'(?:원형|동그란|지름|직경)\s*(?:사진\s*)?'+NUMBER+r'\s*(mm|cm|밀리미터|센티미터)',lowered))
         if match:
             values['inset_diameter']=_mm(match.group(1),match.group(2));explicit.add('inset_diameter')
+    if template=='magnet_frame' and 'inset_diameter' in explicit and not {'width','depth'}&explicit:
+        needed=float(values['inset_diameter'])+float(values['fit_clearance'])+2*float(values['wall'])
+        if needed>min(float(values['width']),float(values['depth'])):
+            side=math.ceil(needed)+8
+            values['width']=values['depth']=side;explicit.update({'width','depth'})
+            notes.append(f'지름 {values["inset_diameter"]:g} mm 포켓이 들어가도록 프레임을 {side} × {side} mm로 키웠습니다.')
+    if template=='cable_comb' and not any(word in lowered for word in ('슬롯','홈','slot')):
+        cables={float(m.group(1)) for m in re.finditer(r'케이블\s*'+NUMBER+r'\s*(?:개|줄|가닥)',lowered)}
+        if len(cables)==1 and next(iter(cables)).is_integer() and next(iter(cables))>0:
+            values['slots']=int(next(iter(cables)));explicit.add('slots')
     def count_values(patterns):
         return {float(match.group(1)) for pattern in patterns for match in re.finditer(pattern,lowered)}
     counts=count_values((NUMBER+r'\s*칸(?!막이)',r'칸\s*'+NUMBER))
@@ -172,11 +253,11 @@ def plan_from_text(text: str) -> dict:
         _validate_geometry(parameters)
     except ValueError as exc:
         return _question(str(exc))
-    defaults={key:value for key,value in DEFAULTS[template].items() if key not in explicit}
+    defaults={key:value for key,value in start.items() if key not in explicit}
     return {
         'status':'ready','engine':'template_rules','message':f'{LABELS[template]}의 제작안을 준비했습니다. 입력하지 않은 치수는 표시된 기본값을 사용합니다.',
         'parameters':parameters,'questions':[],
-        'assumptions':adjusted+[f'기본값: {key} = {value}'+(' mm' if key not in ('slots','dividers','lean_angle') else '°' if key=='lean_angle' else '') for key,value in defaults.items()],
+        'assumptions':notes+adjusted+([f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value) for key,value in defaults.items())] if defaults else []),
         'capability':'supported_template_only',
     }
 
@@ -200,7 +281,8 @@ def validate_llm_plan(raw: dict) -> dict:
     message=raw.get('explanation','제작안을 준비했습니다.')
     if not isinstance(message,str) or len(message)>2000:
         raise ValueError('LLM 설명 형식이 올바르지 않습니다.')
-    defaults=[f'기본값: {key} = {value}' for key,value in DEFAULTS[spec.template].items() if key not in params]
+    unset={key:value for key,value in DEFAULTS[spec.template].items() if key not in params}
+    defaults=[f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value) for key,value in unset.items())] if unset else []
     # Execution facts always come from the application, never provider prose.
     message='LLM이 제안한 치수를 검토할 수 있습니다. 아직 모델 생성·슬라이싱·프린터 출력은 실행하지 않았습니다.'
     return {'status':'ready','engine':'llm','message':message,'parameters':spec.model_dump(),'questions':[],'assumptions':defaults,'capability':'supported_template_only'}
