@@ -2,6 +2,7 @@
 
 ## 0.11.0 — 2026-11-16
 
+- Reconnect no longer stays “연결 확인 중” while the saved filament and Studio lists load after a successful bootstrap. A list request cut off by a server restart had kept the reconnect control disabled; this caused the intermittent CI failure in the restart-recovery browser case.
 - MakerWorld-style parameter panel: the current template's dimensions are grouped into size, thickness and shape; each field has a one-line explanation, -/+ steppers with a per-field step clamped to the allowed range, and a synced slider. Existing number inputs keep their ids and behaviour.
 - Copy and paste settings: “설정 복사” copies the template and dimensions as a small JSON document (falling back to a selected text box when the clipboard is refused); “붙여넣기” validates the format, template, fields, ranges and integer counts and applies through the existing replacement confirmation.
 

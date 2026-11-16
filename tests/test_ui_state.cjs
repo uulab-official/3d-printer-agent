@@ -1783,5 +1783,15 @@ const printVolumeReport = (overrides={}) => ({
     Object.assign(c.fields,{wall:{label:'벽 두께',min:0.8,max:20,step:0.1}});c.stepParameter('wall',1);assert.equal(c.$('parameter-wall').value,'0.9');
     c.$('parameter-width').value='';assert.throws(()=>c.currentParameterSnapshot(),/올바르게 입력/);
   });
+  await check('A stalled saved-list load after a successful reconnect never keeps the reconnect control busy',async()=>{
+    const c=fixture();studioApplied(c);
+    c.api=async(path)=>path==='/api/bootstrap'?{session_token:'new-token',storage:null,templates:c.state.templates,environment:{available:false},provider:{}}:{};
+    c.loadWorkspaces=()=>new Promise(()=>{});  // never resolves, like a request cut off by a server restart
+    const pending=c.bootstrap();
+    for(let i=0;i<10;i++) await new Promise(done=>setImmediate(done));
+    assert.equal(c.state.connectionState,'connected');assert.equal(c.state.bootstrapPending,false);
+    assert.equal(c.$('reconnect-button').disabled,false);assert.equal(c.$('reconnect-button').textContent,'다시 연결');
+    void pending;
+  });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

@@ -4348,6 +4348,11 @@
       ["plan-button", "review-profile", "compare-offers"].forEach((id) => { $(id).disabled = false; });
       updateWorkflowControls();
       updateWorkspaceStatus();
+      // The connection is established once bootstrap succeeds. Saved-list loads are
+      // secondary and must not keep the reconnect control busy if they stall.
+      state.bootstrapPending = false;
+      renderConnection();
+      updateWorkspaceStatus();
       await loadWorkspaces();
       await loadStudioLibrary();
     } catch (error) {
