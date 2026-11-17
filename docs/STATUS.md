@@ -6,6 +6,8 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
+Version 0.22 adds an explicit, anonymous new-version check against the public latest release; it never downloads or installs.
+
 Version 0.21 adds two wall-hook starting projects (“벽에 걸기”) and qualifies the wall hook in the installed package on every platform.
 
 Version 0.20 adds a sixth template, a wall hook with teardrop screw holes that prints without supports, chosen by requests such as “헤드폰 걸이”. Published as [v0.20.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.20.0) on 2026-11-17 from `0e3645b`.

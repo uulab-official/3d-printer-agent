@@ -4234,6 +4234,30 @@
     updatePrintSendControls();
   });
 
+  // ---------------------------------------------------------------------------
+  // New version check: only when asked; nothing is downloaded or installed.
+
+  async function checkForUpdate() {
+    const button = $("update-check");
+    const result = $("update-result");
+    try {
+      await withBusy(button, "확인 중", async () => {
+        const update = await api("/api/updates/check", {});
+        result.replaceChildren(node("span", "", `${update.detail} 현재 ${update.current_version}${update.latest_version ? ` · 최신 ${update.latest_version}` : ""}${update.published_at ? ` (${dateTime(update.published_at)} 게시)` : ""}. `));
+        if (update.status === "update_available") {
+          for (const [label, url] of [["릴리스 보기", update.release_url], ["업데이트·검증 안내", update.update_guide]]) {
+            const link = node("a", "", `${label} ↗`);
+            try { const parsed = new URL(url); if (parsed.protocol !== "https:") continue; link.href = parsed.href; } catch { continue; }
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            result.append(link, document.createTextNode(" "));
+          }
+        }
+      });
+    } catch (error) { result.textContent = error.message; }
+  }
+
+  $("update-check").addEventListener("click", checkForUpdate);
   $("printer-discover").addEventListener("click", discoverPrinters);
   restoreSavedPrinter();
   $("printer-form").addEventListener("submit", (event) => { event.preventDefault(); return checkPrinterStatus(); });

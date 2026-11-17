@@ -29,6 +29,10 @@ The printer status view reads a Bambu printer's LAN-mode report. Its intended se
 - The device certificate issuer is **not** verified, because printer certificates are not in common trust stores. The fingerprint is shown and pinned per host/serial for the page session; a different certificate stops the read before the access code is sent. A first connection on an untrusted network can therefore still reach an impersonating device.
 - Access codes are used for one read and are never stored, logged or returned, including in request-validation errors.
 
+## Update check (v0.22+)
+
+“새 버전 확인” sends one anonymous `GET` to `https://api.github.com/repos/uulab-official/3d-printer-agent/releases/latest`, only when the person presses it (never on startup or bootstrap). It sends no cookies, data, identifiers or installation details, ignores proxies from the environment, follows no redirects, bounds the response to 256 KiB, ignores drafts and pre-releases, and only links release pages of this repository. It never downloads or installs anything.
+
 ## Printer send boundary (v0.15+)
 
 Sending a job starts a physical machine, so `printer_send.py` is deliberately narrow:

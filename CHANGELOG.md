@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.0 — 2026-11-17
+
+- New-version check: “새 버전 확인” in the storage panel reads the public latest-release record of this repository once, only when pressed, and reports whether a newer release exists (or that the running source is ahead), with links to the release page and the update/verification guide. Nothing about the user or installation is sent; nothing is downloaded or installed; drafts, pre-releases, malformed or oversized answers and foreign links are not trusted. Documented in LOCAL_OPERATION and SECURITY.
+
 ## 0.21.0 — 2026-11-17
 
 - Two wall-hook starting projects under a new “벽에 걸기” purpose: 현관 열쇠 후크 (20 × 35 × 50 mm) and 헤드폰 걸이 (30 × 50 × 60 mm), with what to measure and the load/anchor limits. The starter list is now nine (`NINE SMALL STARTS`), and hook cards have their own illustration (back plate with two holes and a J arm).
