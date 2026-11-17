@@ -6,6 +6,8 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
+Version 0.12.1 fixes Studio-project slicing on macOS (the sliced file was written into the Studio app bundle because no output folder was named), adds an installed-Studio mode to the native qualification and fixes two keychain labels in the UI.
+
 Version 0.12 adds a fifth template, a [name keychain](NAME_TAG.md) with raised system-font text (Korean, Latin, digits and a few symbols, up to 20 characters) on a rounded plate with a ring hole, and keychain request parsing. It fixes a mirrored preview projection, pins known-good bold fonts per OS (Arial Bold on macOS/Windows, DejaVu Sans Bold on Linux) and rejects invalid letter outlines instead of exporting a broken mesh. Published as [v0.12.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.12.0) on 2026-11-16 (UTC) from `b96e657`.
 
 Version 0.11 adds a MakerWorld-style parameter panel (grouped fields with explanations, -/+ steppers and synced sliders) and validated copy/paste of template settings, and keeps reconnect available when a saved-list load stalls after a successful bootstrap. Published as [v0.11.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.11.0) on 2026-11-16 from `1882063`.
@@ -210,7 +212,7 @@ Repository adoption checks passed locally and in a fresh GitHub Actions environm
 
 ## Remaining qualifications
 
-Native results are version- and fixture-specific; see [VERIFICATION.md](VERIFICATION.md) for observed Linux Studio execution. macOS/Windows native installation, other Studio versions, real LLM servers and physical printing require separate qualification. The original local environment blocked Chromium IPC; the later successful GitHub Actions run supplies the separate real-browser evidence. Mobile viewport emulation is not a test on a physical phone.
+Native results are version- and fixture-specific; see [VERIFICATION.md](VERIFICATION.md) for observed Linux Studio execution in CI and a local macOS (arm64) run of the same four cases with an installed Studio 02.09.01.70. Windows native installation, CI-hosted macOS native runs, other Studio versions, real LLM servers and physical printing require separate qualification. The original local environment blocked Chromium IPC; the later successful GitHub Actions run supplies the separate real-browser evidence. Mobile viewport emulation is not a test on a physical phone.
 
 Source authenticity checks, Studio default/include/variant resolution, MakerWorld access/customization and live product collection are future capabilities. Many current official presets require those additional resolution rules. No external platform API is assumed to be available or authorized until verified.
 

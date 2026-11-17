@@ -16,7 +16,7 @@ from print_agent import slicer
 from tests.studio_project_fixtures import project_bytes
 
 
-PROJECT_HELP = "BambuStudio-02.09.01.70:\n--arrange --slice --export-3mf"
+PROJECT_HELP = "BambuStudio-02.09.01.70:\n--arrange --slice --outputdir --export-3mf"
 CORE = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 
 
@@ -238,8 +238,8 @@ class ProjectSlicerTests(unittest.TestCase):
         def fixture_invoke(argv, **kwargs):
             if argv[1:] == ["--help"]:
                 return subprocess.CompletedProcess(argv, 0, PROJECT_HELP, "")
-            output = Path(kwargs["cwd"]) / argv[6]
-            with zipfile.ZipFile(argv[7]) as archive:
+            output = Path(argv[argv.index("--outputdir") + 1]) / argv[argv.index("--export-3mf") + 1]
+            with zipfile.ZipFile(argv[-1]) as archive:
                 payload = {name: archive.read(name) for name in archive.namelist()}
             payload["Metadata/plate_1.gcode"] = b"; synthetic only\nG1 X1 Y1 E1\n"
             with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -284,6 +284,7 @@ class ProjectSlicerTests(unittest.TestCase):
             if argv[1:] == ["--help"]:
                 return subprocess.CompletedProcess(argv, 0, help_text, "")
             self.assertEqual(argv, [str(self.executable.resolve()), "--arrange", "1", "--slice", "0",
+                                    "--outputdir", plan["job_dir"],
                                     "--export-3mf", Path(plan["output_path"]).name, plan["project_path"]])
             self.assertEqual(kwargs["cwd"], plan["job_dir"])
             self.assertIs(kwargs["shell"], False)
@@ -329,7 +330,8 @@ class ProjectSlicerTests(unittest.TestCase):
     def test_wrong_runtime_and_missing_project_option_never_slice(self):
         for name, help_text in (("older", PROJECT_HELP.replace("02.09.01.70", "02.08.00.00")),
                                 ("newer", PROJECT_HELP.replace("02.09.01.70", "02.10.00.00")),
-                                ("unreported", "--arrange --slice --export-3mf"),
+                                ("unreported", "--arrange --slice --outputdir --export-3mf"),
+                                ("missing-outputdir", PROJECT_HELP.replace(" --outputdir", "")),
                                 ("missing-arrange", PROJECT_HELP.replace("--arrange", "--arrange-unsupported"))):
             with self.subTest(name=name):
                 slicer._PROBE_CACHE.clear()

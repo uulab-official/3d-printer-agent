@@ -43,7 +43,7 @@ from . import studio_project, studio_settings
 
 
 _REQUIRED_OPTIONS = ("--load-settings", "--load-filaments", "--slice", "--outputdir", "--export-3mf")
-_PROJECT_REQUIRED_OPTIONS = ("--arrange", "--slice", "--export-3mf")
+_PROJECT_REQUIRED_OPTIONS = ("--arrange", "--slice", "--outputdir", "--export-3mf")
 _CORE_3MF = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 _PRODUCTION_3MF = "http://schemas.microsoft.com/3dmanufacturing/production/2015/06"
 _MACHINE_FIELDS = (
@@ -540,7 +540,10 @@ def prepare_slice(input_path: Path, job_dir: Path, config_bundle: dict, executab
 
 
 def _project_argv(executable: str, project: Path, output: Path) -> list[str]:
-    return [executable, "--arrange", "1", "--slice", "0", "--export-3mf", output.name, str(project)]
+    # Always name the output folder: the macOS Studio CLI otherwise writes the
+    # export into its own app bundle (Contents/Resources), not the working directory.
+    return [executable, "--arrange", "1", "--slice", "0", "--outputdir", str(output.parent),
+            "--export-3mf", output.name, str(project)]
 
 
 def _project_public_source(snapshot: dict, source_id: str | None) -> dict:

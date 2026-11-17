@@ -900,10 +900,17 @@
       top.append(node("span", "template-index", `0${index + 1} / TEMPLATE`), node("span", "template-select", "✓"));
       button.append(top, node("strong", "", template.title), node("p", "", template.description));
       const defaults = template.defaults || {};
-      button.append(node("span", "template-size", `${defaults.width} × ${defaults.depth} × ${defaults.height} mm · 기본 크기`));
+      button.append(node("span", "template-size", templateSizeText(defaults)));
       button.addEventListener("click", () => requestModelReplacement({ kind: "template", template: template.id, title: template.title, button }));
       list.append(button);
     });
+  }
+
+  function templateSizeText(defaults) {
+    // A text-sized template has no fixed outer box; show its default text and letter size instead.
+    if (typeof defaults.text === "string") return `기본 글자 “${defaults.text}” · 글자 크기 ${defaults.text_size} mm`;
+    if ([defaults.width, defaults.depth, defaults.height].every(Number.isFinite)) return `${defaults.width} × ${defaults.depth} × ${defaults.height} mm · 기본 크기`;
+    return "크기는 입력값에 맞춰 정해집니다";
   }
 
   function readParameter(input) {

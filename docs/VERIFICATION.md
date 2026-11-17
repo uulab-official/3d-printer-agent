@@ -134,6 +134,31 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-17 macOS 실제 Bambu Studio 슬라이싱 (로컬)
+
+공개된 v0.12.0 wheel을 새 가상환경에 설치해 사용자처럼 실행했습니다(macOS 27, arm64, Python 3.11, 설치된 Bambu Studio 02.09.01.70).
+`printer-agent doctor --probe-slicer`는 버전과 필요한 CLI 기능을 확인했습니다.
+
+**발견한 결함:** Studio 프로젝트 경로의 슬라이싱 명령에 출력 폴더(`--outputdir`)가 없었습니다. macOS의 Studio CLI는 이때 결과 3MF를
+작업 폴더가 아니라 앱 번들 안(`BambuStudio.app/Contents/Resources`)에 써서, 앱은 “출력 3MF를 확인하지 못했습니다”로 실패했습니다.
+Linux는 작업 폴더가 곧 실행 위치라 드러나지 않았습니다. 시험 중 앱 번들에 생긴 파일 하나는 삭제했습니다. 이제 명령에 항상 작업 폴더를
+지정하고, CLI 도움말에 이 기능이 없으면 실행하지 않습니다.
+
+**설치된 Studio로 본 native 검증:** `scripts/qualify_bambu.py --studio-executable /Applications/BambuStudio.app/Contents/MacOS/BambuStudio`
+(커밋 `894c041`)에서 기본 예제 슬라이싱(분리된 `--datadir`), 합성 설정의 STL·3MF 어댑터, Studio 프로젝트 경로, 여섯 항목을 바꾼 프로젝트 경로의
+네 사례가 모두 통과했습니다. 수정 전에는 세 번째 사례가 위 결함으로 실패했습니다. 실행 후 앱 번들에 새로 쓰인 파일은 없었습니다.
+제조사 프리셋과 실물 출력은 검증하지 않았습니다.
+
+**실제 앱 흐름:** 수정한 소스로 띄운 앱에서 브라우저로 “"지우" 이름 키링 만들어줘” → CAD 생성(38.49 × 16.85 × 4 mm, 형상 점검 통과) →
+위 검증이 만든 합성 Studio 프로젝트 가져오기 → 크기 확인 후 3MF 준비 → “이 프로젝트로 슬라이싱”을 실행했고, 실제 Studio가 1.4초 만에
+`sliced` 상태로 끝나 모든 점검이 통과했습니다. 진행 단계는 “출력 준비 · 슬라이스 파일 있음”으로 바뀌고 슬라이스 3MF 내려받기 링크가 생겼습니다.
+프린터 전송과 실물 출력은 하지 않았습니다.
+
+**함께 고친 화면 문제:** 템플릿 카드에서 이름 키링 크기가 “undefined × undefined × undefined mm”로 보였고, 요청 해석의 기본값 안내가
+키링에 “벽 두께·바닥 두께”라고 표시했습니다(패널 이름은 테두리 여백·받침 두께).
+
+자동 검사: Python **703개**, UI 상태 **207개**, Chromium **84개** 통과.
+
 ## 2026-11-16 v0.12.0 공개 릴리스
 
 [v0.12.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.12.0)을 2026-11-16 23:57:38 UTC에 `b96e657`에서 게시했습니다.
