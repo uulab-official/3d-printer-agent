@@ -247,6 +247,7 @@
   }
 
   function invalidateCurrentJob(message) {
+    resetPrintSend(null);
     retainOutcomeDraft();
     cancelSlicerReads();
     state.studioRecorded = null;
@@ -1317,6 +1318,7 @@
   }
 
   function renderDownloads(job) {
+    syncPrintSend(job);
     const area = $("download-links");
     area.replaceChildren();
     const labels = { stl: "STL", step: "STEP", three_mf: "3MF 형상", color_three_mf: "색상 3MF (받침·글자 필라멘트 지정)", source: "Python 소스", manifest: "생성 기록", prepared_three_mf: "설정 포함 3MF", sliced_three_mf: "슬라이스 3MF", slice: "슬라이스 결과" };
@@ -1564,6 +1566,7 @@
     if (job.latest_slice?.phase === "running") showNotice("slice-feedback", "이 기록의 슬라이싱 요청은 실행 중으로 저장되어 있습니다. 완료 여부는 작업 기록에서 다시 열어 확인해 주세요. 이전 슬라이스 파일을 현재 결과로 제공하지 않습니다.", "info");
     else if (job.latest_slice?.phase === "interrupted") showNotice("slice-feedback", "이전 슬라이싱은 완료 결과를 저장하기 전에 중단되었습니다. 설정을 다시 검토한 뒤 실행해 주세요. CAD 모델은 유지되며 이전 슬라이스 파일은 현재 결과로 제공하지 않습니다.", "warning");
     else if (job.latest_slice) renderSliceResult(job.latest_slice.plan || {}, job.latest_slice.execution, true);
+    resetPrintSend(job);
     if (state.slicerStaged) resetSlicePreparation("선택 중인 설정 파일이 있습니다. 묶음을 만들거나 편집을 취소한 뒤 이 모델의 실행 계획을 검토해 주세요.");
     renderSlicerFiles();
     updateWorkflowControls();
@@ -3668,6 +3671,222 @@
     showNotice("printer-feedback", "이 프린터의 고정 인증서를 해제했습니다. 다음 확인에서 받은 인증서가 다시 고정됩니다. 프린터를 교체했거나 초기화한 경우에만 해제하세요.", "warning");
     updatePrinterControls();
   }
+
+  // ---------------------------------------------------------------------------
+  // Sending the verified slice to a LAN printer. Review first (single-use token),
+  // then an explicit confirmation; every send is recorded on the job.
+
+  function printSendReady(job) {
+    return Boolean(job?.artifacts?.sliced_three_mf) && job.latest_slice?.execution?.status === "sliced" && !["running", "interrupted"].includes(job.latest_slice?.phase);
+  }
+
+  function resetPrintSend(job) {
+    state.printSendIdentity = printSendReady(job) ? `${job.id}|${job.artifacts.sliced_three_mf}` : null;
+    state.printSendRequest = (state.printSendRequest || 0) + 1;
+    state.printSend = { jobId: job?.id || null, review: null, expiresAt: 0, pending: false, result: null };
+    $("print-send-card").hidden = !printSendReady(job);
+    $("print-send-slots").hidden = true;
+    $("print-send-slots").replaceChildren();
+    $("print-send-summary").hidden = true;
+    $("print-send-result").hidden = true;
+    $("print-send-confirm").checked = false;
+    hideNotice("print-send-feedback");
+    setBadge("print-send-badge", "확인 전");
+    updatePrintSendControls();
+  }
+
+  function currentPrinterTarget() {
+    // Shared with the printer status view; absent only in isolated controller checks.
+    return typeof printerTarget === "function" ? printerTarget() : { host: "", serial: "", access_code: "" };
+  }
+
+  function syncPrintSend(job) {
+    // Keep a review only while it is for the same job and the same verified slice file.
+    const identity = printSendReady(job) ? `${job.id}|${job.artifacts.sliced_three_mf}` : null;
+    if (identity !== (state.printSendIdentity ?? null)) {
+      state.printSendIdentity = identity;
+      resetPrintSend(job);
+    }
+  }
+
+  function printSendTarget() {
+    const target = currentPrinterTarget();
+    const body = { ...target };
+    const key = `${target.host}|${target.serial}`;
+    if (state.printerPins?.[key]) body.pinned_certificate_sha256 = state.printerPins[key];
+    return body;
+  }
+
+  function updatePrintSendControls() {
+    const send = state.printSend || {};
+    const target = currentPrinterTarget();
+    const hasTarget = Boolean(target.host && target.serial && target.access_code);
+    $("print-send-target").textContent = hasTarget ? `보낼 프린터: ${target.host} · ${target.serial}` : "프린터 상태 화면에서 IP 주소·시리얼·LAN 액세스 코드를 먼저 입력하세요. 액세스 코드는 저장하지 않습니다.";
+    const live = Boolean(send.review?.review_token) && Date.now() < send.expiresAt && send.jobId === state.job?.id;
+    $("print-send-review").disabled = !state.token || send.pending || !hasTarget || !printSendReady(state.job);
+    $("print-send-confirm").disabled = !live || send.pending;
+    if (!live) $("print-send-confirm").checked = false;
+    $("print-send-start").disabled = !live || send.pending || !$("print-send-confirm").checked;
+  }
+
+  function printSendSlotChoice() {
+    const selects = [...document.querySelectorAll("[data-print-slot]")];
+    if (!selects.length) return null;
+    return selects.map((select) => select.value === "external" ? "external" : Number(select.value));
+  }
+
+  function renderPrintSendSlots(review) {
+    const area = $("print-send-slots");
+    const filaments = review.summary?.filaments || [];
+    const previous = printSendSlotChoice();
+    const slots = (review.material_slots || []).filter((slot) => Number.isInteger(slot.unit) && Number.isInteger(slot.slot) && !slot.empty);
+    area.replaceChildren(node("p", "field-help", "슬라이스한 필라멘트마다 프린터에 꽂힌 위치를 고르세요."));
+    filaments.forEach((filament, index) => {
+      const label = node("label", "print-send-slot");
+      const swatch = node("span", "color-dot");
+      if (/^#[0-9a-f]{6}$/i.test(filament.color || "")) swatch.style.setProperty("--swatch", filament.color);
+      label.append(swatch, node("span", "", `필라멘트 ${filament.id}${filament.type ? ` · ${filament.type}` : ""}${Number.isFinite(filament.used_g) ? ` · ${numberFormat.format(filament.used_g)} g` : ""}`));
+      const select = node("select");
+      select.dataset.printSlot = String(index);
+      select.append(node("option", "", "선택하세요"));
+      select.firstChild.value = "";
+      for (const slot of slots) {
+        const option = node("option", "", `AMS ${slot.unit + 1} · ${slot.slot + 1}번 칸 · ${slot.material || "재료 미보고"}${slot.color ? ` · #${slot.color.slice(0, 6)}` : ""}`);
+        option.value = String(slot.unit * 4 + slot.slot);
+        select.append(option);
+      }
+      if (filaments.length === 1) {
+        const external = node("option", "", "외부 스풀");
+        external.value = "external";
+        select.append(external);
+      }
+      if (previous && previous[index] !== undefined) select.value = String(previous[index]);
+      label.append(select);
+      area.append(label);
+    });
+    area.hidden = !filaments.length;
+  }
+
+  function renderPrintSendSummary(review) {
+    const area = $("print-send-summary");
+    area.replaceChildren();
+    const summary = review.summary || {};
+    const printer = review.printer || {};
+    const rows = [
+      ["모델", review.job_title || "현재 모델"],
+      ["프린터 상태", printer.state_label || "보고되지 않음"],
+      ["노즐", Number.isFinite(printer.nozzle?.diameter_mm) ? `${printer.nozzle.diameter_mm} mm (슬라이스 ${summary.nozzle_diameters || "미기록"} mm)` : `슬라이스 ${summary.nozzle_diameters || "미기록"} mm`],
+      ["예상 시간", Number.isFinite(summary.prediction_seconds) ? `${numberFormat.format(summary.prediction_seconds / 60)}분` : "기록 없음"],
+      ["예상 재료", Number.isFinite(summary.weight_g) ? `${numberFormat.format(summary.weight_g)} g` : "기록 없음"],
+      ["파일", `${review.filename} · ${numberFormat.format(review.file_bytes / 1024)} KB`],
+    ];
+    if (review.mapping) rows.push(["필라멘트 위치", review.mapping.slots.map((slot) => `필라멘트 ${slot.filament} → ${slot.location}`).join(", ")]);
+    const list = node("dl", "print-send-facts");
+    for (const [name, value] of rows) list.append(node("dt", "", name), node("dd", "", value));
+    area.append(list);
+    if (review.problems?.length) {
+      const problems = node("ul", "print-send-problems");
+      for (const problem of review.problems) problems.append(node("li", "", problem));
+      area.append(node("h3", "", "보낼 수 없는 이유"), problems);
+    }
+    if (review.warnings?.length) {
+      const warnings = node("ul", "print-send-warnings");
+      for (const warning of review.warnings) warnings.append(node("li", "", warning));
+      area.append(node("h3", "", "확인할 점"), warnings);
+    }
+    area.append(node("p", "field-help", review.requirements || ""));
+    area.hidden = false;
+  }
+
+  async function reviewPrintSend() {
+    const job = state.job;
+    if (!printSendReady(job)) return;
+    const request = ++state.printSendRequest;
+    state.printSend = { ...state.printSend, jobId: job.id, review: null, expiresAt: 0, pending: true, result: null };
+    $("print-send-result").hidden = true;
+    updatePrintSendControls();
+    try {
+      await withBusy($("print-send-review"), "프린터 확인 중", async () => {
+        const review = await api("/api/printers/print/review", { ...printSendTarget(), job_id: job.id, slots: printSendSlotChoice() });
+        if (request !== state.printSendRequest || state.job?.id !== job.id) return;
+        state.printSend.review = review;
+        state.printSend.expiresAt = review.review_token ? Date.now() + Math.max(0, (review.expires_in_seconds || 0) - 5) * 1000 : 0;
+        renderPrintSendSlots(review);
+        renderPrintSendSummary(review);
+        if (review.ready) {
+          setBadge("print-send-badge", "보낼 준비 됨", "success");
+          showNotice("print-send-feedback", `확인을 마쳤습니다. ${Math.round((review.expires_in_seconds || 0) / 60)}분 안에 출력판을 확인하고 시작하세요.`, "success");
+          if (state.printSend.expiresAt) setTimeout(() => updatePrintSendControls(), state.printSend.expiresAt - Date.now() + 50);
+        } else {
+          setBadge("print-send-badge", "보낼 수 없음", "warning");
+          showNotice("print-send-feedback", review.problems?.[0] || "보낼 조건을 확인하지 못했습니다.", "warning");
+        }
+      });
+    } catch (error) {
+      if (request === state.printSendRequest) showNotice("print-send-feedback", error.message, error.code === "printer_busy" ? "warning" : "error");
+    } finally {
+      if (request === state.printSendRequest) state.printSend.pending = false;
+      updatePrintSendControls();
+    }
+  }
+
+  async function startPrintSend() {
+    const send = state.printSend;
+    if (!send?.review?.review_token || Date.now() >= send.expiresAt || !$("print-send-confirm").checked) return;
+    const token = send.review.review_token;
+    send.review = { ...send.review, review_token: null };  // a review starts at most one print
+    send.pending = true;
+    const request = ++state.printSendRequest;
+    updatePrintSendControls();
+    try {
+      await withBusy($("print-send-start"), "올리고 시작하는 중", async () => {
+        const result = await api("/api/printers/print/start", { review_token: token, access_code: currentPrinterTarget().access_code, bed_clear_confirmed: true });
+        if (request !== state.printSendRequest) return;
+        state.printSend.result = result;
+        renderPrintSendResult(result);
+      });
+    } catch (error) {
+      if (request === state.printSendRequest) showNotice("print-send-feedback", error.message, "error");
+    } finally {
+      if (request === state.printSendRequest) state.printSend.pending = false;
+      $("print-send-confirm").checked = false;
+      updatePrintSendControls();
+    }
+  }
+
+  function renderPrintSendResult(result) {
+    const tones = { started: ["프린터가 출력 시작을 보고함", "success", "success"], unconfirmed: ["시작 보고를 받지 못함", "warning", "warning"],
+      rejected: ["프린터가 거부함", "error", "error"], blocked: ["보내지 않음", "warning", "warning"], failed: ["보내기 실패", "error", "error"] };
+    const [label, badge, notice] = tones[result.status] || ["결과 확인 필요", "warning", "warning"];
+    setBadge("print-send-badge", label, badge);
+    showNotice("print-send-feedback", result.detail || label, notice);
+    const area = $("print-send-result");
+    const stages = result.stages || {};
+    const list = node("ol", "print-send-stages");
+    for (const [key, text] of [["printer_ready", "프린터 대기 상태 확인"], ["uploaded", "파일 올리기"], ["command_sent", "시작 명령 보내기"], ["printer_reported_start", "프린터의 출력 시작 보고"]]) {
+      const item = node("li", stages[key] ? "is-done" : "is-pending", `${stages[key] ? "✓" : "–"} ${text}`);
+      list.append(item);
+    }
+    const reported = result.printer;
+    const latest = reported ? node("p", "print-send-latest", `프린터가 마지막으로 보고한 상태: ${reported.state_label || "보고되지 않음"}${Number.isFinite(reported.progress_percent) ? ` · ${reported.progress_percent}%` : ""}${reported.error_code_hex ? ` · 오류 ${reported.error_code_hex}` : ""}`) : null;
+    area.replaceChildren(list, ...(latest ? [latest] : []), node("p", "field-help", `${result.scope || ""} 진행 상황은 프린터 상태 화면에서 다시 읽을 수 있습니다.`));
+    area.hidden = false;
+  }
+
+  $("print-send-printer").addEventListener("click", () => changeView("printers"));
+  $("print-send-review").addEventListener("click", reviewPrintSend);
+  $("print-send-start").addEventListener("click", startPrintSend);
+  $("print-send-confirm").addEventListener("change", updatePrintSendControls);
+  $("print-send-slots").addEventListener("change", () => {
+    // A different slot choice needs a fresh review.
+    state.printSendRequest += 1;
+    if (state.printSend?.review?.review_token) { state.printSend.review = { ...state.printSend.review, review_token: null }; setBadge("print-send-badge", "다시 확인 필요"); }
+    updatePrintSendControls();
+  });
+  for (const id of ["printer-host", "printer-serial", "printer-access-code"]) $(id).addEventListener("input", () => {
+    if (state.printSend?.review?.review_token) { state.printSend.review = { ...state.printSend.review, review_token: null }; setBadge("print-send-badge", "다시 확인 필요"); }
+    updatePrintSendControls();
+  });
 
   $("printer-discover").addEventListener("click", discoverPrinters);
   $("printer-form").addEventListener("submit", (event) => { event.preventDefault(); return checkPrinterStatus(); });

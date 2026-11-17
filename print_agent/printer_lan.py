@@ -8,7 +8,8 @@ own reported state. A reported "finish" is never a measured physical result.
 
 Only two fixed requests are constructible here: ``pushall`` (ask the printer to send
 its current state) and ``get_version`` (module and firmware list). No print, motion,
-temperature, file or G-code command can be built through this module.
+temperature, file or G-code command can be built through this module. Starting a
+reviewed print lives only in ``printer_send``.
 """
 from datetime import datetime, timezone
 import hashlib

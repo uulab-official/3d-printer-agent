@@ -1,6 +1,7 @@
 """Loopback web app: plan, generate CAD, review evidence, and prepare slicing."""
 import base64
 import binascii
+import hashlib
 from contextlib import asynccontextmanager
 import json
 import logging
@@ -30,7 +31,7 @@ from .model_edits import model_edit_record, normalize_parameters, plan_model_edi
 from .offers import compare_offers
 from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
-from . import printer_lan
+from . import printer_lan, printer_send
 from .printability import review_mesh
 from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
@@ -263,6 +264,19 @@ class PrinterStatusPayload(StrictPayload):
     pinned_certificate_sha256: str | None = Field(default=None, max_length=64)
 
 
+class PrintReviewPayload(PrinterStatusPayload):
+    """Review sending this job's verified slice. ``slots`` maps each sliced filament to an AMS tray or 'external'."""
+    job_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    slots: list[int | Literal['external']] | None = Field(default=None, max_length=16)
+
+
+class PrintStartPayload(StrictPayload):
+    """Start exactly one reviewed send; the person must confirm the bed is clear."""
+    review_token: str = Field(min_length=16, max_length=64)
+    access_code: str = Field(max_length=64)
+    bed_clear_confirmed: Literal[True]
+
+
 class PrintabilityPayload(StrictPayload):
     nozzle_mm: Literal[0.2, 0.4, 0.6, 0.8]
 
@@ -406,6 +420,63 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     def printer_status(payload: PrinterStatusPayload):
         return printer_lan.read_status(payload.host, payload.serial, payload.access_code,
                                        pinned_sha256=payload.pinned_certificate_sha256)
+
+    print_reviews = printer_send.ReviewStore()
+    app.state.print_reviews = print_reviews
+
+    @app.post('/api/printers/print/review')
+    def print_review(payload: PrintReviewPayload):
+        """Read the printer once and describe what a send would do. Nothing is uploaded or started."""
+        title, content = store.sliced_for_printing(payload.job_id)
+        summary = printer_send.inspect_sliced(content)
+        status = printer_lan.read_status(payload.host, payload.serial, payload.access_code,
+                                         pinned_sha256=payload.pinned_certificate_sha256)
+        problems, warnings = [], []
+        printing = status.get('print') or {}
+        slots = printing.get('material_slots') or []
+        certificate = (status.get('certificate') or {}).get('sha256')
+        if status['connection']['state'] != 'reporting' or not certificate:
+            problems.append(status['connection']['detail'])
+        elif printing.get('state') not in printer_send.READY_STATES:
+            problems.append(f'프린터가 “{printing.get("state_label")}” 상태입니다. 출력이 끝나고 대기 중일 때 보낼 수 있습니다.')
+        reported_nozzle = (printing.get('nozzle') or {}).get('diameter_mm')
+        sliced_nozzles = {value for value in (summary['nozzle_diameters'] or '').replace(',', ' ').split() if value}
+        if reported_nozzle is not None and sliced_nozzles:
+            if not any(abs(float(value) - reported_nozzle) < 1e-6 for value in sliced_nozzles if value.replace('.', '', 1).isdigit()):
+                problems.append(f'프린터 노즐({reported_nozzle:g} mm)과 슬라이스한 노즐({", ".join(sorted(sliced_nozzles))} mm)이 다릅니다.')
+        elif reported_nozzle is None:
+            warnings.append('프린터가 노즐 지름을 보고하지 않아 슬라이스 설정과 비교하지 못했습니다.')
+        if printing.get('hms'):
+            warnings.append(f'프린터에 알림(HMS) {len(printing["hms"])}건이 있습니다. 프린터 화면을 먼저 확인하세요.')
+        mapping = None
+        if not problems:
+            try:
+                mapping = printer_send.plan_mapping(summary, slots, payload.slots)
+                warnings.extend(mapping.pop('warnings', []))
+            except printer_send.SendError as exc:
+                problems.append(str(exc))
+        review = {'job_id': payload.job_id, 'job_title': title, 'host': status['target']['host'], 'serial': status['target']['serial'],
+                  'certificate_sha256': certificate, 'file_sha256': hashlib.sha256(content).hexdigest(), 'file_bytes': len(content),
+                  'filename': f'pa-{payload.job_id[:8]}-{hashlib.sha256(content).hexdigest()[:8]}.gcode.3mf',
+                  'subtask': f'printer-agent {payload.job_id[:8]}', 'plate': summary['plate'], 'mapping': mapping, 'summary': summary}
+        public = {key: review[key] for key in ('job_id', 'job_title', 'host', 'serial', 'certificate_sha256', 'file_bytes',
+                                               'filename', 'subtask', 'mapping', 'summary')}
+        public.update(ready=not problems, problems=problems, warnings=warnings, printer=printing or None,
+                      material_slots=slots, connection=status['connection'],
+                      requirements='프린터에서 LAN 전용 모드와 개발자 모드를 켜야 보낼 수 있습니다.')
+        if not problems:
+            public['review_token'] = print_reviews.add(review)
+            public['expires_in_seconds'] = print_reviews.ttl
+        return public
+
+    @app.post('/api/printers/print/start')
+    def print_start(payload: PrintStartPayload):
+        """Upload and start one reviewed job, then record the separate stage results on the job."""
+        review = print_reviews.take(payload.review_token)
+        _title, content = store.sliced_for_printing(review['job_id'])
+        result = printer_send.start(review, payload.access_code, content)
+        store.record_printer_send(review['job_id'], result)
+        return result
 
     @app.post('/api/plan')
     async def plan(payload: PlanPayload):
