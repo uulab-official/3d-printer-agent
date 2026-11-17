@@ -2066,5 +2066,14 @@ const printVolumeReport = (overrides={}) => ({
     c.radioGroupKey({key:'a',target:radios[2],preventDefault(){prevented+=1;}});
     assert.equal(prevented,3);
   });
+  await check('A keycap legend may be blank and the key size is a later field',()=>{
+    const c=fixture();
+    const key={template:'keycap',width:120,depth:80,height:8,wall:1.3,bottom:2,dividers:0,slots:5,cable_diameter:6,inset_diameter:52,inset_depth:2,fit_clearance:0.15,text:'',text_size:5,text_depth:0.8,key_units:1.5};
+    assert.deepEqual(plain(c.validateEditParameters(key)),['key_units','text','text_size','text_depth','height','wall','bottom','fit_clearance']);
+    assert.equal(c.parameterKeys('keycap').slice(-4).join(),'text,text_size,text_depth,key_units');
+    assert.throws(()=>c.validateEditParameters({...key,text:'Escape!'}),/글자 응답/);
+    assert.throws(()=>c.validateEditParameters({...key,width:30}),/치수 응답/);
+    assert.throws(()=>c.validateEditParameters({template:'name_tag',width:120,depth:80,height:35,wall:3,bottom:2,dividers:0,slots:5,cable_diameter:6,inset_diameter:52,inset_depth:2,fit_clearance:0.3,text:' ',text_size:12,text_depth:2,hole_diameter:4}),/글자 응답/);
+  });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

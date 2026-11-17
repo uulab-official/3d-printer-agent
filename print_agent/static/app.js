@@ -20,9 +20,10 @@
     device_thickness: { label: "기기 두께(케이스 포함)", min: 4, max: 30, step: 0.1 },
     lip_height: { label: "앞턱 높이", min: 3, max: 60, step: 0.1 },
     text: { label: "글자", kind: "text", maxLength: 20, unit: "" },
-    text_size: { label: "글자 크기", min: 6, max: 40, step: 0.5 },
+    text_size: { label: "글자 크기", min: 3, max: 40, step: 0.5 },
     text_depth: { label: "글자 높이", min: 0.6, max: 6, step: 0.1 },
     hole_diameter: { label: "고리 구멍 지름", min: 2, max: 10, step: 0.1 },
+    key_units: { label: "키 크기", min: 1, max: 7, step: 0.25, unit: "u" },
     color: { label: "모델 색", kind: "color", unit: "" },
     accent_color: { label: "글자 색", kind: "color", unit: "" },
   };
@@ -47,16 +48,17 @@
     lean_angle: "바닥에서 등판까지의 각도. 클수록 똑바로 섭니다", device_thickness: "케이스를 포함한 기기 두께", lip_height: "앞에서 기기를 받치는 턱 높이",
     text: "키링에 새길 글자(한글·영문·숫자, 20자 이하)", text_size: "글자의 높이. 8 mm 이상이면 획이 잘 나옵니다", text_depth: "받침판 위로 솟은 글자 높이",
     hole_diameter: "고리나 줄을 끼울 구멍 지름",
+    key_units: "1u = 19.05 mm 간격. 1·1.25·1.5·1.75·2·2.25·2.75·6.25·7u를 만들 수 있고, 2u 이상은 스태빌라이저 스템이 붙습니다",
     color: "출력할 필라멘트 색. 화면 색은 비슷하게 보여 줄 뿐입니다",
     accent_color: "글자만 다른 색으로 뽑을 때 고릅니다(AMS 등 자동 교체 필요)",
   };
-  const templateFieldDescriptions = { phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" }, wall_hook: { width: "후크의 폭(벽에 붙는 면의 가로)", depth: "벽에서 앞으로 나온 걸이 길이", height: "등판 높이(나사 구멍 두 개가 들어감)", wall: "등판과 끝 턱의 두께", bottom: "물건이 걸리는 걸이 두께. 무거운 물건은 두껍게", hole_diameter: "벽 나사 구멍 지름. 위쪽이 뾰족한 물방울 모양이라 서포트 없이 출력됩니다", lip_height: "물건이 미끄러지지 않게 막는 끝 턱 높이" } };
-  const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1, text_size: 0.5, text_depth: 0.2, hole_diameter: 0.5 };
-  const fieldGroups = [["text", "글자", ["text", "text_size", "text_depth"]], ["size", "크기", ["width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]], ["color", "색", ["color", "accent_color"]]];
+  const templateFieldDescriptions = { phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" }, wall_hook: { width: "후크의 폭(벽에 붙는 면의 가로)", depth: "벽에서 앞으로 나온 걸이 길이", height: "등판 높이(나사 구멍 두 개가 들어감)", wall: "등판과 끝 턱의 두께", bottom: "물건이 걸리는 걸이 두께. 무거운 물건은 두껍게", hole_diameter: "벽 나사 구멍 지름. 위쪽이 뾰족한 물방울 모양이라 서포트 없이 출력됩니다", lip_height: "물건이 미끄러지지 않게 막는 끝 턱 높이" }, keycap: { text: "윗면에 새길 글자(6자 이하). 비워 두면 글자 없는 키캡입니다", text_size: "새긴 글자의 높이. 1u 윗면에는 5 mm 이하가 알맞습니다", text_depth: "윗면에 파이는 글자 깊이", height: "베드에서 키캡 윗면 가장자리까지", wall: "키캡 옆벽 두께", bottom: "오목한 윗면 가운데의 두께", fit_clearance: "체리 MX 십자 구멍(4.0 × 1.17 mm)에 더하는 여유. 빡빡하면 늘리고 헐거우면 줄이세요" } };
+  const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1, text_size: 0.5, text_depth: 0.2, hole_diameter: 0.5, key_units: 0.25 };
+  const fieldGroups = [["text", "글자", ["text", "text_size", "text_depth"]], ["size", "크기", ["key_units", "width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]], ["color", "색", ["color", "accent_color"]]];
   const PARAMETER_FORMAT = "3d-printer-agent/parameters";
 
   // Same field, different meaning per template.
-  const templateFieldLabels = { phone_stand: { fit_clearance: "홈 여유", wall: "등판·앞턱 두께" }, name_tag: { wall: "테두리 여백", bottom: "받침 두께" }, wall_hook: { depth: "걸이 길이", wall: "등판·끝 턱 두께", bottom: "걸이 두께", hole_diameter: "나사 구멍 지름", lip_height: "끝 턱 높이" } };
+  const templateFieldLabels = { phone_stand: { fit_clearance: "홈 여유", wall: "등판·앞턱 두께" }, name_tag: { wall: "테두리 여백", bottom: "받침 두께" }, wall_hook: { depth: "걸이 길이", wall: "등판·끝 턱 두께", bottom: "걸이 두께", hole_diameter: "나사 구멍 지름", lip_height: "끝 턱 높이" }, keycap: { height: "키캡 높이", wall: "옆벽 두께", bottom: "윗면 두께", text_depth: "글자 깊이", fit_clearance: "스템 십자 여유" } };
   const fieldNames = {
     ...Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.label])),
     printer_model: "프린터 모델", printer_preset: "프린터 프리셋", nozzle_diameter: "노즐 지름",
@@ -590,8 +592,8 @@
   function validateEditParameters(parameters) {
     const defaults = { width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
     // Fields added later appear only in templates that use them (see schemas.LATER_FIELDS).
-    const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 }, name_tag: { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 }, wall_hook: { lip_height: 12, hole_diameter: 4 } };
-    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"], name_tag: ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"], wall_hook: ["width", "depth", "height", "wall", "bottom", "hole_diameter", "lip_height"] };
+    const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 }, name_tag: { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 }, wall_hook: { lip_height: 12, hole_diameter: 4 }, keycap: { text: "", text_size: 12, text_depth: 2, key_units: 1 } };
+    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"], name_tag: ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"], wall_hook: ["width", "depth", "height", "wall", "bottom", "hole_diameter", "lip_height"], keycap: ["key_units", "text", "text_size", "text_depth", "height", "wall", "bottom", "fit_clearance"] };
     const expected = { ...defaults, ...(laterFields[parameters?.template] || {}) };
     // Colours appear only when chosen (see schemas.COLOR_FIELDS); letters only on a name tag.
     const colorKeys = parameters && typeof parameters === "object" ? Object.keys(parameters).filter((key) => COLOR_PARAMETERS.has(key)) : [];
@@ -602,7 +604,7 @@
     for (const [key, neutral] of Object.entries(expected)) {
       const value = parameters[key];
       if (TEXT_PARAMETERS.has(key)) {
-        if (!Object.hasOwn(parameters, key) || typeof value !== "string" || !value.trim() || value.length > fields[key].maxLength) throw new Error("수정 제안의 글자 응답이 올바르지 않습니다.");
+        if (!Object.hasOwn(parameters, key) || typeof value !== "string" || (!value.trim() && parameters.template !== "keycap") || value.length > (parameters.template === "keycap" ? 6 : fields[key].maxLength)) throw new Error("수정 제안의 글자 응답이 올바르지 않습니다.");
         continue;
       }
       if (!Object.hasOwn(parameters, key) || typeof value !== "number" || !Number.isFinite(value) || ((key === "dividers" || key === "slots") && !Number.isSafeInteger(value)) || (!applicable[parameters.template].includes(key) && value !== neutral)) throw new Error("수정 제안의 치수 응답이 올바르지 않습니다.");
@@ -615,7 +617,7 @@
   function parameterKeys(template) {
     // The eleven original fields for every template, plus later fields only where used.
     // Same order as the server's canonical fields (schemas.GeometryRequest).
-    const later = { phone_stand: ["lean_angle", "device_thickness", "lip_height"], name_tag: ["text", "text_size", "text_depth", "hole_diameter"], wall_hook: ["lip_height", "hole_diameter"] };
+    const later = { phone_stand: ["lean_angle", "device_thickness", "lip_height"], name_tag: ["text", "text_size", "text_depth", "hole_diameter"], wall_hook: ["lip_height", "hole_diameter"], keycap: ["text", "text_size", "text_depth", "key_units"] };
     return ["template", "width", "depth", "height", "wall", "bottom", "dividers", "slots", "cable_diameter", "inset_diameter", "inset_depth", "fit_clearance", ...(later[template] || [])];
   }
 
@@ -624,6 +626,7 @@
     if (state.template === "phone_stand") Object.assign(parameters, { lean_angle: 65, device_thickness: 12, lip_height: 12 });
     if (state.template === "name_tag") Object.assign(parameters, { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 });
     if (state.template === "wall_hook") Object.assign(parameters, { lip_height: 12, hole_diameter: 4 });
+    if (state.template === "keycap") Object.assign(parameters, { text: "", text_size: 12, text_depth: 2, key_units: 1 });
     const template = state.templates.find(item => item.id === state.template);
     if (!template) throw new Error("수정할 템플릿을 먼저 선택해 주세요.");
     for (const key of template.editable_fields) {
@@ -965,7 +968,7 @@
 
   function parameterInputComplete(input) {
     if (COLOR_PARAMETERS.has(input.dataset.parameter)) return input.value === "" || Object.hasOwn(PALETTE, input.value);
-    if (TEXT_PARAMETERS.has(input.dataset.parameter)) return input.value.trim().length > 0 && input.validity?.valid !== false;
+    if (TEXT_PARAMETERS.has(input.dataset.parameter)) return (input.value.trim().length > 0 || state.template === "keycap") && input.validity?.valid !== false;
     return Boolean(input.value.trim()) && !input.validity?.badInput && input.validity?.valid !== false && Number.isFinite(Number(input.value));
   }
 
@@ -985,8 +988,9 @@
       input.id = `parameter-${key}`;
       input.name = key;
       input.type = "text";
-      input.maxLength = definition.maxLength;
-      input.required = true;
+      // A keycap legend is short and optional (a blank key).
+      input.maxLength = template.id === "keycap" ? 6 : definition.maxLength;
+      input.required = template.id !== "keycap";
       input.autocomplete = "off";
       input.value = state.parameters[key] ?? "";
       input.dataset.parameter = key;
@@ -1003,7 +1007,7 @@
     input.type = "number";
     input.min = definition.min;
     input.max = definition.max;
-    input.step = definition.unit === "개" ? "1" : "any";
+    input.step = definition.unit === "개" ? "1" : definition.unit === "u" ? "0.25" : "any";
     input.required = true;
     input.value = state.parameters[key];
     input.dataset.parameter = key;

@@ -246,7 +246,7 @@ class JobStore:
                 raise ValueError('Record identity or fields differ')
             if (not _valid_timestamp(job['created_at']) or not isinstance(job['title'], str)
                     or job['status'] not in _JOB_STATUSES
-                    or job['template'] not in (None, 'tray', 'cable_comb', 'magnet_frame', 'phone_stand', 'name_tag', 'wall_hook')
+                    or job['template'] not in (None, 'tray', 'cable_comb', 'magnet_frame', 'phone_stand', 'name_tag', 'wall_hook', 'keycap')
                     or not isinstance(job['events'], list)
                     or any(not isinstance(event, dict) or not isinstance(event.get('type'), str) for event in job['events'])
                     or not isinstance(job['_files'], dict) or not isinstance(job['artifacts'], dict)
@@ -484,12 +484,16 @@ class JobStore:
             job['bundle_url'] = f'/api/jobs/{job_id}/bundle'
             job['result'] = copy.deepcopy(result)
             job['template'] = result['template']
-            title = {'tray': '칸막이 수납함', 'cable_comb': '열린 케이블 받침', 'magnet_frame': '원형 인셋 프레임', 'phone_stand': '휴대폰 거치대', 'name_tag': '이름 키링', 'wall_hook': '벽걸이 후크'}[result['template']]
+            title = {'tray': '칸막이 수납함', 'cable_comb': '열린 케이블 받침', 'magnet_frame': '원형 인셋 프레임', 'phone_stand': '휴대폰 거치대', 'name_tag': '이름 키링', 'wall_hook': '벽걸이 후크', 'keycap': '키캡'}[result['template']]
             size = result['dimensions_mm']
             if result['template'] == 'name_tag':
                 # Text-driven sizes are not round numbers; show the text and 0.1 mm sizes.
                 text = result['parameters'].get('text', '').strip()
                 job['title'] = f"{title} “{text}” · {size['x']:.1f} × {size['y']:.1f} × {size['z']:.1f} mm"
+            elif result['template'] == 'keycap':
+                legend = result['parameters'].get('text', '').strip()
+                units = result['parameters']['key_units']
+                job['title'] = f"{title} {units:g}u" + (f" “{legend}”" if legend else " (무지)") + f" · {size['x']:.1f} × {size['y']:.1f} × {size['z']:.1f} mm"
             else:
                 job['title'] = f"{title} · {size['x']:g} × {size['y']:g} × {size['z']:g} mm"
             job['status'] = 'geometry_validated'

@@ -17,7 +17,7 @@ class APITests(unittest.TestCase):
                 data=response.json()
                 self.assertFalse(data['provider']['configured'])
                 self.assertEqual(data['provider']['status'],'invalid_url')
-                self.assertEqual(len(data['templates']),6)
+                self.assertEqual(len(data['templates']),7)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -35,7 +35,7 @@ class APITests(unittest.TestCase):
         with patch.dict('os.environ', {'PPA_LLM_API_KEY':'SECRET_TOKEN'}):
             response = self.client.get('/api/bootstrap')
         data = response.json()
-        self.assertEqual(len(data['templates']), 6)
+        self.assertEqual(len(data['templates']), 7)
         self.assertEqual(data['environment']['printer_status'], 'not_checked')
         self.assertNotIn('SECRET_TOKEN', response.text)
         self.assertIn("frame-ancestors 'none'", response.headers['content-security-policy'])

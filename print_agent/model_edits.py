@@ -47,8 +47,9 @@ def _length_number(value):
 
 
 def _required(template):
-    # A name tag's outline follows its text; width, depth and height do not apply.
-    common = _COMMON - {'width', 'depth', 'height'} if template == 'name_tag' else _COMMON
+    # A name tag's outline follows its text; a keycap's follows its key size.
+    common = (_COMMON - {'width', 'depth', 'height'} if template == 'name_tag'
+              else _COMMON - {'width', 'depth'} if template == 'keycap' else _COMMON)
     return common | TEMPLATE_SPECIFIC_FIELDS[template]
 
 
@@ -193,21 +194,21 @@ def _response(engine, review=None):
 
 
 _ALIASES = {
-    'width':r'가로|너비|폭|width', 'depth':r'걸이\s*길이|세로|깊이|depth', 'height':r'높이|height',
-    'wall':r'벽\s*두께|등판\s*두께|앞턱\s*두께|테두리(?:\s*여백)?|여백|벽|wall', 'bottom':r'바닥\s*두께|받침\s*두께|걸이\s*두께|바닥|bottom',
-    'text_size':r'(?:글자|글씨)\s*크기|text\s*size', 'text_depth':r'(?:글자|글씨)\s*높이|text\s*depth',
+    'width':r'가로|너비|폭|width', 'depth':r'걸이\s*길이|세로|깊이|depth', 'height':r'키캡\s*높이|높이|height',
+    'wall':r'옆\s*벽(?:\s*두께)?|벽\s*두께|등판\s*두께|앞턱\s*두께|테두리(?:\s*여백)?|여백|벽|wall', 'bottom':r'윗면\s*두께|바닥\s*두께|받침\s*두께|걸이\s*두께|바닥|bottom',
+    'text_size':r'(?:글자|글씨)\s*크기|text\s*size', 'text_depth':r'(?:글자|글씨|각인)\s*(?:높이|깊이)|text\s*depth',
     'hole_diameter':r'(?:고리\s*|나사\s*)?구멍(?:\s*(?:지름|크기))?|hole\s*diameter',
     'cable_diameter':r'케이블\s*(?:지름|직경)|cable\s*diameter',
     'inset_diameter':r'(?:인셋|디스크|마그넷)\s*지름|inset\s*diameter',
     'inset_depth':r'(?:인셋|포켓)\s*깊이|inset\s*depth',
-    'fit_clearance':r'여유|공차|clearance', 'dividers':r'칸막이|dividers?', 'slots':r'슬롯|홈|slots?',
+    'fit_clearance':r'(?:십자\s*|스템\s*)?(?:여유|공차)|clearance', 'key_units':r'키\s*크기|key\s*units?', 'dividers':r'칸막이|dividers?', 'slots':r'슬롯|홈|slots?',
     'lean_angle':r'(?:등판\s*)?(?:각도|기울기)|lean\s*angle',
     'device_thickness':r'(?:기기|폰|휴대폰|스마트폰|케이스)\s*(?:포함\s*)?두께|device\s*thickness',
     'lip_height':r'앞\s*턱(?:\s*높이)?|끝\s*턱(?:\s*높이)?|턱\s*높이|lip\s*height',
 }
 _ANGLES = {'lean_angle'}
 _NUMBER = r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)'
-_UNIT = r'mm|cm|밀리미터|센티미터|밀리|센티|도|°'
+_UNIT = r'mm|cm|밀리미터|센티미터|밀리|센티|도|°|u(?![a-z])'
 _ACTION = r'늘려(?:줘|주세요)?|늘려|증가(?:시켜)?(?:줘|주세요)?|줄여(?:줘|주세요)?|감소(?:시켜)?(?:줘|주세요)?|더해(?:줘|주세요)?|빼(?:줘|주세요)?'
 _TAIL = r'(?:(?:으)?로\s*)?(?:바꿔(?:줘|주세요)?|변경해(?:줘|주세요)?|설정해(?:줘|주세요)?|해(?:줘|주세요)?)?'
 
@@ -228,7 +229,7 @@ def _rule_operations(text, template):
         if field not in _editable(template):
             raise ValueError('글자 색은 이름 키링에만 지정할 수 있습니다.')
         operations.append({'field':field, 'op':'set', 'value':key})
-    if template == 'name_tag':
+    if template in ('name_tag', 'keycap'):
         def text_edit(match):
             operations.append({'field':'text', 'op':'set', 'value':(match.group('quoted') or match.group('word')).strip()})
             return ' '
@@ -241,12 +242,16 @@ def _rule_operations(text, template):
             if unit or match.group('action') or value != value.to_integral_value():
                 raise ValueError('개수는 절대 정수로 지정하세요.')
             value = int(value)
+        elif field == 'key_units':
+            if match.group('count_unit') or (unit and unit.lower() != 'u') or match.group('action'):
+                raise ValueError('키 크기는 1u, 1.5u처럼 u 단위로 지정하세요.')
+            value = float(value)
         elif field in _ANGLES:
             if match.group('count_unit') or (unit and unit not in ('도', '°')):
                 raise ValueError('각도는 도(°) 단위로 지정하세요.')
             value = float(value)
         else:
-            if match.group('count_unit') or unit in ('도', '°'):
+            if match.group('count_unit') or unit in ('도', '°') or (unit and unit.lower() == 'u'):
                 raise ValueError('길이에는 mm 또는 cm 단위를 사용하세요.')
             if unit and unit.lower() in ('cm','센티미터','센티'):
                 value *= 10
@@ -309,7 +314,8 @@ async def plan_model_edit_with_llm(text: str, base: dict, *, parent: dict | None
     system = (
         'Propose edits to the current parameters only. Return JSON with exactly operations and questions. '
         'operations is an array of {field,op,value}; op is set or add, value is a finite number in mm. '
-        'Exceptions use op set with a string: text is the new name-tag text; color (whole model) and accent_color '
+        'key_units is a keycap size in units (set only: 1, 1.25, 1.5, 1.75, 2, 2.25, 2.75, 6.25 or 7). '
+        'Exceptions use op set with a string: text is the new name-tag text or keycap legend; color (whole model) and accent_color '
         '(name-tag letters only) are one of: ' + ', '.join(PALETTE) + ', or an empty string to clear. '
         'Counts dividers and slots require set with an integer. N tray compartments means dividers=N-1. '
         'Never replace geometry, switch template, return code, prose, URLs or execution claims. '
