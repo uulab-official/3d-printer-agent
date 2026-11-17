@@ -8,6 +8,7 @@ TEMPLATE_SPECIFIC_FIELDS = {
     'magnet_frame': {'inset_diameter','inset_depth','fit_clearance'},
     'phone_stand': {'lean_angle','device_thickness','lip_height','fit_clearance'},
     'name_tag': {'text','text_size','text_depth','hole_diameter'},
+    'wall_hook': {'hole_diameter','lip_height'},
 }
 # Filament colours a person can name. Keys are stored; hex values are display
 # approximations only, not a measured filament colour.
@@ -32,7 +33,7 @@ LATER_FIELDS = {'lean_angle','device_thickness','lip_height','text','text_size',
 
 class GeometryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    template: Literal["tray", "cable_comb", "magnet_frame", "phone_stand", "name_tag"] = "tray"
+    template: Literal["tray", "cable_comb", "magnet_frame", "phone_stand", "name_tag", "wall_hook"] = "tray"
     width: float = Field(default=120, ge=10, le=500)
     depth: float = Field(default=80, ge=10, le=500)
     height: float = Field(default=35, ge=2, le=300)

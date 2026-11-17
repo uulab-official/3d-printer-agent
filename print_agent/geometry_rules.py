@@ -16,6 +16,16 @@ def _validate_geometry(p: dict) -> None:
     elif p["template"] == "name_tag":
         if p["hole_diameter"] > p["text_size"]:
             raise ValueError("고리 구멍이 글자 높이보다 클 수 없습니다. 구멍 지름을 줄이거나 글자를 키우세요.")
+    elif p["template"] == "wall_hook":
+        hole = p["hole_diameter"]
+        if bottom + p["lip_height"] >= h:
+            raise ValueError("끝 턱 높이와 걸이 두께가 전체 높이보다 낮아야 합니다.")
+        if d < 2 * wall + 5:
+            raise ValueError(f"걸이 길이(세로)는 등판·끝 턱 두께를 빼고 5 mm 이상 남아야 합니다. {2 * wall + 5:g} mm 이상으로 늘리세요.")
+        if w < hole + 4:
+            raise ValueError("나사 구멍 양옆에 2 mm 이상 남도록 가로를 늘리거나 구멍을 줄이세요.")
+        if h - bottom < 3 * hole + 6:
+            raise ValueError("나사 구멍 두 개가 들어가도록 높이를 늘리거나 구멍을 줄이세요.")
     elif p["template"] == "phone_stand":
         import math
         slot_front = wall + p["device_thickness"] + p["fit_clearance"]

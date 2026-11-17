@@ -36,6 +36,8 @@ def _thin_features(p):
                 ('inset_depth', '포켓 아래 바닥', h - p['inset_depth'])]
     if p['template'] == 'phone_stand':
         return [('wall', '등판·앞턱', wall), ('bottom', '바닥', bottom)]
+    if p['template'] == 'wall_hook':
+        return [('wall', '등판·끝 턱', wall), ('bottom', '걸이', bottom), ('hole_diameter', '나사 구멍 양옆', (w - p['hole_diameter']) / 2)]
     if p['template'] == 'name_tag':
         # Letter strokes depend on the font; about a tenth of the letter height for bold sans.
         return [('bottom', '받침판', bottom), ('hole_diameter', '고리 둘레', wall),

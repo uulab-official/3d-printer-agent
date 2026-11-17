@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.0 — 2026-11-17
+
+- New `wall_hook` template ([docs/WALL_HOOK.md](docs/WALL_HOOK.md)), the sixth: a back plate with two screw holes, an arm and an end lip as one solid, printed as modelled (arm on the bed, no supports). Horizontal screw holes are teardrops that close at 45°, so the printability review reports no overhang. Rules keep the lip below the plate, the arm longer than the walls, material beside the holes and room for two holes. Requests such as “헤드폰 걸이 만들어줘”, “가방 걸이 나사 구멍 5mm” and “수건 걸이” choose it with starting sizes per item; a stand for headphones now points to the hook. Edits understand 걸이 길이, 걸이 두께, 끝 턱 and 나사 구멍; the failure recovery suggests a thicker wall for a weak hook. `hole_diameter` and `lip_height` are shared later fields, so earlier templates keep their canonical shape.
+
 ## 0.19.0 — 2026-11-17
 
 - After a failed print ([docs/RECOVERY.md](docs/RECOVERY.md)): “출력 실패” now takes up to six reasons (first layer, warping, stringing, too tight, too loose, weak, blurry letters, under-extrusion, mid-print failure), stored with the user-reported outcome. `GET /api/jobs/{id}/recovery` returns general next steps per reason and, where geometry can help, an edit sentence (for example “여유 0.2mm 늘려줘”, “글자 크기 2mm 늘려줘”) that is offered only when the existing edit parser turns it into a valid in-range edit of the current model. “모델 수정 검토” fills the contextual edit and opens its review; nothing changes until the person applies it and regenerates. Reasons are refused for success/not-tested outcomes; older records open unchanged.

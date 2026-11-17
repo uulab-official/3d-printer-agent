@@ -38,7 +38,7 @@ class DiscoveryAPITests(unittest.TestCase):
              patch('print_agent.app.plan_with_llm') as llm, \
              patch('print_agent.app.probe_environment') as native:
             data = self.client.get('/api/bootstrap').json()
-            self.assertEqual(len(data['templates']), 5)
+            self.assertEqual(len(data['templates']), 6)
             self.assertEqual(data['discovery']['schema_version'], 1)
             self.assertEqual(len(data['discovery']['projects']), 7)
             response = self.post('/api/discovery', {})

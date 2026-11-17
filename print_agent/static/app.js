@@ -50,13 +50,13 @@
     color: "출력할 필라멘트 색. 화면 색은 비슷하게 보여 줄 뿐입니다",
     accent_color: "글자만 다른 색으로 뽑을 때 고릅니다(AMS 등 자동 교체 필요)",
   };
-  const templateFieldDescriptions = { phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" } };
+  const templateFieldDescriptions = { phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" }, wall_hook: { width: "후크의 폭(벽에 붙는 면의 가로)", depth: "벽에서 앞으로 나온 걸이 길이", height: "등판 높이(나사 구멍 두 개가 들어감)", wall: "등판과 끝 턱의 두께", bottom: "물건이 걸리는 걸이 두께. 무거운 물건은 두껍게", hole_diameter: "벽 나사 구멍 지름. 위쪽이 뾰족한 물방울 모양이라 서포트 없이 출력됩니다", lip_height: "물건이 미끄러지지 않게 막는 끝 턱 높이" } };
   const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1, text_size: 0.5, text_depth: 0.2, hole_diameter: 0.5 };
   const fieldGroups = [["text", "글자", ["text", "text_size", "text_depth"]], ["size", "크기", ["width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]], ["color", "색", ["color", "accent_color"]]];
   const PARAMETER_FORMAT = "3d-printer-agent/parameters";
 
   // Same field, different meaning per template.
-  const templateFieldLabels = { phone_stand: { fit_clearance: "홈 여유", wall: "등판·앞턱 두께" }, name_tag: { wall: "테두리 여백", bottom: "받침 두께" } };
+  const templateFieldLabels = { phone_stand: { fit_clearance: "홈 여유", wall: "등판·앞턱 두께" }, name_tag: { wall: "테두리 여백", bottom: "받침 두께" }, wall_hook: { depth: "걸이 길이", wall: "등판·끝 턱 두께", bottom: "걸이 두께", hole_diameter: "나사 구멍 지름", lip_height: "끝 턱 높이" } };
   const fieldNames = {
     ...Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.label])),
     printer_model: "프린터 모델", printer_preset: "프린터 프리셋", nozzle_diameter: "노즐 지름",
@@ -590,8 +590,8 @@
   function validateEditParameters(parameters) {
     const defaults = { width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
     // Fields added later appear only in templates that use them (see schemas.LATER_FIELDS).
-    const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 }, name_tag: { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 } };
-    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"], name_tag: ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"] };
+    const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 }, name_tag: { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 }, wall_hook: { lip_height: 12, hole_diameter: 4 } };
+    const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"], name_tag: ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"], wall_hook: ["width", "depth", "height", "wall", "bottom", "hole_diameter", "lip_height"] };
     const expected = { ...defaults, ...(laterFields[parameters?.template] || {}) };
     // Colours appear only when chosen (see schemas.COLOR_FIELDS); letters only on a name tag.
     const colorKeys = parameters && typeof parameters === "object" ? Object.keys(parameters).filter((key) => COLOR_PARAMETERS.has(key)) : [];
@@ -614,7 +614,8 @@
 
   function parameterKeys(template) {
     // The eleven original fields for every template, plus later fields only where used.
-    const later = { phone_stand: ["lean_angle", "device_thickness", "lip_height"], name_tag: ["text", "text_size", "text_depth", "hole_diameter"] };
+    // Same order as the server's canonical fields (schemas.GeometryRequest).
+    const later = { phone_stand: ["lean_angle", "device_thickness", "lip_height"], name_tag: ["text", "text_size", "text_depth", "hole_diameter"], wall_hook: ["lip_height", "hole_diameter"] };
     return ["template", "width", "depth", "height", "wall", "bottom", "dividers", "slots", "cable_diameter", "inset_diameter", "inset_depth", "fit_clearance", ...(later[template] || [])];
   }
 
@@ -622,6 +623,7 @@
     const parameters = { template: state.template, width: 120, depth: 80, height: 35, wall: 2, bottom: 2, dividers: 0, slots: 5, cable_diameter: 6, inset_diameter: 52, inset_depth: 2, fit_clearance: 0.3 };
     if (state.template === "phone_stand") Object.assign(parameters, { lean_angle: 65, device_thickness: 12, lip_height: 12 });
     if (state.template === "name_tag") Object.assign(parameters, { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 });
+    if (state.template === "wall_hook") Object.assign(parameters, { lip_height: 12, hole_diameter: 4 });
     const template = state.templates.find(item => item.id === state.template);
     if (!template) throw new Error("수정할 템플릿을 먼저 선택해 주세요.");
     for (const key of template.editable_fields) {
