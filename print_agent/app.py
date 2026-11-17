@@ -468,7 +468,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.get('/api/jobs/{job_id}/files/{kind}')
     def artifact(job_id: str, kind: str):
         path, content = store.read_artifact(job_id,kind)
-        media = {'stl':'model/stl','step':'application/step','three_mf':'model/3mf',
+        media = {'stl':'model/stl','step':'application/step','three_mf':'model/3mf','color_three_mf':'model/3mf',
                  'sliced_three_mf':'model/3mf','prepared_three_mf':'model/3mf',
                  'source':'text/plain','manifest':'application/json'}.get(kind,'application/octet-stream')
         filename = quote(path.name)

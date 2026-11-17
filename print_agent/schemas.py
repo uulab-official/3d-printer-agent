@@ -9,6 +9,16 @@ TEMPLATE_SPECIFIC_FIELDS = {
     'phone_stand': {'lean_angle','device_thickness','lip_height','fit_clearance'},
     'name_tag': {'text','text_size','text_depth','hole_diameter'},
 }
+# Filament colours a person can name. Keys are stored; hex values are display
+# approximations only, not a measured filament colour.
+PALETTE = {
+    'white': ('흰색', '#F4F4F1'), 'black': ('검정', '#232323'), 'gray': ('회색', '#8E9096'),
+    'red': ('빨강', '#D2302C'), 'orange': ('주황', '#F07F1F'), 'yellow': ('노랑', '#F4C430'),
+    'green': ('초록', '#2E9E4F'), 'blue': ('파랑', '#2563C9'), 'purple': ('보라', '#7B4BB8'),
+    'pink': ('분홍', '#EE7FB2'), 'brown': ('갈색', '#8B5A2B'),
+}
+# Colour of the whole model, and of the raised letters on a name tag.
+COLOR_FIELDS = {'color', 'accent_color'}
 # Non-numeric fields. Every other parameter is a finite number.
 TEXT_FIELDS = {'text'}
 # Printable letters, digits, Hangul, spaces and a few marks; no control characters.
@@ -17,6 +27,8 @@ NAME_TEXT = re.compile(r"[0-9A-Za-z가-힣ㄱ-ㅎㅏ-ㅣ .,'&!?♥★\-]{1,20}")
 # templates that use them, so earlier jobs, recipes and review hashes keep the
 # exact same eleven-field shape.
 LATER_FIELDS = {'lean_angle','device_thickness','lip_height','text','text_size','text_depth','hole_diameter'}
+# Colours are optional for every template; an unchosen colour ('') is omitted from
+# canonical parameters, so models without colours keep their earlier shape and hashes.
 
 class GeometryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
@@ -39,6 +51,8 @@ class GeometryRequest(BaseModel):
     text_size: float = Field(default=12, ge=6, le=40)
     text_depth: float = Field(default=2, ge=0.6, le=6)
     hole_diameter: float = Field(default=4, ge=2, le=10)
+    color: str = Field(default="", max_length=16)
+    accent_color: str = Field(default="", max_length=16)
 
     @model_validator(mode='after')
     def applicable_fields(self):
@@ -48,6 +62,11 @@ class GeometryRequest(BaseModel):
         for name in all_specific - TEMPLATE_SPECIFIC_FIELDS[self.template]:
             if getattr(self,name) != type(self).model_fields[name].default:
                 raise ValueError(f'{name}은 {self.template} 템플릿에 적용되지 않습니다.')
+        for name in COLOR_FIELDS:
+            if getattr(self, name) and getattr(self, name) not in PALETTE:
+                raise ValueError(f'지원하는 색은 {", ".join(label for label, _ in PALETTE.values())}입니다.')
+        if self.accent_color and self.template != 'name_tag':
+            raise ValueError('글자 색은 이름 키링에만 지정할 수 있습니다.')
         if self.template == 'name_tag' and not NAME_TEXT.fullmatch(self.text.strip() if self.text else ''):
             raise ValueError('키링 글자는 한글·영문·숫자·공백과 일부 기호로 1~20자여야 합니다.')
         return self
@@ -57,4 +76,7 @@ class GeometryRequest(BaseModel):
         data = handler(self)
         for name in LATER_FIELDS - TEMPLATE_SPECIFIC_FIELDS[self.template]:
             data.pop(name, None)
+        for name in COLOR_FIELDS:
+            if not data.get(name):
+                data.pop(name, None)
         return data

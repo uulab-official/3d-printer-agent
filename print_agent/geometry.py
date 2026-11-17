@@ -4,16 +4,17 @@ from collections import Counter
 import inspect
 import math
 from pathlib import Path
+import zipfile
 
 import cadquery as cq
 
-from .schemas import GeometryRequest
+from .schemas import PALETTE, GeometryRequest
 from .geometry_rules import _validate_geometry
 from .printability import assess_printability
 
 
 def template_catalog() -> list[dict]:
-    return [
+    catalog = [
         {"id": "tray", "title": "칸막이 수납함",
          "description": "위가 열린 수납함. 폭 방향을 같은 크기의 칸으로 나눕니다.",
          "defaults": {"width": 120, "depth": 80, "height": 35, "wall": 2, "bottom": 2, "dividers": 0},
@@ -41,6 +42,12 @@ def template_catalog() -> list[dict]:
          "editable_fields": ["width", "depth", "height", "wall", "bottom", "lean_angle",
                              "device_thickness", "lip_height", "fit_clearance"]},
     ]
+    # Colours are optional on every template; letters get their own colour only on a name tag.
+    for item in catalog:
+        extra = ["color", "accent_color"] if item["id"] == "name_tag" else ["color"]
+        item["defaults"] = {**item["defaults"], **{key: "" for key in extra}}
+        item["editable_fields"] = [*item["editable_fields"], *extra]
+    return catalog
 
 
 def _name_tag_font() -> dict:
@@ -158,6 +165,83 @@ def _export_cad(shape: cq.Shape, output_dir: Path) -> None:
             raise ValueError(f"CAD 파일 내보내기가 실패했습니다: {filename}")
 
 
+def color_parts(parameters: dict) -> list[dict]:
+    """Named colour parts of the model; empty when no colour was chosen.
+
+    A name tag whose letters have their own colour has two parts split at the
+    plate top: the plate (filament 1) and the raised letters (filament 2)."""
+    body, accent = parameters.get("color", ""), parameters.get("accent_color", "")
+    if not body and not accent:
+        return []
+    def part(key, label, color, filament):
+        return {"key": key, "label": label, "color": color or "",
+                "name": PALETTE[color][0] if color else "기본 필라멘트",
+                "hex": PALETTE[color][1] if color else None, "filament": filament}
+    if parameters["template"] == "name_tag" and accent and accent != body:
+        return [part("base", "받침", body, 1), part("letters", "글자", accent, 2)]
+    return [part("body", "모델 전체", body or accent, 1)]
+
+
+def _split_letters(shape: cq.Shape, bottom: float) -> tuple[cq.Shape, cq.Shape]:
+    """Cut a name tag at the plate top into the plate and the letters above it."""
+    bounds = shape.BoundingBox()
+    span = 2 * max(bounds.xlen, bounds.ylen, bounds.zlen) + 10
+    below = cq.Solid.makeBox(span, span, bottom + span, cq.Vector(bounds.xmin - span / 4, bounds.ymin - span / 4, -span))
+    above = cq.Solid.makeBox(span, span, span, cq.Vector(bounds.xmin - span / 4, bounds.ymin - span / 4, bottom))
+    return shape.intersect(below), shape.intersect(above)
+
+
+def _face_parts(mesh: dict, parameters: dict, parts: list[dict]) -> list[int] | None:
+    if len(parts) < 2:
+        return None
+    limit = parameters["bottom"] + 1e-6
+    vertices = mesh["vertices"]
+    return [1 if sum(vertices[index][2] for index in face) / 3 > limit else 0 for face in mesh["faces"]]
+
+
+def _colored_three_mf(parts_meshes: list[tuple[dict, dict]], target: Path) -> None:
+    """A Bambu Studio project-style 3MF: one object whose parts carry their filament number.
+
+    Only geometry and the per-part filament assignment are written; printer,
+    process and filament settings come from the person's own Studio setup."""
+    if target.exists() or target.is_symlink():
+        raise FileExistsError(f"기존 모델 파일을 덮어쓸 수 없습니다: {target.name}")
+    xs = [vertex[0] for _, mesh in parts_meshes for vertex in mesh["vertices"]]
+    ys = [vertex[1] for _, mesh in parts_meshes for vertex in mesh["vertices"]]
+    cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    objects, components, settings = [], [], []
+    for index, (part, mesh) in enumerate(parts_meshes, start=1):
+        vertices = "".join(f'<vertex x="{x - cx:.6f}" y="{y - cy:.6f}" z="{z:.6f}"/>' for x, y, z in mesh["vertices"])
+        triangles = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in mesh["faces"])
+        objects.append(f'<object id="{index}" type="model"><mesh><vertices>{vertices}</vertices>'
+                       f'<triangles>{triangles}</triangles></mesh></object>')
+        components.append(f'<component objectid="{index}"/>')
+        settings.append(f'<part id="{index}" subtype="normal_part"><metadata key="name" value="{part["label"]} ({part["name"]})"/>'
+                        '<metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>'
+                        f'<metadata key="extruder" value="{part["filament"]}"/></part>')
+    parent = len(parts_meshes) + 1
+    model = ('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" '
+             'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:BambuStudio="http://schemas.bambulab.com/package/2021">'
+             '<metadata name="Application">3D Printer Agent</metadata><metadata name="BambuStudio:3mfVersion">1</metadata>'
+             f'<resources>{"".join(objects)}<object id="{parent}" type="model"><components>{"".join(components)}</components></object></resources>'
+             f'<build><item objectid="{parent}" transform="1 0 0 0 1 0 0 0 1 0 0 0" printable="1"/></build></model>')
+    config = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>'
+              f'<object id="{parent}"><metadata key="name" value="colored model"/><metadata key="extruder" value="1"/>'
+              f'{"".join(settings)}</object></config>')
+    types = ('<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+             '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>'
+             '<Default Extension="config" ContentType="text/xml"/></Types>')
+    rels = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')
+    with zipfile.ZipFile(target, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in (("[Content_Types].xml", types), ("_rels/.rels", rels),
+                              ("3D/3dmodel.model", model), ("Metadata/model_settings.config", config)):
+            info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, content)
+
+
 def _reproduction_source(parameters: dict) -> str:
     preamble = ("# Generated with CadQuery " + cq.__version__ + "; all lengths are millimetres.\n"
                 "# This source reproduces geometry, not slicer settings or print success.\n"
@@ -188,6 +272,9 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
     _validate_geometry(parameters)
     output_dir = Path(output_dir)
     files = {"stl": "model.stl", "step": "model.step", "three_mf": "model.3mf", "source": "model.py"}
+    parts = color_parts(parameters)
+    if len(parts) > 1:
+        files["color_three_mf"] = "model-colors.3mf"
     for filename in files.values():
         target = output_dir / filename
         if target.exists() or target.is_symlink():
@@ -219,7 +306,24 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
     if not all(check["passed"] for check in checks):
         failed = ", ".join(check["name"] for check in checks if not check["passed"])
         raise ValueError(f"생성된 CAD 형상 검증 실패: {failed}")
+    color_volumes = None
+    if len(parts) > 1:
+        plate, letters = _split_letters(shape, parameters["bottom"])
+        pieces = [(plate, parts[0]), (letters, parts[1])]
+        split_volume = sum(piece.Volume() for piece, _ in pieces)
+        if not all(piece.isValid() and piece.Volume() > 0 for piece, _ in pieces) or not math.isclose(split_volume, volume, rel_tol=1e-6):
+            raise ValueError("색별 부품으로 나눈 형상이 원래 모델과 다릅니다.")
+        color_volumes = [piece.Volume() for piece, _ in pieces]
     _export_cad(shape, output_dir)
+    if len(parts) > 1:
+        _colored_three_mf([(part, _preview_mesh(piece)) for piece, part in pieces], output_dir / files["color_three_mf"])
+    if parts:
+        mesh["parts"] = [{key: part[key] for key in ("key", "label", "name", "hex")} for part in parts]
+        face_parts = _face_parts(mesh, parameters, parts)
+        if face_parts is not None:
+            mesh["face_parts"] = face_parts
+        for index, part in enumerate(parts):
+            part["volume_mm3"] = color_volumes[index] if color_volumes else volume
     (output_dir / files["source"]).write_text(_reproduction_source(parameters), encoding="utf-8")
     warnings = ["CAD 형상 검증만 완료했습니다. 출력 성공·강도·치수 맞춤은 실제 프린터에서 확인해야 합니다."]
     if spec.template == "cable_comb":
@@ -230,7 +334,12 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
         warnings.append("기기 두께와 여유로 홈 폭을 정합니다. 실제 기기·케이스 두께와 넘어짐·충전 케이블 위치는 직접 확인하세요.")
     elif spec.template == "magnet_frame":
         warnings.append("원형 포켓의 여유값은 지름에 더합니다. 자석 고정력이나 구조 강도를 보장하지 않습니다.")
+    if len(parts) > 1:
+        warnings.append("받침(필라멘트 1)과 글자(필라멘트 2)를 나눈 색상 3MF를 함께 만들었습니다. 두 색을 한 번에 출력하려면 AMS 등 자동 필라멘트 교체가 필요하며, Studio에서 각 필라멘트 슬롯의 실제 색을 확인하세요.")
+    elif parts:
+        warnings.append(f"모델 색은 {parts[0]['name']}입니다. 화면 색은 비슷하게 보여 줄 뿐이며, 출력 색은 프린터에 넣은 필라멘트가 정합니다.")
     return {"template": spec.template, "parameters": parameters, "dimensions_mm": dimensions,
+            "color_parts": parts,
             "volume_mm3": volume, "geometry_status": "validated", "print_status": "not_tested",
             "checks": checks, "files": files, "mesh": mesh, "warnings": warnings,
             "printability": _safe_printability(shape, parameters, mesh)}

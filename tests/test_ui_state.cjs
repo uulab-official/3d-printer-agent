@@ -6,13 +6,13 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview','readParameter','parameterInputComplete','parameterField','stepParameter','syncParameterSlider','currentParameterSnapshot','parseParameterText','copyParameters','openPastePanel','applyPastedParameters','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget','templateSizeText');
+names.push('renderPrintVolumeReview','readParameter','parameterInputComplete','parameterField','stepParameter','syncParameterSlider','currentParameterSnapshot','parseParameterText','copyParameters','openPastePanel','applyPastedParameters','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget','templateSizeText','renderColorLegend','colorField','chooseColor');
 const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
 names.push(...libraryNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 class Element {
-  constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.style={}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
+  constructor() { this.children=[]; this.dataset={}; this.disabled=false; this.hidden=false; this.value=''; this._text=''; this.attributes={}; this.style={setProperty(name,value){this[name]=value;}}; this.listeners={}; this.classList={add(){},remove(){},toggle(){}}; }
   set textContent(value) { this._text=String(value); this.children=[]; }
   get textContent() { return this._text + this.children.map(x=>x.textContent || '').join(' '); }
   append(...nodes) { this.children.push(...nodes); }
@@ -29,7 +29,7 @@ function fixture() {
   const ids = new Map();
   const $ = id => { if (!ids.has(id)) ids.set(id,new Element()); return ids.get(id); };
   const context = {
-    $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa,
+    $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa, Event:class { constructor(type){ this.type=type; } },
     state:{offersResult:null,historyFilter:'all',downloadedJobId:null,printabilityReview:null,printabilityRequest:0,printabilityPending:false,printabilityNozzle:0.4,printabilityShown:false,printerStatus:null,offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
     document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
@@ -39,8 +39,8 @@ function fixture() {
   vm.createContext(context);
   for (const name of ['printabilityStatus','printabilityMarks','templateFieldLabels']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   // Multi-line editing-panel constants are evaluated from their declaration to the closing brace.
-  for (const name of ['fieldDescriptions']) { const start=source.indexOf('  const '+name+' = {'); vm.runInContext(source.slice(start, source.indexOf('\n  };', start)+5), context); }
-  for (const name of ['templateFieldDescriptions','fieldNudges','fieldGroups','PARAMETER_FORMAT','TEXT_PARAMETERS']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
+  for (const name of ['fieldDescriptions','PALETTE']) { const start=source.indexOf('  const '+name+' = {'); vm.runInContext(source.slice(start, source.indexOf('\n  };', start)+5), context); }
+  for (const name of ['templateFieldDescriptions','fieldNudges','fieldGroups','PARAMETER_FORMAT','TEXT_PARAMETERS','COLOR_PARAMETERS','STRING_PARAMETERS']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if (!match) throw new Error('Missing controller function: '+name);
@@ -1813,6 +1813,37 @@ const printVolumeReport = (overrides={}) => ({
     assert.equal(c.templateSizeText({text:'MINSU',text_size:12,wall:3}),'기본 글자 “MINSU” · 글자 크기 12 mm');
     assert.equal(c.templateSizeText({wall:2}),'크기는 입력값에 맞춰 정해집니다');
     for(const value of [c.templateSizeText({text:'A',text_size:6}),c.templateSizeText({})]) assert.doesNotMatch(value,/undefined/);
+  });
+  await check('Colour choices stay optional strings in reads, copies, pastes, edits and the preview legend',()=>{
+    const c=fixture();
+    Object.assign(c.fields,{text:{label:'글자',kind:'text',maxLength:20,unit:''},color:{label:'모델 색',kind:'color',unit:''},accent_color:{label:'글자 색',kind:'color',unit:''}});
+    c.state.templates=[{id:'name_tag',title:'이름 키링',defaults:{text:'MINSU',color:'',accent_color:''},editable_fields:['text','color','accent_color'],description:'Tag'}];
+    c.state.template='name_tag';c.state.parameters={text:'MINSU',color:'',accent_color:''};
+    const field=c.colorField(c.state.templates[0],'accent_color','글자 색');
+    const swatches=field.children.find(child=>child.className==='color-swatches');
+    assert.equal(swatches.children.length,12);
+    assert.equal(swatches.children[0].attributes['aria-checked'],'true');
+    const hidden=field.children.find(child=>child.type==='hidden');
+    assert.equal(hidden.dataset.parameter,'accent_color');assert.equal(hidden.value,'');
+    const text=c.$('parameter-text');text.value='지우';text.dataset.parameter='text';text.validity={valid:true};
+    const body=c.$('parameter-color');body.value='';body.dataset.parameter='color';
+    const accent=c.$('parameter-accent_color');accent.value='';accent.dataset.parameter='accent_color';
+    let dispatched=0;accent.dispatchEvent=()=>{dispatched+=1;};
+    c.chooseColor('accent_color','red');
+    assert.equal(accent.value,'red');assert.equal(dispatched,1);
+    c.chooseColor('accent_color','teal');assert.equal(accent.value,'red');assert.equal(dispatched,1);
+    assert.equal(c.parameterInputComplete(body),true);assert.equal(c.readParameter(body),'');assert.equal(c.readParameter(accent),'red');
+    assert.deepEqual(plain(c.currentParameterSnapshot().parameters),{text:'지우',accent_color:'red'});
+    assert.deepEqual(plain(c.parseParameterText('{"template":"name_tag","parameters":{"text":"A","color":"white","accent_color":""}}').parameters),{text:'A',color:'white',accent_color:''});
+    assert.throws(()=>c.parseParameterText('{"template":"name_tag","parameters":{"color":"#ff0000"}}'),/중 하나/);
+    const edit=c.currentEditParameters();
+    assert.equal(edit.accent_color,'red');assert.equal(Object.hasOwn(edit,'color'),false);
+    assert.throws(()=>c.validateEditParameters({...edit,accent_color:'navy'}),/색 응답/);
+    assert.throws(()=>c.validateEditParameters({template:'tray',width:120,depth:80,height:35,wall:2,bottom:2,dividers:0,slots:5,cable_diameter:6,inset_diameter:52,inset_depth:2,fit_clearance:0.3,accent_color:'red'}),/색 응답/);
+    c.renderColorLegend([{label:'받침',name:'흰색',hex:'#F4F4F1',filament:1,volume_mm3:1000},{label:'글자',name:'빨강',hex:'#D2302C',filament:2,volume_mm3:500}]);
+    assert.equal(c.$('preview-colors').hidden,false);
+    assert.match(c.$('preview-colors').textContent,/글자: 빨강 · 필라멘트 2/);
+    c.renderColorLegend(null);assert.equal(c.$('preview-colors').hidden,true);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

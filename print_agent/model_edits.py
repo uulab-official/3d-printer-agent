@@ -7,7 +7,9 @@ import math
 import re
 
 from .geometry_rules import _validate_geometry
-from .schemas import TEXT_FIELDS, GeometryRequest, TEMPLATE_SPECIFIC_FIELDS
+from .schemas import COLOR_FIELDS, PALETTE, TEXT_FIELDS, GeometryRequest, TEMPLATE_SPECIFIC_FIELDS
+
+_STRINGS = TEXT_FIELDS | COLOR_FIELDS
 from . import planner
 
 _COMMON = {'width', 'depth', 'height', 'wall', 'bottom'}
@@ -44,8 +46,15 @@ def _length_number(value):
     return 0.0 if value == 0 else float(value)
 
 
+def _required(template):
+    # A name tag's outline follows its text; width, depth and height do not apply.
+    common = _COMMON - {'width', 'depth', 'height'} if template == 'name_tag' else _COMMON
+    return common | TEMPLATE_SPECIFIC_FIELDS[template]
+
+
 def _editable(template):
-    return _COMMON | TEMPLATE_SPECIFIC_FIELDS[template]
+    # Colours are optional: an unchosen colour is absent from canonical parameters.
+    return _required(template) | {'color'} | ({'accent_color'} if template == 'name_tag' else set())
 
 
 def normalize_parameters(base: dict) -> dict:
@@ -54,7 +63,7 @@ def normalize_parameters(base: dict) -> dict:
         raise ValueError('지원하는 현재 템플릿이 필요합니다.')
     fields = GeometryRequest.model_fields
     editable = _editable(base['template'])
-    if set(base) - set(fields) or not editable <= set(base):
+    if set(base) - set(fields) or not _required(base['template']) <= set(base):
         raise ValueError('현재 제작안의 모든 적용 치수가 필요합니다.')
     for name, value in base.items():
         if name == 'template':
@@ -63,13 +72,17 @@ def normalize_parameters(base: dict) -> dict:
             if not isinstance(value, str):
                 raise ValueError('글자 항목은 문자열이어야 합니다.')
             continue
+        if name in COLOR_FIELDS:
+            if not isinstance(value, str) or (value and name not in editable):
+                raise ValueError('색 항목이 올바르지 않습니다.')
+            continue
         _number(value)
         if name in _COUNTS and type(value) is not int:
             raise ValueError('개수는 정수여야 합니다.')
         if name not in editable and value != fields[name].default:
             raise ValueError('현재 템플릿에 적용되지 않는 치수입니다.')
     parameters = GeometryRequest(**{**{name:field.default for name,field in fields.items()}, **base}).model_dump()
-    for name in parameters.keys() - _COUNTS - TEXT_FIELDS - {'template'}:
+    for name in parameters.keys() - _COUNTS - _STRINGS - {'template'}:
         parameters[name] = _length_number(parameters[name])
     _validate_geometry(parameters)
     return parameters
@@ -108,6 +121,12 @@ def _selection(selection):
             raise ValueError('중복되거나 적용되지 않는 변경 항목입니다.')
         if op not in ('set', 'add'):
             raise ValueError('지원하지 않는 변경 연산입니다.')
+        if field in COLOR_FIELDS:
+            if op != 'set' or not isinstance(value, str) or (value and value not in PALETTE):
+                raise ValueError('색은 지원하는 색 이름으로 직접 지정해야 합니다.')
+            seen.add(field)
+            result.append({'field':field, 'op':op, 'value':value})
+            continue
         if field in TEXT_FIELDS:
             if op != 'set' or not isinstance(value, str):
                 raise ValueError('글자는 새 문자열로 직접 지정해야 합니다.')
@@ -134,9 +153,9 @@ def review_model_edit(selection: dict) -> dict:
             value = float(Decimal(str(base[field])) + Decimal(str(value)))
         proposed[field] = value
     parameters = normalize_parameters(proposed)
-    changes = [{'field':field, 'before':base[field], 'after':parameters[field]}
+    changes = [{'field':field, 'before':base.get(field, ''), 'after':parameters.get(field, '')}
                for field in GeometryRequest.model_fields
-               if field in parameters and base[field] != parameters[field]]
+               if (field in parameters or field in base) and base.get(field, '') != parameters.get(field, '')]
     if not changes:
         raise ValueError('실제로 달라지는 치수가 없습니다.')
     hashed = {'schema_version':1, 'selection':selection, 'base_sha256':_hash(base),
@@ -175,7 +194,9 @@ def _response(engine, review=None):
 
 _ALIASES = {
     'width':r'가로|너비|폭|width', 'depth':r'세로|깊이|depth', 'height':r'높이|height',
-    'wall':r'벽\s*두께|등판\s*두께|앞턱\s*두께|벽|wall', 'bottom':r'바닥\s*두께|바닥|bottom',
+    'wall':r'벽\s*두께|등판\s*두께|앞턱\s*두께|테두리(?:\s*여백)?|여백|벽|wall', 'bottom':r'바닥\s*두께|받침\s*두께|바닥|bottom',
+    'text_size':r'(?:글자|글씨)\s*크기|text\s*size', 'text_depth':r'(?:글자|글씨)\s*높이|text\s*depth',
+    'hole_diameter':r'(?:고리\s*)?구멍(?:\s*(?:지름|크기))?|hole\s*diameter',
     'cable_diameter':r'케이블\s*(?:지름|직경)|cable\s*diameter',
     'inset_diameter':r'(?:인셋|디스크|마그넷)\s*지름|inset\s*diameter',
     'inset_depth':r'(?:인셋|포켓)\s*깊이|inset\s*depth',
@@ -191,11 +212,27 @@ _ACTION = r'늘려(?:줘|주세요)?|늘려|증가(?:시켜)?(?:줘|주세요)?|
 _TAIL = r'(?:(?:으)?로\s*)?(?:바꿔(?:줘|주세요)?|변경해(?:줘|주세요)?|설정해(?:줘|주세요)?|해(?:줘|주세요)?)?'
 
 
+_TEXT_EDIT = re.compile(
+    r'(?:글자|글씨|이름|문구|텍스트)\s*(?:를|을|은|는|:|=)?\s*'
+    r'(?:["“”\'‘’](?P<quoted>[^"“”\'‘’]{1,20})["“”\'‘’]|(?P<word>[0-9A-Za-z가-힣&!.\-]{1,20}?))\s*'
+    r'(?:으로|로|라고)(?=\s|$|[,，.])\s*(?:(?:바꿔|변경해|고쳐|수정해|해|써)(?:\s*(?:줘|주세요))?|바꾸고|하고|변경하고)?')
+
+
 def _rule_operations(text, template):
     # Consume every meaningful token. Unknown clauses cannot disappear beside a valid edit.
     alias = '|'.join('(?P<'+field+'>'+pattern+')' for field,pattern in sorted(_ALIASES.items(),key=lambda item:-len(item[1])))
     pattern = re.compile(r'(?P<label>'+alias+r')\s*(?:는|은|을|를|만|:|=)?\s*(?P<value>'+_NUMBER+r')\s*(?P<unit>'+_UNIT+r')?\s*(?P<count_unit>개)?\s*(?P<action>'+_ACTION+r')?\s*'+_TAIL, re.I)
     operations = []
+    colors, text = planner.extract_colors(text)
+    for field, key in colors.items():
+        if field not in _editable(template):
+            raise ValueError('글자 색은 이름 키링에만 지정할 수 있습니다.')
+        operations.append({'field':field, 'op':'set', 'value':key})
+    if template == 'name_tag':
+        def text_edit(match):
+            operations.append({'field':'text', 'op':'set', 'value':(match.group('quoted') or match.group('word')).strip()})
+            return ' '
+        text = _TEXT_EDIT.sub(text_edit, text)
     def field_edit(match):
         field = next(field for field in _ALIASES if match.group(field) is not None)
         value = Decimal(match.group('value'))
@@ -237,7 +274,7 @@ def _rule_operations(text, template):
         operations.append({'field':field, 'op':'set', 'value':value})
         return ' '
     residue = count_pattern.sub(count_edit, residue)
-    residue = re.sub(r'그리고|및|[,，.\s]+', '', residue)
+    residue = re.sub(r'그리고|및|바꾸고|변경하고|하고|[,，.\s]+', '', residue)
     if residue or not operations:
         raise ValueError('전체 변경 요청을 해석할 수 없습니다.')
     return operations
@@ -270,8 +307,10 @@ async def plan_model_edit_with_llm(text: str, base: dict, *, parent: dict | None
     if routed is not None:
         return routed
     system = (
-        'Propose edits to current numeric parameters only. Return JSON with exactly operations and questions. '
+        'Propose edits to the current parameters only. Return JSON with exactly operations and questions. '
         'operations is an array of {field,op,value}; op is set or add, value is a finite number in mm. '
+        'Exceptions use op set with a string: text is the new name-tag text; color (whole model) and accent_color '
+        '(name-tag letters only) are one of: ' + ', '.join(PALETTE) + ', or an empty string to clear. '
         'Counts dividers and slots require set with an integer. N tray compartments means dividers=N-1. '
         'Never replace geometry, switch template, return code, prose, URLs or execution claims. '
         'Preserve every unspecified field. For ambiguous, conflicting, unsupported or mixed requests return '

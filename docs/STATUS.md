@@ -6,6 +6,8 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
+Version 0.14 adds optional filament colours for every template and a separate letter colour for name tags, set by request or edit sentences or swatches, shown in the preview, and exported for two-colour name tags as a Bambu Studio part/filament 3MF (verified with a local two-filament Studio slice, not a physical print). Edits also change name-tag text and its own sizes, and an edited name tag regenerates again. See [COLORS.md](COLORS.md).
+
 Version 0.12.1 fixes Studio-project slicing on macOS (the sliced file was written into the Studio app bundle because no output folder was named), adds an installed-Studio mode to the native qualification and fixes two keychain labels in the UI. Published as [v0.12.1](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.12.1) on 2026-11-17 from `1ea9a0c`.
 
 Version 0.12 adds a fifth template, a [name keychain](NAME_TAG.md) with raised system-font text (Korean, Latin, digits and a few symbols, up to 20 characters) on a rounded plate with a ring hole, and keychain request parsing. It fixes a mirrored preview projection, pins known-good bold fonts per OS (Arial Bold on macOS/Windows, DejaVu Sans Bold on Linux) and rejects invalid letter outlines instead of exporting a broken mesh. Published as [v0.12.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.12.0) on 2026-11-16 (UTC) from `b96e657`.
