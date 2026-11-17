@@ -142,6 +142,17 @@ class Simulator:
                             publish(conn, f'device/{serial}/report', {'print': self.report()})
                         elif command == 'project_file':
                             self.start_print(conn, serial, payload['print'])
+                        elif command in ('pause', 'resume', 'stop'):
+                            # Synthetic state change only; nothing moves.
+                            with self.lock:
+                                if command == 'pause' and self.state == 'RUNNING':
+                                    self.state = 'PAUSE'
+                                elif command == 'resume' and self.state == 'PAUSE':
+                                    self.state = 'RUNNING'
+                                elif command == 'stop' and self.state in ('PREPARE', 'RUNNING', 'PAUSE'):
+                                    self.state, self.error = 'FAILED', 0x0300400C
+                            print(f'[fake-printer] {command}: state {self.state}', flush=True)
+                            publish(conn, f'device/{serial}/report', {'print': self.report()})
                         elif command == 'get_version':
                             publish(conn, f'device/{serial}/report', {'info': {'command': 'get_version', 'module': [
                                 {'name': 'ota', 'sw_ver': '01.08.00.00', 'hw_ver': '', 'sn': serial},

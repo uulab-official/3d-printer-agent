@@ -808,3 +808,10 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .print-follow-track { height: 10px; border-radius: 6px; background: var(--canvas); overflow: hidden; border: 1px solid var(--line); }
 .print-follow-bar { height: 100%; width: 0; background: var(--blue); transition: width 0.4s ease; }
 .print-follow-text { margin: 0; font-weight: 600; }
+
+.button-danger { background: var(--red); color: #fff; border: 1px solid var(--red); }
+.button-danger:hover:not(:disabled) { filter: brightness(0.92); }
+
+.print-control-row { margin: 4px 0; }
+.print-stop-confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--red-soft); }
+.print-stop-confirm p { margin: 0; flex-basis: 100%; color: var(--red); font-weight: 600; }

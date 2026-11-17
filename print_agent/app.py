@@ -278,6 +278,13 @@ class PrintStartPayload(StrictPayload):
     bed_clear_confirmed: Literal[True]
 
 
+class PrintControlPayload(PrinterStatusPayload):
+    """Pause, resume or stop the running print. Stopping must be confirmed explicitly."""
+    action: Literal['pause', 'resume', 'stop']
+    stop_confirmed: bool = False
+    job_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
+
+
 class PrintabilityPayload(StrictPayload):
     nozzle_mm: Literal[0.2, 0.4, 0.6, 0.8]
 
@@ -477,6 +484,19 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         _title, content = store.sliced_for_printing(review['job_id'])
         result = printer_send.start(review, payload.access_code, content)
         store.record_printer_send(review['job_id'], result)
+        return result
+
+    @app.post('/api/printers/print/control')
+    def print_control(payload: PrintControlPayload):
+        """One fixed control command; a stop needs stop_confirmed. Recorded on the job when given."""
+        if payload.action == 'stop' and not payload.stop_confirmed:
+            raise ValueError('정지는 되돌릴 수 없습니다. 확인한 뒤 다시 요청하세요.')
+        if payload.job_id is not None:
+            store.get(payload.job_id)  # an unknown job is refused before any network use
+        result = printer_send.control(payload.host, payload.serial, payload.access_code,
+                                      payload.pinned_certificate_sha256, payload.action)
+        if payload.job_id is not None and result['command_sent']:
+            store.record_printer_event(payload.job_id, 'printer_control', result)
         return result
 
     @app.post('/api/plan')
