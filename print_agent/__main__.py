@@ -16,6 +16,10 @@ from .runtime import DataDirectoryInUse, DataDirectoryLease, StorageCompatibilit
 
 def _port_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        if os.name != 'nt':
+            # Match uvicorn: a just-stopped server leaves the port in TIME_WAIT,
+            # which must not look like another program owning it.
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(('127.0.0.1', port))
         except OSError:

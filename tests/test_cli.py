@@ -140,6 +140,16 @@ class LaunchTests(unittest.TestCase):
         with patch('sys.stdout', pipe):
             self.assertFalse(_should_open_browser(Args()))
 
+    def test_port_check_ignores_time_wait_but_sees_a_listener(self):
+        import socket
+        from print_agent.__main__ import _port_free
+        server = socket.socket(); server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('127.0.0.1', 0)); server.listen(); port = server.getsockname()[1]
+        self.assertFalse(_port_free(port))
+        client = socket.create_connection(('127.0.0.1', port)); accepted, _ = server.accept()
+        accepted.close(); client.close(); server.close()  # the server side closes first -> TIME_WAIT
+        self.assertTrue(_port_free(port))
+
     def test_no_browser_is_only_for_serve(self):
         code, _, err = self.run_main(['doctor', '--no-browser'])
         self.assertEqual(code, 2)
