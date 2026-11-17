@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0 — 2026-11-17
+
+- Send to printer ([docs/PRINT_SEND.md](docs/PRINT_SEND.md)): a job's verified, single-plate sliced 3MF can be uploaded to a Bambu printer over implicit FTPS (990) and started with the MQTT `project_file` command. `POST /api/printers/print/review` reads the printer once (idle/finished state, reported nozzle vs sliced nozzle, filament-to-AMS-slot or external-spool choice) and returns a single-use, 3-minute token bound to the job, file hash, printer and certificate; `POST /api/printers/print/start` needs that token, the access code and an explicit bed-clear confirmation, re-checks the file, certificate and printer state, uploads and size-checks the file, sends the command and waits for the printer's own start report. Stages (ready, uploaded, command sent, printer reported start) are returned separately and recorded on the job without the access code. Requires LAN-only and Developer Mode on current firmware.
+- New `printer_send.py` keeps the start command out of the read-only status module; `scripts/fake_bambu_printer.py --ftps-port` adds a synthetic implicit-FTPS upload and start/reject handling. `PPA_PRINTER_FTPS_PORT` exists only for that local synthetic check.
+- Model view: a 프린터로 보내기 card appears once the current model has a verified slice, with slot selectors, a review summary, a bed-clear confirmation and the stage results.
+- Verified locally end to end against the synthetic printer with a keychain sliced by the installed Studio 02.09.01.70 on macOS; not yet verified on a physical printer.
+
 ## 0.14.0 — 2026-11-17
 
 - Model colours ([docs/COLORS.md](docs/COLORS.md)): every template takes an optional filament colour (`color`) and a name tag also takes a letter colour (`accent_color`), from eleven named colours. Requests and edits read Korean and whole-word English colour names (“빨간 글자로 "지우" 키링, 판은 흰색”, “글자를 파랑으로 바꿔줘”); conflicting colours ask, and letter colours on other templates are refused. The parameter panel has a colour group with swatches, copy/paste carries colours, and the preview paints the chosen colours with a legend. Unchosen colours are omitted from canonical parameters, so earlier jobs, recipes and hashes keep their shape.

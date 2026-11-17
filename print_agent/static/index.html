@@ -309,6 +309,19 @@
           <div class="slicer-run-result"><div id="slice-feedback" class="notice notice-info" role="status"><p>프로젝트 설정을 선택하고 CAD를 만들면 설정 포함 3MF를 준비할 수 있습니다. 전체 설정 JSON을 직접 제공하는 방법도 사용할 수 있습니다.</p></div><div id="slice-result"></div></div>
         </section>
 
+        <section id="print-send-card" class="card" aria-labelledby="print-send-heading" hidden>
+          <div class="card-heading"><div><span class="step-label">LAN 출력</span><h2 id="print-send-heading">프린터로 보내기</h2></div><span id="print-send-badge" class="badge badge-neutral">확인 전</span></div>
+          <p class="card-copy">검증한 슬라이스 파일을 같은 네트워크의 Bambu 프린터에 올리고 출력을 시작합니다. 프린터에서 <strong>LAN 전용 모드</strong>와 <strong>개발자 모드</strong>를 켜야 하며, 시작 전에는 매번 확인을 거칩니다.</p>
+          <div class="print-send-target"><p id="print-send-target">프린터 정보가 없습니다.</p><button id="print-send-printer" class="button button-secondary" type="button">프린터 정보 입력</button></div>
+          <div id="print-send-slots" class="print-send-slots" hidden></div>
+          <div class="button-row"><button id="print-send-review" class="button button-secondary" type="button" disabled>보내기 전 확인</button></div>
+          <div id="print-send-feedback" class="notice notice-info" role="status" hidden></div>
+          <div id="print-send-summary" class="print-send-summary" hidden></div>
+          <label class="print-send-confirm"><input id="print-send-confirm" type="checkbox" disabled><span>출력판이 비어 있고, 고른 칸에 필라멘트가 꽂혀 있는 것을 직접 확인했습니다.</span></label>
+          <div class="button-row"><button id="print-send-start" class="button button-primary" type="button" disabled>출력 시작</button></div>
+          <div id="print-send-result" class="print-send-result" hidden></div>
+        </section>
+
         <section id="outcome-card" class="card" aria-labelledby="outcome-heading" hidden>
           <div class="card-heading"><div><span class="step-label">실물 출력 후</span><h2 id="outcome-heading">직접 확인한 결과를 남겨 주세요</h2></div><span class="badge badge-neutral">사용자 기록</span></div>
           <p id="outcome-printer-hint" class="notice notice-info" role="status" hidden></p>

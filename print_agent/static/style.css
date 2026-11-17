@@ -759,3 +759,22 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .preview-colors { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; padding: 0; font-size: 0.8rem; color: var(--muted); }
 .preview-color { display: inline-flex; align-items: center; gap: 6px; }
 .color-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--swatch, #ccc); border: 1px solid rgba(0, 0, 0, 0.25); }
+
+/* Sending to a LAN printer: target, slot choice, review facts and stage list. */
+.print-send-target { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 12px 0; }
+.print-send-target p { margin: 0; color: var(--muted); }
+.print-send-slots { display: grid; gap: 8px; margin: 8px 0 12px; }
+.print-send-slot { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 10px; }
+.print-send-slot select { grid-column: 1 / -1; }
+.print-send-summary { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--canvas); }
+.print-send-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 0.86rem; }
+.print-send-facts dt { color: var(--muted); }
+.print-send-facts dd { margin: 0; overflow-wrap: anywhere; }
+.print-send-summary h3 { font-size: 0.86rem; margin: 12px 0 4px; }
+.print-send-problems li { color: var(--red); }
+.print-send-warnings li { color: var(--amber); }
+.print-send-confirm { display: flex; gap: 10px; align-items: flex-start; justify-content: flex-start; margin: 12px 0; font-size: 0.88rem; font-weight: 600; text-align: left; }
+.print-send-confirm input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; }
+.print-send-stages { list-style: none; padding: 0; margin: 10px 0 4px; display: grid; gap: 4px; font-size: 0.88rem; }
+.print-send-stages .is-done { color: var(--green); }
+.print-send-stages .is-pending { color: var(--muted); }

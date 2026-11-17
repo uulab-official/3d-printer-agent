@@ -771,6 +771,31 @@ class JobStore:
             self._write(job)
             return self._public(job)
 
+    def sliced_for_printing(self, job_id):
+        """The verified bytes of this job's current successful slice, for sending to a printer."""
+        with self.lock:
+            job = self._read(job_id)
+            latest = job.get('latest_slice') or {}
+            execution = latest.get('execution') if isinstance(latest, dict) else None
+            if (job['status'] != 'geometry_validated' or 'sliced_three_mf' not in job['_files']
+                    or not isinstance(execution, dict) or execution.get('status') != 'sliced'):
+                raise ValueError('이 모델에는 보낼 수 있는 슬라이스 결과가 없습니다. 먼저 슬라이싱을 완료하세요.')
+            path, content = self._snapshots(job, ['sliced_three_mf'])['sliced_three_mf']
+            return job['title'], content
+
+    def record_printer_send(self, job_id, result):
+        """Append what happened when this job was sent to a printer. Access codes never reach this record."""
+        if not isinstance(result, dict) or not isinstance(result.get('status'), str):
+            raise ValueError('출력 보내기 기록 형식이 올바르지 않습니다.')
+        record = {key: copy.deepcopy(result[key]) for key in ('status', 'detail', 'target', 'file', 'stages', 'mapping', 'started_at', 'finished_at')
+                  if key in result}
+        _json_bytes(record)
+        with self.lock:
+            job = self._read(job_id)
+            job['events'].append({'at': now_iso(), 'type': 'printer_send', 'message': record['status'], 'report': record})
+            self._write(job)
+            return self._public(job)
+
     def begin_slice(self, job_id):
         with self.lock:
             job = self._read(job_id)

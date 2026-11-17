@@ -24,9 +24,20 @@ General bugs, installation problems, and unsupported features can use the normal
 
 The printer status view reads a Bambu printer's LAN-mode report. Its intended security properties are:
 
-- Only fixed `pushall` and `get_version` requests can be published; no print, motion, temperature or file command is constructible.
+- The status module (`printer_lan.py`) can publish only fixed `pushall` and `get_version` requests; no print, motion, temperature or file command is constructible there. Starting a print is confined to `printer_send.py` (below).
 - Targets are private, link-local or loopback IP literals; hostnames and public addresses are rejected before any network use. One read runs at a time, at most once per printer every 5 seconds.
 - The device certificate issuer is **not** verified, because printer certificates are not in common trust stores. The fingerprint is shown and pinned per host/serial for the page session; a different certificate stops the read before the access code is sent. A first connection on an untrusted network can therefore still reach an impersonating device.
 - Access codes are used for one read and are never stored, logged or returned, including in request-validation errors.
+
+## Printer send boundary (v0.15+)
+
+Sending a job starts a physical machine, so `printer_send.py` is deliberately narrow:
+
+- The only command body it can build is `project_file` for a file it uploaded. The file must be the job's own verified sliced 3MF (byte receipt checked on read) with exactly one plate of G-code; nothing typed by a person or returned by an LLM becomes a command, file name or path.
+- Two steps: a review reads the printer and returns a single-use token valid for 3 minutes, bound to the job, file SHA-256, host, serial, device-certificate fingerprint and the chosen filament slots. The start request must carry that token, the access code again and `bed_clear_confirmed: true`. A token is consumed even if the start fails, so one review starts at most one print.
+- The start re-checks the file hash, requires the same MQTT certificate fingerprint, and requires an idle/finished printer both before the upload and again before the command. Only one send runs at a time.
+- The FTPS certificate fingerprint is recorded and compared with the MQTT one, but not enforced, because that equality is not yet observed on real hardware.
+- Results keep the stages apart (ready, uploaded, command sent, printer reported start). The job record keeps these stages and the target, never the access code.
+- `PPA_PRINTER_FTPS_PORT` (1024–65535) exists only to run the synthetic printer locally; real printers use 990.
 
 Reports that break one of these properties are in scope.
