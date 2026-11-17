@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 — 2026-11-17
+
+- Where to buy ([docs/STORES.md](docs/STORES.md)): the purchase view opens with a dated directory of 28 Korean filament stores whose operation was confirmed on 2026-11-17 (own site, Naver store directory or current Naver Shopping listings), filterable by material, “Bambu 정품”, official store/importer, own brand or multi-brand reseller, and by name (Korean brand aliases such as 뱀부). It includes the official Bambu Lab Korea store and Bambu's Korean dealers found by search. 6 listed stores without current evidence are kept in a separate “운영을 확인하지 못한 곳” group, and 퓨어필라 is excluded (its domain is no longer registered). Prices and stock are never stored; links open the store in a new tab with `noopener noreferrer`; seller claims are labelled as claims. Not advertising.
+
 ## 0.15.0 — 2026-11-17
 
 - Send to printer ([docs/PRINT_SEND.md](docs/PRINT_SEND.md)): a job's verified, single-plate sliced 3MF can be uploaded to a Bambu printer over implicit FTPS (990) and started with the MQTT `project_file` command. `POST /api/printers/print/review` reads the printer once (idle/finished state, reported nozzle vs sliced nozzle, filament-to-AMS-slot or external-spool choice) and returns a single-use, 3-minute token bound to the job, file hash, printer and certificate; `POST /api/printers/print/start` needs that token, the access code and an explicit bed-clear confirmation, re-checks the file, certificate and printer state, uploads and size-checks the file, sends the command and waits for the printer's own start report. Stages (ready, uploaded, command sent, printer reported start) are returned separately and recorded on the job without the access code. Requires LAN-only and Developer Mode on current firmware.
