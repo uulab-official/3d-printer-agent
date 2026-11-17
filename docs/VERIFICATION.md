@@ -134,6 +134,17 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-17 v0.16.0 공개 릴리스
+
+[v0.16.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.16.0)을 2026-11-17 04:47:16 UTC에 `c45a33e`에서 게시했습니다.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44018819257) Python **743개**·컨트롤러 **210개**·Chromium **88개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44018819259)
+세 OS 각 **336개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44018819228)가 모두 실행 차수 1로 통과했습니다. 공개 자산 7개를 인증 없이 내려받아
+wheel(292,769바이트, `cdef32c3860b2a00…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며
+보고서가 모두 통과 상태임을 확인했습니다. 세 OS 보고서에 색상 3MF 두 부품 검사와 보내기 거절 경계 검사가 통과로 들어 있습니다.
+
+구매처 안내 자료는 2026-11-17에 판매처 사이트, Naver 스토어 디렉터리, Naver 쇼핑의 현재 상품으로 운영 여부를 확인했습니다.
+Naver 스마트스토어 페이지는 자동 접속이 막혀 검색 결과로 확인했습니다. 가격·재고는 저장하지 않습니다.
+
 ## 2026-11-17 v0.15.0 공개 릴리스
 
 [v0.15.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.15.0)을 2026-11-17 03:33:51 UTC에 `35416f7`에서 게시했습니다(PR #8·#9·#10 병합).
