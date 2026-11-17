@@ -1067,6 +1067,7 @@
     const chosen = node("small", "color-chosen", input.value ? PALETTE[input.value]?.[0] || input.value : (key === "accent_color" ? "글자도 받침 색으로 출력" : "필라멘트 색을 정하지 않았습니다"));
     chosen.id = `parameter-help-${key}`;
     container.append(heading, description, input, swatches, chosen);
+    syncRadioGroup(swatches);
     return container;
   }
 
@@ -1075,9 +1076,35 @@
     if (!input || input.disabled || (value && !Object.hasOwn(PALETTE, value))) return;
     input.value = value;
     for (const button of document.querySelectorAll(`[data-color-for="${key}"]`)) button.setAttribute("aria-checked", String(button.dataset.colorValue === value));
+    const group = document.querySelector(`[data-color-for="${key}"]`)?.closest('[role="radiogroup"]');
+    if (group) syncRadioGroup(group);
     const chosen = $(`parameter-help-${key}`);
     if (chosen) chosen.textContent = value ? PALETTE[value][0] : (key === "accent_color" ? "글자도 받침 색으로 출력" : "필라멘트 색을 정하지 않았습니다");
     input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Radio groups (colour swatches, store filters): one Tab stop, arrows move the choice.
+
+  function syncRadioGroup(group) {
+    const radios = [...group.querySelectorAll('[role="radio"]')].filter((radio) => !radio.hidden);
+    const checked = radios.find((radio) => radio.getAttribute("aria-checked") === "true") || radios[0];
+    for (const radio of radios) radio.tabIndex = radio === checked ? 0 : -1;
+  }
+
+  function radioGroupKey(event) {
+    const radio = event.target.closest?.('[role="radio"]');
+    const group = radio?.closest('[role="radiogroup"]');
+    if (!radio || !group) return;
+    const radios = [...group.querySelectorAll('[role="radio"]')].filter((item) => !item.hidden && !item.disabled);
+    const index = radios.indexOf(radio);
+    const moves = { ArrowRight: index + 1, ArrowDown: index + 1, ArrowLeft: index - 1, ArrowUp: index - 1, Home: 0, End: radios.length - 1 };
+    if (!(event.key in moves) || index < 0) return;
+    event.preventDefault();
+    const next = radios[(moves[event.key] + radios.length) % radios.length];
+    next.click();  // selection follows focus, as in a native radio group
+    syncRadioGroup(group);
+    next.focus();
   }
 
   function stepParameter(key, direction) {
@@ -4258,6 +4285,7 @@
   }
 
   $("update-check").addEventListener("click", checkForUpdate);
+  document.addEventListener("keydown", radioGroupKey);
   $("printer-discover").addEventListener("click", discoverPrinters);
   restoreSavedPrinter();
   $("printer-form").addEventListener("submit", (event) => { event.preventDefault(); return checkPrinterStatus(); });
@@ -4399,8 +4427,8 @@
     const filter = state.storeFilter;
     for (const button of document.querySelectorAll("[data-store-filter]")) {
       button.setAttribute("aria-checked", String(filter[button.dataset.storeFilter] === button.dataset.value));
-      button.setAttribute("aria-pressed", String(filter[button.dataset.storeFilter] === button.dataset.value));
     }
+    for (const id of ["store-material-filters", "store-kind-filters"]) syncRadioGroup($(id));
     const matches = guide.stores.filter((store) => storeMatches(store, filter));
     $("store-guide-count").textContent = matches.length ? `${matches.length}곳 · 운영을 확인한 ${guide.stores.length}곳 중` : "조건에 맞는 판매처가 없습니다. 재료나 판매처 종류를 바꿔 보세요.";
     $("store-guide-list").replaceChildren(...matches.map((store) => {

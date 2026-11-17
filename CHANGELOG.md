@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.0 — 2026-11-17
+
+- Keyboard and screen-reader behaviour for the radio groups added in 0.14–0.16 (colour swatches, store material and kind filters): each group is one Tab stop (roving `tabindex`), Arrow keys move and select the choice (wrapping), Home/End jump to the ends, and the focused choice has a visible outline. Store filter chips now expose only `aria-checked` (not `aria-pressed`, which is invalid on `role="radio"`), with the same selected styling.
+
 ## 0.22.0 — 2026-11-17
 
 - New-version check: “새 버전 확인” in the storage panel reads the public latest-release record of this repository once, only when pressed, and reports whether a newer release exists (or that the running source is ahead), with links to the release page and the update/verification guide. Nothing about the user or installation is sent; nothing is downloaded or installed; drafts, pre-releases, malformed or oversized answers and foreign links are not trusted. Documented in LOCAL_OPERATION and SECURITY.
