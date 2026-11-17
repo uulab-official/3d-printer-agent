@@ -3647,6 +3647,7 @@
         if (result.connection?.state === "reporting" && result.certificate?.sha256 && !state.printerPins[key]) state.printerPins[key] = result.certificate.sha256;
         state.printerStatus = result;
         renderPrinterStatus(result);
+        rememberPrinter({ host: body.host, serial: body.serial }, result);
         if (typeof updatePrintabilityControls === "function") updatePrintabilityControls();
       });
     } catch (error) {
@@ -3667,9 +3668,177 @@
   }
 
   function clearPrinterPin() {
-    delete state.printerPins[printerPinKey(printerTarget())];
+    const target = printerTarget();
+    delete state.printerPins[printerPinKey(target)];
+    storeSavedPrinters(loadSavedPrinters().map((item) => item.host === target.host && item.serial === target.serial ? { ...item, pin: null } : item));
     showNotice("printer-feedback", "이 프린터의 고정 인증서를 해제했습니다. 다음 확인에서 받은 인증서가 다시 고정됩니다. 프린터를 교체했거나 초기화한 경우에만 해제하세요.", "warning");
     updatePrinterControls();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Remembered printers: a per-browser convenience (host, serial, certificate pin).
+  // Access codes are never written here. Storage may be unavailable; everything still works.
+
+  const PRINTER_STORE_KEY = "ppa.printers.v1";
+
+  function loadSavedPrinters() {
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(PRINTER_STORE_KEY) || "[]");
+      if (!Array.isArray(raw)) return [];
+      return raw.filter((item) => item && typeof item.host === "string" && typeof item.serial === "string"
+        && /^[0-9A-Z]{8,32}$/.test(item.serial) && item.host.length <= 64
+        && (item.pin === undefined || item.pin === null || /^[a-f0-9]{64}$/.test(item.pin))).slice(0, 8)
+        .map((item) => ({ host: item.host, serial: item.serial, pin: item.pin || null, label: typeof item.label === "string" ? item.label.slice(0, 60) : "", saved_at: typeof item.saved_at === "string" ? item.saved_at : "" }));
+    } catch { return []; }
+  }
+
+  function storeSavedPrinters(items) {
+    // Only these fields are ever written; an access code cannot reach storage.
+    const clean = items.slice(0, 8).map(({ host, serial, pin, label, saved_at }) => ({ host, serial, pin: pin || null, label: label || "", saved_at: saved_at || "" }));
+    try { window.localStorage.setItem(PRINTER_STORE_KEY, JSON.stringify(clean)); return true; } catch { return false; }
+  }
+
+  function rememberPrinter(target, result) {
+    if (!$("printer-remember").checked || result?.connection?.state !== "reporting" || !result.certificate?.sha256) return;
+    const label = result.identity?.product_name || "";
+    const items = loadSavedPrinters().filter((item) => !(item.host === target.host && item.serial === target.serial));
+    items.unshift({ host: target.host, serial: target.serial, pin: result.certificate.sha256, label, saved_at: new Date().toISOString() });
+    storeSavedPrinters(items);
+    renderSavedPrinters();
+  }
+
+  function forgetPrinter(host, serial) {
+    storeSavedPrinters(loadSavedPrinters().filter((item) => !(item.host === host && item.serial === serial)));
+    delete state.printerPins[`${host}|${serial}`];
+    renderSavedPrinters();
+    updatePrinterControls();
+  }
+
+  function renderSavedPrinters() {
+    const items = loadSavedPrinters();
+    for (const item of items) if (item.pin && !state.printerPins[`${item.host}|${item.serial}`]) state.printerPins[`${item.host}|${item.serial}`] = item.pin;
+    $("printer-saved").hidden = !items.length;
+    $("printer-saved-list").replaceChildren(...items.map((item) => {
+      const group = node("span", "saved-printer");
+      const choose = node("button", "purpose-button", `${item.label ? item.label + " · " : ""}${item.host}`);
+      choose.type = "button";
+      choose.title = `${item.serial}${item.pin ? " · 인증서 고정됨" : ""}`;
+      choose.addEventListener("click", () => {
+        $("printer-host").value = item.host;
+        $("printer-serial").value = item.serial;
+        $("printer-remember").checked = true;
+        printerInputChanged();
+        $("printer-access-code").focus();
+      });
+      const remove = node("button", "text-button", "삭제");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `${item.host} 기억 삭제`);
+      remove.addEventListener("click", () => forgetPrinter(item.host, item.serial));
+      group.append(choose, remove);
+      return group;
+    }));
+  }
+
+  function restoreSavedPrinter() {
+    const items = loadSavedPrinters();
+    renderSavedPrinters();
+    if (items.length && !$("printer-host").value && !$("printer-serial").value) {
+      $("printer-host").value = items[0].host;
+      $("printer-serial").value = items[0].serial;
+      $("printer-remember").checked = true;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Following a started print: re-read the printer's own report on a fixed interval.
+
+  const PRINT_FOLLOW_SECONDS = 30;
+  const PRINT_FOLLOW_LIMIT_MS = 12 * 60 * 60 * 1000;
+
+  function stopPrintFollow(message) {
+    if (state.printFollow?.timer) clearTimeout(state.printFollow.timer);
+    if (state.printFollow) state.printFollow.timer = null;
+    if (state.printFollow) state.printFollow.active = false;
+    if (message && $("print-follow-status")) $("print-follow-status").textContent = message;
+    if ($("print-follow-stop")) $("print-follow-stop").hidden = true;
+  }
+
+  function renderPrintFollow(printing, observedAt) {
+    const area = $("print-follow");
+    if (!area) return;
+    const percent = Number.isFinite(printing?.progress_percent) ? printing.progress_percent : null;
+    const bar = $("print-follow-bar");
+    bar.style.width = `${percent ?? 0}%`;
+    bar.parentElement.setAttribute("aria-valuenow", String(percent ?? 0));
+    const parts = [printing?.state_label || "보고되지 않음"];
+    if (percent !== null) parts.push(`${percent}%`);
+    if (printing?.state === "RUNNING" && Number.isFinite(printing?.remaining_minutes)) parts.push(`남은 시간 약 ${printing.remaining_minutes}분`);
+    if (Number.isFinite(printing?.layer) && Number.isFinite(printing?.total_layers)) parts.push(`레이어 ${printing.layer}/${printing.total_layers}`);
+    if (printing?.error_code_hex) parts.push(`오류 ${printing.error_code_hex}`);
+    $("print-follow-text").textContent = parts.join(" · ");
+    $("print-follow-status").textContent = `${dateTime(observedAt)} 프린터 보고 · ${PRINT_FOLLOW_SECONDS}초마다 다시 읽습니다.`;
+  }
+
+  async function pollPrintFollow() {
+    const follow = state.printFollow;
+    if (!follow?.active) return;
+    if (Date.now() - follow.startedAt > PRINT_FOLLOW_LIMIT_MS) { stopPrintFollow("12시간이 지나 자동 갱신을 멈췄습니다. 프린터 상태 화면에서 다시 읽을 수 있습니다."); return; }
+    const target = currentPrinterTarget();
+    if (target.host !== follow.host || target.serial !== follow.serial || !target.access_code) {
+      stopPrintFollow("프린터 입력이 바뀌었거나 액세스 코드가 없어 자동 갱신을 멈췄습니다.");
+      return;
+    }
+    const body = { ...target };
+    if (state.printerPins[`${target.host}|${target.serial}`]) body.pinned_certificate_sha256 = state.printerPins[`${target.host}|${target.serial}`];
+    try {
+      const result = await api("/api/printers/status", body);
+      if (state.printFollow !== follow || !follow.active) return;
+      if (result.connection?.state !== "reporting") {
+        $("print-follow-status").textContent = `${result.connection?.detail || "프린터 보고를 받지 못했습니다."} 다음 주기에 다시 시도합니다.`;
+      } else {
+        renderPrintFollow(result.print, result.observed_at);
+        const state_ = result.print?.state;
+        const sameJob = !follow.jobName || result.print?.job_name === follow.jobName;
+        if (["FINISH", "FAILED", "IDLE"].includes(state_) && sameJob) {
+          const done = state_ === "FINISH" ? "프린터가 완료를 보고했습니다. 출력물을 확인하고 아래에 결과를 기록해 주세요." : state_ === "FAILED" ? "프린터가 실패를 보고했습니다. 프린터 화면을 확인하고 결과를 기록해 주세요." : "프린터가 대기 상태로 돌아갔습니다.";
+          stopPrintFollow(done);
+          showNotice("print-send-feedback", done, state_ === "FINISH" ? "success" : "warning");
+          return;
+        }
+      }
+    } catch (error) {
+      if (state.printFollow !== follow) return;
+      $("print-follow-status").textContent = `${error.message} 다음 주기에 다시 시도합니다.`;
+    }
+    if (follow.active) follow.timer = setTimeout(pollPrintFollow, PRINT_FOLLOW_SECONDS * 1000);
+  }
+
+  function startPrintFollow(result) {
+    stopPrintFollow();
+    const target = currentPrinterTarget();
+    const area = node("div", "print-follow");
+    area.id = "print-follow";
+    const track = node("div", "print-follow-track");
+    track.setAttribute("role", "progressbar");
+    track.setAttribute("aria-valuemin", "0");
+    track.setAttribute("aria-valuemax", "100");
+    track.setAttribute("aria-label", "출력 진행률");
+    const bar = node("div", "print-follow-bar");
+    bar.id = "print-follow-bar";
+    track.append(bar);
+    const text = node("p", "print-follow-text", "진행 상황을 기다리는 중");
+    text.id = "print-follow-text";
+    const status = node("small", "field-help", "");
+    status.id = "print-follow-status";
+    const stop = node("button", "text-button", "자동 갱신 멈추기");
+    stop.id = "print-follow-stop";
+    stop.type = "button";
+    stop.addEventListener("click", () => stopPrintFollow("자동 갱신을 멈췄습니다."));
+    area.append(node("h3", "", "출력 진행"), track, text, status, stop);
+    $("print-send-result").append(area);
+    state.printFollow = { active: true, timer: null, startedAt: Date.now(), host: target.host, serial: target.serial, jobName: result.subtask || result.printer?.job_name || null };
+    if (result.printer) renderPrintFollow(result.printer, result.finished_at || new Date().toISOString());
+    state.printFollow.timer = setTimeout(pollPrintFollow, PRINT_FOLLOW_SECONDS * 1000);
   }
 
   // ---------------------------------------------------------------------------
@@ -3681,6 +3850,7 @@
   }
 
   function resetPrintSend(job) {
+    stopPrintFollow();
     state.printSendIdentity = printSendReady(job) ? `${job.id}|${job.artifacts.sliced_three_mf}` : null;
     state.printSendRequest = (state.printSendRequest || 0) + 1;
     state.printSend = { jobId: job?.id || null, review: null, expiresAt: 0, pending: false, result: null };
@@ -3774,7 +3944,7 @@
     const printer = review.printer || {};
     const rows = [
       ["모델", review.job_title || "현재 모델"],
-      ["프린터 상태", printer.state_label || "보고되지 않음"],
+      ["확인 당시 프린터", printer.state_label || "보고되지 않음"],
       ["노즐", Number.isFinite(printer.nozzle?.diameter_mm) ? `${printer.nozzle.diameter_mm} mm (슬라이스 ${summary.nozzle_diameters || "미기록"} mm)` : `슬라이스 ${summary.nozzle_diameters || "미기록"} mm`],
       ["예상 시간", Number.isFinite(summary.prediction_seconds) ? `${numberFormat.format(summary.prediction_seconds / 60)}분` : "기록 없음"],
       ["예상 재료", Number.isFinite(summary.weight_g) ? `${numberFormat.format(summary.weight_g)} g` : "기록 없음"],
@@ -3844,6 +4014,7 @@
         if (request !== state.printSendRequest) return;
         state.printSend.result = result;
         renderPrintSendResult(result);
+        if (result.status === "started") startPrintFollow({ ...result, subtask: state.printSend.review?.subtask });
       });
     } catch (error) {
       if (request === state.printSendRequest) showNotice("print-send-feedback", error.message, "error");
@@ -3868,7 +4039,7 @@
       list.append(item);
     }
     const reported = result.printer;
-    const latest = reported ? node("p", "print-send-latest", `프린터가 마지막으로 보고한 상태: ${reported.state_label || "보고되지 않음"}${Number.isFinite(reported.progress_percent) ? ` · ${reported.progress_percent}%` : ""}${reported.error_code_hex ? ` · 오류 ${reported.error_code_hex}` : ""}`) : null;
+    const latest = reported ? node("p", "print-send-latest", `시작 직후 프린터가 보고한 상태: ${reported.state_label || "보고되지 않음"}${Number.isFinite(reported.progress_percent) ? ` · ${reported.progress_percent}%` : ""}${reported.error_code_hex ? ` · 오류 ${reported.error_code_hex}` : ""}`) : null;
     area.replaceChildren(list, ...(latest ? [latest] : []), node("p", "field-help", `${result.scope || ""} 진행 상황은 프린터 상태 화면에서 다시 읽을 수 있습니다.`));
     area.hidden = false;
   }
@@ -3889,6 +4060,7 @@
   });
 
   $("printer-discover").addEventListener("click", discoverPrinters);
+  restoreSavedPrinter();
   $("printer-form").addEventListener("submit", (event) => { event.preventDefault(); return checkPrinterStatus(); });
   $("printer-form").addEventListener("input", printerInputChanged);
   $("printer-unpin").addEventListener("click", clearPrinterPin);

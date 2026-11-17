@@ -797,3 +797,14 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .store-evidence { color: var(--soft); font-size: 0.74rem; }
 .store-unconfirmed { margin: 8px 0; font-size: 0.84rem; color: var(--muted); }
 .store-unconfirmed li { margin: 4px 0; }
+
+/* Remembered printers and print progress. */
+.printer-saved { display: grid; gap: 6px; margin: 4px 0 12px; }
+.saved-printer { display: inline-flex; align-items: center; gap: 4px; }
+.printer-remember { display: flex; gap: 8px; align-items: flex-start; font-size: 0.84rem; margin: 6px 0; }
+.printer-remember input { width: 16px; height: 16px; margin: 2px 0 0; flex: none; }
+.print-follow { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 6px; }
+.print-follow h3 { margin: 0; font-size: 0.9rem; }
+.print-follow-track { height: 10px; border-radius: 6px; background: var(--canvas); overflow: hidden; border: 1px solid var(--line); }
+.print-follow-bar { height: 100%; width: 0; background: var(--blue); transition: width 0.4s ease; }
+.print-follow-text { margin: 0; font-weight: 600; }

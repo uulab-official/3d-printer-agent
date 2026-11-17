@@ -467,10 +467,12 @@
         </section>
         <section class="card" aria-labelledby="printer-status-heading">
           <div class="card-heading"><div><span class="step-label">02 · 상태 읽기</span><h2 id="printer-status-heading">연결 정보</h2></div><span id="printer-status-badge" class="badge badge-neutral">아직 확인 전</span></div>
+          <div id="printer-saved" class="printer-saved" hidden><span class="field-help">기억한 프린터</span><div id="printer-saved-list" class="chip-row"></div></div>
           <form id="printer-form" class="printer-form" autocomplete="off">
             <label for="printer-host">IP 주소<input id="printer-host" type="text" inputmode="decimal" maxlength="64" placeholder="예: 192.168.0.20" spellcheck="false"></label>
             <label for="printer-serial">시리얼 번호<input id="printer-serial" type="text" maxlength="32" placeholder="프린터 설정 화면의 시리얼" spellcheck="false" autocapitalize="characters"></label>
             <label for="printer-access-code">LAN 액세스 코드<input id="printer-access-code" type="password" maxlength="64" autocomplete="off" spellcheck="false"></label>
+            <label class="printer-remember"><input id="printer-remember" type="checkbox"><span>이 브라우저에 프린터 기억하기 (IP·시리얼·인증서만, 액세스 코드는 저장하지 않음)</span></label>
             <div class="button-row"><button id="printer-check" class="button button-primary" type="submit" disabled>현재 상태 읽기</button><button id="printer-unpin" class="text-button" type="button" hidden>고정한 인증서 해제</button></div>
           </form>
           <p class="field-help">액세스 코드는 이번 확인에만 사용하며 이 PC나 작업 기록에 저장하지 않습니다. 같은 프린터는 5초 간격으로 확인할 수 있습니다.</p>
