@@ -11,7 +11,7 @@ import httpx
 from pydantic import ValidationError
 
 from .geometry_rules import _validate_geometry
-from .schemas import PALETTE, GeometryRequest
+from .schemas import KEY_UNITS, PALETTE, GeometryRequest
 
 
 DEFAULTS = {
@@ -21,6 +21,7 @@ DEFAULTS = {
     'phone_stand': {'width':70,'depth':80,'height':90,'wall':4,'bottom':4,'lean_angle':65,'device_thickness':12,'lip_height':12,'fit_clearance':1},
     'name_tag': {'text':'MINSU','text_size':12,'text_depth':2,'wall':3,'bottom':2,'hole_diameter':4},
     'wall_hook': {'width':20,'depth':35,'height':50,'wall':4,'bottom':4,'hole_diameter':4,'lip_height':10},
+    'keycap': {'key_units':1,'height':8,'wall':1.3,'bottom':2,'text':'','text_size':5,'text_depth':0.8,'fit_clearance':0.15},
 }
 COLOR_WORDS = {
     'white': r'흰색|하얀색|하얀|하양|흰|화이트|white',
@@ -92,7 +93,20 @@ def _with_colors(result: dict, colors: dict) -> dict:
 
 
 KEYCHAIN_WORDS = ('키링','키홀더','열쇠고리','이름표','네임택','name tag','keychain','key ring')
-LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대','name_tag':'이름 키링','wall_hook':'벽걸이 후크'}
+LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대','name_tag':'이름 키링','wall_hook':'벽걸이 후크','keycap':'키캡'}
+KEYCAP_WORDS = ('키캡','키 캡','keycap','key cap')
+# Named keys: legend, ANSI size in units, and the legend size that fits the top.
+NAMED_KEYS = (
+    (r'(?<![a-z])esc(?:ape)?(?![a-z])|이스케이프', 'ESC', 1.0, 3.5),
+    (r'(?<![a-z])(?:enter|return)(?![a-z])|엔터', 'Enter', 2.25, 4),
+    (r'(?<![a-z])(?:backspace|bksp)(?![a-z])|백스페이스', 'Back', 2.0, 4),
+    (r'(?<![a-z])tab(?![a-z])|탭', 'Tab', 1.5, 4),
+    (r'(?<![a-z])caps(?:\s*lock)?(?![a-z])|캡스\s*락|캡스', 'Caps', 1.75, 4),
+    (r'(?<![a-z])shift(?![a-z])|시프트|쉬프트', 'Shift', 2.25, 4),
+    (r'(?<![a-z])ctrl|control(?![a-z])|컨트롤', 'Ctrl', 1.25, 4),
+    (r'(?<![a-z])alt(?![a-z])|알트', 'Alt', 1.25, 4),
+    (r'(?<![a-z])space(?:\s*bar)?(?![a-z])|스페이스\s*바|스페이스', '', 6.25, 5),
+)
 HOOK_WORDS = ('후크','훅','벽걸이','걸이','hook','hanger')
 # Starting sizes for what is hung; the person's own numbers always win.
 HOOK_RECIPES = (
@@ -134,7 +148,7 @@ FIELD_LABELS = {
     'width':'가로','depth':'세로','height':'높이','wall':'벽 두께','bottom':'바닥 두께','dividers':'칸막이',
     'slots':'케이블 홈','cable_diameter':'케이블 지름','inset_diameter':'원판 지름','inset_depth':'포켓 깊이',
     'fit_clearance':'여유','lean_angle':'등판 각도','device_thickness':'기기 두께','lip_height':'앞턱 높이',
-    'text':'글자','text_size':'글자 크기','text_depth':'글자 높이','hole_diameter':'고리 구멍 지름',
+    'text':'글자','text_size':'글자 크기','text_depth':'글자 높이','hole_diameter':'고리 구멍 지름','key_units':'키 크기',
 }
 
 
@@ -142,6 +156,7 @@ TEMPLATE_FIELD_LABELS = {
     'phone_stand': {'wall':'등판·앞턱 두께','fit_clearance':'홈 여유'},
     'name_tag': {'wall':'테두리 여백','bottom':'받침 두께'},
     'wall_hook': {'depth':'걸이 길이','wall':'등판·끝 턱 두께','bottom':'걸이 두께','hole_diameter':'나사 구멍 지름','lip_height':'끝 턱 높이'},
+    'keycap': {'height':'키캡 높이','wall':'옆벽 두께','bottom':'윗면 두께','text_depth':'글자 깊이','fit_clearance':'스템 십자 여유'},
 }
 
 
@@ -149,6 +164,8 @@ def _default_text(key, value, template=None):
     """One unset field as the owner sees it in the parameter panel."""
     if key == 'text':
         return f'글자 “{value}”'
+    if key == 'key_units':
+        return f'키 크기 {float(value):g}u'
     unit = '개' if key in ('slots', 'dividers') else '°' if key == 'lean_angle' else ' mm'
     label = TEMPLATE_FIELD_LABELS.get(template, {}).get(key) or FIELD_LABELS.get(key, key)
     return f'{label} {float(value):g}{unit}'
@@ -195,6 +212,8 @@ def plan_from_text(text: str) -> dict:
 
 def _plan_uncolored(text: str) -> dict:
     lowered=text.lower()
+    if any(word in lowered for word in KEYCAP_WORDS):
+        return _plan_keycap(text)
     if any(word in lowered for word in KEYCHAIN_WORDS):
         return _plan_name_tag(text)
     hook_requested = any(word in lowered for word in HOOK_WORDS) and not any(word in lowered for word in STAND_WORDS)
@@ -202,7 +221,7 @@ def _plan_uncolored(text: str) -> dict:
     if not hook_requested:
         unsupported += ('나사','screw','구멍')  # a hook has screw holes of its own
     if any(word in lowered for word in unsupported):
-        return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크를 지원합니다. 지원 템플릿으로 바꿀까요?')
+        return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크, 키캡을 지원합니다. 지원 템플릿으로 바꿀까요?')
     for words,message in UNSUPPORTED_ITEMS:
         if any(word in lowered for word in words):
             return _question(message)
@@ -236,7 +255,7 @@ def _plan_uncolored(text: str) -> dict:
         template,recipe_defaults,note=recipe
         notes.append(note)
     elif template is None:
-        return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
+        return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크, 키캡 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
     if template=='tray' and any(word in lowered for word in ('원형','동그란','원통','circular','round','cylinder')):
         return _question('수납함 템플릿은 직사각형입니다. 원형 수납함은 아직 지원하지 않습니다. 직사각형으로 만들까요?')
     if re.search(r'\b(inch|inches)\b|인치|\d\s*m\b',lowered):
@@ -446,6 +465,77 @@ def _plan_name_tag(text: str) -> dict:
     }
 
 
+def _plan_keycap(text: str) -> dict:
+    """Cherry MX-compatible keycap: size from "Nu" or a named key, legend from quotes or "글자 …"."""
+    lowered=text.lower()
+    values=dict(DEFAULTS['keycap'])
+    explicit=set()
+    notes=[]
+    named=[(legend,units,size) for pattern,legend,units,size in NAMED_KEYS if re.search(pattern,lowered)]
+    if len({item[:2] for item in named})>1:
+        return _question('키 이름이 여러 개입니다. 한 번에 키캡 하나씩 요청해 주세요.')
+    units=[_mm(m.group(1),None) for m in re.finditer(r'(\d+(?:\.\d+)?)\s*(?:u|유닛|unit)(?![a-z])',lowered)]
+    if len(set(units))>1:
+        return _question('키 크기(u)가 여러 개입니다. 하나만 알려주세요.')
+    if named:
+        legend,key_units,size=named[0]
+        values.update(text=legend,key_units=key_units,text_size=size)
+        explicit.update({'text','key_units','text_size'})
+        notes.append(f'{legend or "스페이스바"} 키는 {key_units:g}u 크기로 시작합니다.')
+    if units:
+        values['key_units']=float(units[0]);explicit.add('key_units')
+        if float(units[0]) not in KEY_UNITS:
+            return _question('키 크기는 '+', '.join(f'{value:g}u' for value in KEY_UNITS)+' 중에서 골라 주세요.')
+    token=r'([0-9A-Za-z가-힣&!?.\-]{1,6})'
+    candidates=[value.strip() for value in re.findall(r'[“"\'「『]([^”"\'」』]{1,6})[”"\'」』]',text)]
+    stop={'크기','높이','깊이','두께','키캡','글자','글씨','새긴','새겨','넣어','넣어줘','만들어줘','은','는'}
+    work=re.sub(r'[“"\'「『][^”"\'」』]*[”"\'」』]',' ',text)
+    for pattern in (r'(?:글자|글씨|문구|각인|레전드|legend)\s*(?:은|는|이|가|을|를|:|=)?\s*'+token,
+                    r'(?<![0-9A-Za-z])([0-9A-Za-z]{1,6})(?=\s*(?:글자|글씨|라고|를?\s*새긴|키캡|키\s*캡|keycap))'):
+        for match in re.finditer(pattern,work,re.I):
+            word=match.group(1)
+            if word.lower() in ('mx','cherry','dsa','oem','u') or word in stop or re.fullmatch(r'\d+(?:\.\d+)?(?:u|mm|cm)?',word,re.I):
+                continue
+            if named and word.lower()==named[0][0].lower():
+                continue
+            candidates.append(word)
+    candidates=list(dict.fromkeys(candidates))
+    if len(candidates)>1:
+        return _question(f'키캡에 새길 글자가 여러 개입니다({", ".join(candidates)}). 하나를 따옴표로 알려주세요.')
+    if candidates:
+        values['text']=candidates[0];explicit.add('text')
+        if 'text_size' not in explicit:
+            values['text_size']=5 if len(candidates[0])==1 else 4 if len(candidates[0])<=3 else 3.5
+    elif not named:
+        notes.append('새길 글자를 찾지 못해 글자 없는(무지) 키캡으로 시작합니다. 글자를 따옴표로 적거나 글자 칸에서 바꾸세요.')
+    working=lowered
+    aliases=(('text_size',r'(?:글자|글씨)\s*크기'),('text_depth',r'(?:글자|글씨|각인)\s*(?:깊이|높이)'),('bottom',r'윗면\s*두께'),
+             ('wall',r'(?:옆\s*)?벽\s*(?:두께)?'),('fit_clearance',r'(?:십자\s*|스템\s*)?(?:여유|공차)'),('height',r'(?:키캡\s*)?높이'))
+    for field,pattern in aliases:
+        matches=list(re.finditer(pattern+r'\s*(?:는|은|을|를|:|=)?\s*'+NUMBER+UNIT,working))
+        found={_mm(m.group(1),m.group(2)) for m in matches}
+        if len(found)>1:
+            return _question(f'{TEMPLATE_FIELD_LABELS["keycap"].get(field) or FIELD_LABELS[field]} 값이 여러 개입니다. 하나만 알려주세요.')
+        if found:
+            values[field]=next(iter(found));explicit.add(field)
+            for m in matches:
+                working=working[:m.start()]+' '*(m.end()-m.start())+working[m.end():]
+    try:
+        parameters=GeometryRequest(template='keycap',**values).model_dump()
+        _validate_geometry(parameters)
+    except ValidationError:
+        return _question('키캡 글자는 한글·영문·숫자로 6자 이하, 키 크기는 '+', '.join(f'{value:g}u' for value in KEY_UNITS)+' 중 하나로 알려주세요.')
+    except ValueError as exc:
+        return _question(str(exc))
+    defaults={key:value for key,value in DEFAULTS['keycap'].items() if key not in explicit and key!='text'}
+    return {
+        'status':'ready','engine':'template_rules','message':'키캡의 제작안을 준비했습니다. 가로·세로는 키 크기(u)로 정해집니다.',
+        'parameters':parameters,'questions':[],
+        'assumptions':notes+([f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value,'keycap') for key,value in defaults.items())] if defaults else []),
+        'capability':'supported_template_only',
+    }
+
+
 def validate_llm_plan(raw: dict) -> dict:
     if not isinstance(raw,dict) or set(raw)-{'parameters','explanation','questions'}:
         raise ValueError('LLM이 허용된 제작안 형식을 반환하지 않았습니다.')
@@ -500,7 +590,7 @@ async def plan_with_llm(text: str) -> dict:
     system=(
         'You plan parameterized 3D-printing models. Return only a JSON object with parameters, explanation in Korean, and questions (array). '
         'Never return code, commands, temperatures, prices or claims of printing success. '
-        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim), phone_stand (base, front lip and back plate leaning at lean_angle degrees from horizontal; device_thickness plus fit_clearance sets the slot; no tipping or charging-port guarantee), name_tag (raised text of 1-20 letters on a rounded plate with a ring hole; width and depth follow the text). '
+        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim), phone_stand (base, front lip and back plate leaning at lean_angle degrees from horizontal; device_thickness plus fit_clearance sets the slot; no tipping or charging-port guarantee), name_tag (raised text of 1-20 letters on a rounded plate with a ring hole; width and depth follow the text), wall_hook (back plate with two screw holes, arm and end lip; no load guarantee), keycap (Cherry MX-compatible cross stem; key_units sets width and depth, height is the keycap height, wall is the side wall, bottom is the top thickness, text is an engraved legend of 0-6 letters, fit_clearance widens the cross hole; no switch fit or feel guarantee). '
         'All dimensions in mm; convert units explicitly. If the user requests unsupported objects, moving joints, load/safety guarantees, lids or unsupported edits, ask a clarification in questions and do not generate parameters. '
         'For N tray compartments use dividers=N-1. fit_clearance adds to diameter. Missing dimensions must be described as assumptions in explanation. '
         'Allowed parameter schema: '+json.dumps(GeometryRequest.model_json_schema(),ensure_ascii=False)

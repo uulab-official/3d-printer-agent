@@ -49,6 +49,10 @@ _ADVICE = {
 def _edit_sentences(reason: str, parameters: dict) -> list[str]:
     template = parameters.get('template')
     has_clearance = template in ('cable_comb', 'magnet_frame', 'phone_stand')
+    if template == 'keycap':
+        # The cross hole is the fitted feature; the top is the thinnest printed area.
+        return {'too_tight': ['십자 여유 0.05mm 늘려줘'], 'too_loose': ['십자 여유 0.05mm 줄여줘'],
+                'weak': ['옆벽 두께 0.3mm 늘려줘'], 'text_blurry': ['글자 크기 1mm 늘려줘']}.get(reason, [])
     if reason == 'too_tight':
         if has_clearance:
             return ['여유 0.2mm 늘려줘']

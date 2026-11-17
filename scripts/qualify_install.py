@@ -379,6 +379,9 @@ def qualify(args, report):
             # Teardrop screw holes: printed as modelled without supports.
             ({'template': 'wall_hook', 'width': 20, 'depth': 35, 'height': 50, 'wall': 4, 'bottom': 4,
               'hole_diameter': 4, 'lip_height': 10}, (20, 35, 50)),
+            # Cherry MX-compatible 2u keycap: size from key units, engraved legend, stabilizer stems.
+            ({'template': 'keycap', 'key_units': 2, 'height': 8, 'wall': 1.3, 'bottom': 2, 'text': 'Bk',
+              'text_size': 4, 'text_depth': 0.8, 'fit_clearance': 0.15}, (37.05, 18, 8)),
         ]
         models = []
         for payload, dimensions in requests:
@@ -425,6 +428,12 @@ def qualify(args, report):
                 overhang = next((item for item in printability.get('items', []) if item['id'] == 'overhang'), {})
                 check('wall_hook_prints_without_overhang', overhang.get('status') == 'pass'
                       and job['title'] == '벽걸이 후크 · 20 × 35 × 50 mm', json.dumps(overhang)[:200])
+            if kind == 'keycap':
+                fit = next((item for item in printability.get('items', []) if item['id'] == 'fit_clearance'), {})
+                stems = [(x, shape.isInside(cq.Vector(x, 0, 1)), shape.isInside(cq.Vector(x, 2.5, 1))) for x in (-11.938, 0, 11.938)]
+                check('keycap_cross_stems_and_title', all(not hole and ring for _, hole, ring in stems)
+                      and fit.get('status') == 'pass' and job['title'] == '키캡 2u “Bk” · 37.1 × 18.0 × 8.0 mm',
+                      json.dumps({'stems': stems, 'title': job['title']}, ensure_ascii=False))
             if kind == 'name_tag':
                 # Plate (filament 1) and letters (filament 2) as parts of one Studio object.
                 parts = job['result'].get('color_parts') or []
@@ -724,7 +733,7 @@ def qualify(args, report):
         refreshed = restarted.wait_ready()
         recovery = refreshed['storage']['recovery']
         # The phone stand, name tag and wall hook models add three completed jobs to the earlier five.
-        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 8
+        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 9
               and recovery['interrupted'] == 1 and recovery['unreadable'] == 0, json.dumps(recovery))
         check('restart_rotates_session', refreshed['session_token'] != token)
         old_session = get_json(restarted, '/api/discovery', method='POST', payload={}, token=token, expected=403)
@@ -772,14 +781,14 @@ def qualify(args, report):
         check('interruption_recorded_once', len(events) == 1)
 
         paged_ids, cursor = [], None
-        for _ in range(4):
+        for _ in range(5):
             query = urllib.parse.urlencode({'limit': 2, **({'before': cursor} if cursor else {})})
             page = get_json(restarted, '/api/jobs?' + query)
             paged_ids.extend(item['id'] for item in page['jobs'])
             cursor = page['next_cursor']
             if cursor is None:
                 break
-        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 8
+        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 9
               and set(paged_ids) == {model['id'] for model in models} | {interrupted_id, contextual_job['id']})
 
         def backup_command(name, arguments, expected_exit=0):
@@ -835,7 +844,7 @@ def qualify(args, report):
             restored_model = get_json(restored_server, '/api/jobs/' + model['id'])
             code, content, _ = request(restored_server.base, restored_model['artifacts']['three_mf'])
             verified_downloads.append(code == 200 and sha256(content) == model['artifacts']['three_mf']['sha256'])
-        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == len(models) == 6)
+        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == len(models) == 7)
         restored_source = get_json(restored_server, '/api/studio-projects/' + imported['source_id'])
         restored_project = get_json(restored_server, '/api/jobs/' + models[1]['id'])
         source_code, restored_source_bytes, _ = request(restored_server.base, imported['archive_url'])

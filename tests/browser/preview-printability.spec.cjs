@@ -424,6 +424,35 @@ test('a wall hook from a request prints without supports and edits by its own wo
   await expect(page.locator('#parameter-depth')).toHaveValue('60');
 });
 
+test('a keycap from a request: key size, blank legend, the cross stem fit and a size edit', async ({ page }) => {
+  await page.locator('#request-text').fill('ESC 키캡 빨간색으로');
+  await page.locator('#plan-button').click();
+  await expect(page.locator('#parameter-key_units')).toHaveValue('1');
+  await expect(page.locator('#parameter-text')).toHaveValue('ESC');
+  await expect(page.locator('[data-field="key_units"] label')).toHaveText('키 크기 · u');
+  await expect(page.locator('[data-field="bottom"] label')).toContainText('윗면 두께');
+  await expect(page.locator('#parameter-width')).toHaveCount(0);
+  const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const job = await (await generated).json();
+  expect(job.result.template).toBe('keycap');
+  expect(job.result.dimensions_mm.x).toBeCloseTo(18, 3);
+  expect(job.result.parameters.color).toBe('red');
+  const items = Object.fromEntries(job.result.printability.items.map(item => [item.id, item]));
+  expect(items.fit_clearance.status).toBe('pass');
+  expect(items.overhang.detail).toContain('브릿지');
+  await expect(page.locator('#result-heading')).toContainText('키캡 1u “ESC”');
+  await page.locator('#model-edit-text').fill('키 크기 1.5u로 바꿔줘');
+  await page.locator('#model-edit-propose').click();
+  await expect(page.locator('#model-edit-changes')).toContainText('1.5');
+  await page.locator('#model-edit-apply').click();
+  await expect(page.locator('#parameter-key_units')).toHaveValue('1.5');
+  await page.locator('#parameter-text').fill('');
+  const blank = await generate(page, {});
+  expect(blank.parameters.text).toBe('');
+  expect(blank.dimensions_mm.x).toBeCloseTo(27.525, 3);
+});
+
 test('caliper measurements are recorded with the outcome and compared with the CAD size', async ({ page }) => {
   const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
   await page.locator('#generate-button').click();

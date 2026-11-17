@@ -9,7 +9,7 @@ import zipfile
 import cadquery as cq
 
 from .schemas import PALETTE, GeometryRequest
-from .geometry_rules import _validate_geometry
+from .geometry_rules import _validate_geometry, keycap_layout
 from .printability import assess_printability
 
 
@@ -39,6 +39,10 @@ def template_catalog() -> list[dict]:
          "description": "나사 구멍 두 개가 있는 등판과 앞으로 나온 걸이, 끝 턱으로 된 후크입니다. 놓인 방향 그대로 서포트 없이 출력합니다.",
          "defaults": {"width": 20, "depth": 35, "height": 50, "wall": 4, "bottom": 4, "hole_diameter": 4, "lip_height": 10},
          "editable_fields": ["width", "depth", "height", "wall", "bottom", "hole_diameter", "lip_height"]},
+        {"id": "keycap", "title": "키캡",
+         "description": "체리 MX 호환 십자 스템의 키캡입니다. 윗면에 글자를 새기고, 2u 이상은 스태빌라이저 스템을 함께 만듭니다. 열린 바닥을 베드에 두고 출력합니다.",
+         "defaults": {"key_units": 1, "height": 8, "wall": 1.3, "bottom": 2, "text": "A", "text_size": 5, "text_depth": 0.8, "fit_clearance": 0.15},
+         "editable_fields": ["key_units", "text", "text_size", "text_depth", "height", "wall", "bottom", "fit_clearance"]},
         {"id": "phone_stand", "title": "휴대폰 거치대",
          "description": "앞턱과 기울어진 등판 사이에 휴대폰을 세워 두는 거치대입니다.",
          "defaults": {"width": 70, "depth": 80, "height": 90, "wall": 4, "bottom": 4,
@@ -137,6 +141,42 @@ def _build_solid(p: dict) -> cq.Shape:
             point = (cq.Workplane("XZ").workplane(offset=1).center(w / 2, z)
                      .polyline([(-tangent, tangent), (0, radius * math.sqrt(2)), (tangent, tangent)]).close().extrude(-(wall + 2)))
             body = body.cut(screw.union(point))
+    elif p["template"] == "keycap":
+        # Printed as modelled: the open bottom on the bed, the top bridged over the cavity,
+        # stems standing on the bed. Centred on X/Y with the base at z = 0.
+        k = keycap_layout(p)
+        def outline(width, depth, radius, z):
+            face = cq.Sketch().rect(width, depth).vertices().fillet(radius)._faces.Faces()[0]
+            return face.outerWire().translate(cq.Vector(0, 0, z))
+        def frustum(base, top, z0, z1, r0, r1):
+            return cq.Workplane("XY").add(cq.Solid.makeLoft([outline(*base, r0, z0), outline(*top, r1, z1)], True))
+        body = frustum((k["width"], k["depth"]), (k["top_width"], k["top_depth"]), 0, h, 1.0, 2.0)
+        body = body.cut(frustum((k["width"] - 2 * wall, k["depth"] - 2 * wall),
+                                (k["cavity_top_width"], k["cavity_top_depth"]), 0, k["cavity_top"], 0.5, 1.0))
+        # Cylindrical dish across the depth; it leaves a narrow flat on the long top edges.
+        radius = k["dish_radius"]
+        dish = cq.Solid.makeCylinder(radius, k["width"] + 2, cq.Vector(-k["width"] / 2 - 1, 0, h - k["dish_depth"] + radius), cq.Vector(1, 0, 0))
+        body = body.cut(dish)
+        offsets = [0.0] + ([-k["stabilizers"], k["stabilizers"]] if k["stabilizers"] else [])
+        length, width = k["cross"]
+        for x in offsets:
+            stem = cq.Workplane("XY").center(x, 0).circle(k["stem_diameter"] / 2).extrude(k["cavity_top"] + 0.5)
+            cross = (cq.Workplane("XY").center(x, 0).rect(length, width).extrude(k["cross_depth"])
+                     .union(cq.Workplane("XY").center(x, 0).rect(width, length).extrude(k["cross_depth"])))
+            body = body.union(stem.cut(cross))
+        legend = p["text"].strip()
+        if legend:
+            font = _name_tag_font()
+            options = {"fontPath": font["fontPath"]} if "fontPath" in font else {"font": font["font"], "kind": "bold"}
+            floor = h - k["dish_depth"] - p["text_depth"]
+            letters = cq.Workplane("XY").workplane(offset=floor).text(legend, p["text_size"], k["dish_depth"] + p["text_depth"] + 1,
+                                                                     combine=False, halign="center", valign="center", **options)
+            box = letters.val().BoundingBox()
+            if not letters.val().isValid():
+                raise ValueError(f"이 PC의 글꼴({font['label']})로 만든 글자 형상이 올바르지 않습니다. 글자를 바꿔 다시 시도하세요.")
+            if box.xlen > k["top_width"] - 2 or box.ylen > k["top_depth"] - 2:
+                raise ValueError(f"글자가 윗면({k['top_width'] - 2:.1f} × {k['top_depth'] - 2:.1f} mm 안)보다 큽니다. 글자 크기를 줄이거나 글자 수를 줄이세요.")
+            body = body.cut(letters.translate((-(box.xmin + box.xmax) / 2, -(box.ymin + box.ymax) / 2, 0)))
     elif p["template"] == "phone_stand":
         import math
         body = cq.Workplane("XY").box(w, d, bottom, centered=False)
@@ -265,7 +305,7 @@ def _reproduction_source(parameters: dict) -> str:
     preamble = ("# Generated with CadQuery " + cq.__version__ + "; all lengths are millimetres.\n"
                 "# This source reproduces geometry, not slicer settings or print success.\n"
                 "from pathlib import Path\nimport sys\nimport cadquery as cq\n\n")
-    functions = "\n\n".join(inspect.getsource(fn) for fn in (_validate_geometry, _name_tag_font, _build_solid, _export_cad))
+    functions = "\n\n".join(inspect.getsource(fn) for fn in (keycap_layout, _validate_geometry, _name_tag_font, _build_solid, _export_cad))
     runner = (f"\n\nPARAMETERS = {parameters!r}\n\n"
               "if __name__ == '__main__':\n"
               "    destination = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / 'reproduced'\n"
@@ -316,6 +356,11 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
           "detail": "글자 길이로 정해지는 가로·세로 대신 받침+글자 높이를 비교"}
          if spec.template == "name_tag" else
          {"name": "requested_dimensions",
+          "passed": all(math.isclose(dimensions[axis], expected, abs_tol=1e-6)
+                        for axis, expected in zip("xyz", (keycap_layout(parameters)["width"], keycap_layout(parameters)["depth"], parameters["height"]))),
+          "detail": "키 크기(u)로 정해지는 가로·세로와 요청 높이를 비교"}
+         if spec.template == "keycap" else
+         {"name": "requested_dimensions",
           "passed": all(math.isclose(dimensions[axis], parameters[key], abs_tol=1e-6)
                         for axis, key in zip("xyz", ("width", "depth", "height"))),
           "detail": "생성 형상의 외부 치수와 요청 치수 비교"}),
@@ -351,6 +396,10 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
         warnings.append(f"글꼴 {_name_tag_font()['label']}로 글자를 만들었습니다. 운영체제마다 정해진 굵은 글꼴(Arial Bold·DejaVu Sans Bold)을 쓰므로 다른 PC에서는 글자 모양이 조금 다를 수 있고, 고리의 강도는 보장하지 않습니다.")
     elif spec.template == "wall_hook":
         warnings.append("걸 물건의 무게와 벽 재질에 맞는 나사·앵커를 쓰세요. 후크의 하중이나 벽 고정력은 보장하지 않습니다.")
+    elif spec.template == "keycap":
+        warnings.append(f"체리 MX 호환 십자 스템(십자 구멍 {keycap_layout(parameters)['cross'][0]:.2f} × {keycap_layout(parameters)['cross'][1]:.2f} mm)입니다. 프린터마다 구멍이 조금씩 달라지므로 한 개를 먼저 뽑아 스위치에 끼워 보고 십자 여유를 조정하세요. 스위치·스태빌라이저와의 맞춤과 타건감은 보장하지 않습니다.")
+        if parameters["text"].strip():
+            warnings.append(f"글자는 글꼴 {_name_tag_font()['label']}로 윗면에 새겼습니다. 다른 PC에서는 글자 모양이 조금 다를 수 있습니다.")
     elif spec.template == "phone_stand":
         warnings.append("기기 두께와 여유로 홈 폭을 정합니다. 실제 기기·케이스 두께와 넘어짐·충전 케이블 위치는 직접 확인하세요.")
     elif spec.template == "magnet_frame":

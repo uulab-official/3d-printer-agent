@@ -2,9 +2,11 @@
 
 Date: 2026-11-17 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.24 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.25 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.25 adds a seventh template, a Cherry MX-compatible keycap (1–7u, engraved legend, stabilizer stems), with requests, edits, recovery steps and installed-package qualification ([keycap guide](KEYCAP.md)). Five generated keycaps sliced locally with Bambu Studio 02.09.01.70 on synthetic settings without supports; switch fit and physical prints are not verified.
 
 Version 0.24 records caliper measurements of printed samples with the outcome and compares them with the CAD size against a declared tolerance, as user-measured evidence aligned with the [field qualification checklist](FIELD_QUALIFICATION.md). Published as [v0.24.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.24.0) on 2026-11-17 from `c800064`.
 

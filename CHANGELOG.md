@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.25.0 — 2026-11-17
+
+- Seventh template: a Cherry MX-compatible **keycap** (docs/KEYCAP.md). The new `key_units` field (1, 1.25, 1.5, 1.75, 2, 2.25, 2.75, 6.25 or 7u) sets the width (units × 19.05 − 1.05 mm) and the 18 mm depth. Other features: an optional engraved legend of up to six letters (blank keys allowed), a cylindrical dish, a 5.6 mm stem with a 4.0 × 1.17 mm cross plus `fit_clearance`, and stabilizer stems for 2u and wider. The keycap is printed with its open bottom on the bed. The printability review names the bridged inner ceiling and reports the cross size and stem ring as the stem fit.
+- Requests such as “ESC 키캡 빨간색으로”, “엔터 키캡”, “스페이스바 키캡” or “"한" 키캡 높이 9mm” choose the keycap. Named keys start at their ANSI size and legend; an explicit “Nu” wins. Edits understand 키 크기, 십자 여유, 윗면 두께, 글자 깊이 and 옆벽. A “too tight” or “too loose” outcome offers a ±0.05 mm cross-clearance edit.
+- `key_units` is a later field: earlier jobs, recipes and review hashes keep their shape. The schema minimum letter size is now 3 mm for keycap legends, while a name tag still requires 6 mm.
+- Installed-package qualification generates a 2u keycap on every platform. It checks the STEP/3MF sizes, the cross holes and stem rings at the centre and stabilizer positions, and the title; promotion requires these checks.
+- Locally, five generated keycaps sliced with Bambu Studio 02.09.01.70 (synthetic settings) without supports. Physical fit on a switch has not been verified.
+
 ## 0.24.0 — 2026-11-17
 
 - Caliper measurements with an outcome: the outcome card takes up to three X/Y/Z samples (API: up to five) and a tolerance declared before printing. The stored, user-measured review compares them with the job's CAD size: per-axis mean and maximum deviation, spread between samples, and whether every sample is within the tolerance. It notes when fewer than three samples were measured and when X/Y come out systematically small (suggesting more clearance or the slicer's X-Y compensation). Measurements are refused for “not printed” outcomes and without samples; they are never treated as printer qualification.

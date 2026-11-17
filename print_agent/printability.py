@@ -38,6 +38,9 @@ def _thin_features(p):
         return [('wall', '등판·앞턱', wall), ('bottom', '바닥', bottom)]
     if p['template'] == 'wall_hook':
         return [('wall', '등판·끝 턱', wall), ('bottom', '걸이', bottom), ('hole_diameter', '나사 구멍 양옆', (w - p['hole_diameter']) / 2)]
+    if p['template'] == 'keycap':
+        top = p['bottom'] - p['text_depth'] if p['text'].strip() else p['bottom']
+        return [('wall', '옆벽', wall), ('bottom' if not p['text'].strip() else 'text_depth', '글자 아래 윗면' if p['text'].strip() else '윗면', top)]
     if p['template'] == 'name_tag':
         # Letter strokes depend on the font; about a tenth of the letter height for bold sans.
         return [('bottom', '받침판', bottom), ('hole_diameter', '고리 둘레', wall),
@@ -137,7 +140,12 @@ def review_mesh(parameters, mesh, volume_mm3, nozzle_mm=REFERENCE_NOZZLE_MM):
         items.append(_item('stability', '세운 비율', 'pass', f'높이/짧은 변 {slenderness:.1f}',
                            '넘어질 위험이 낮은 비율입니다.'))
 
-    if overhang > 1.0:
+    if overhang > 1.0 and parameters['template'] == 'keycap':
+        # The only downward faces are the ceiling over the open cavity and the tops of the cross holes.
+        items.append(_item('overhang', f'{OVERHANG_LIMIT_DEG:.0f}° 넘는 돌출부', 'warn', f'{overhang / 100:.2f} cm²',
+                           '키캡 안쪽 천장과 십자 구멍 위쪽이 아래를 향한 면입니다. 옆벽 사이를 잇는 브릿지로 쌓이는 부분입니다.',
+                           '보통 서포트 없이 출력되지만, 슬라이서 미리보기에서 브릿지가 처지지 않는지 확인하세요.'))
+    elif overhang > 1.0:
         items.append(_item('overhang', f'{OVERHANG_LIMIT_DEG:.0f}° 넘는 돌출부', 'warn', f'{overhang / 100:.2f} cm²',
                            '아래가 비어 있는 면이 있어 처지거나 지지대가 필요할 수 있습니다.',
                            '슬라이서에서 지지대를 확인하세요.'))
@@ -147,6 +155,21 @@ def review_mesh(parameters, mesh, volume_mm3, nozzle_mm=REFERENCE_NOZZLE_MM):
 
     # Only templates with a fitted insert or cable use the clearance parameter.
     clearance = parameters.get('fit_clearance') if parameters['template'] in ('cable_comb', 'magnet_frame', 'phone_stand') else None
+    if parameters['template'] == 'keycap':
+        from .geometry_rules import keycap_layout
+        layout = keycap_layout(parameters)
+        length, width = layout['cross']
+        ring = layout['stem_ring']
+        detail = f'십자 구멍 {length:.2f} × {width:.2f} mm, 스템 둘레 {ring:.2f} mm(압출 선 약 {ring / line:.1f}줄)'
+        clearance = parameters['fit_clearance']
+        if 0.1 <= clearance <= 0.3:
+            items.append(_item('fit_clearance', '스템 십자 여유', 'pass', f'{clearance:.2f} mm',
+                               f'{detail}. 일반적인 시작 범위입니다. 실제 맞춤은 한 개를 뽑아 스위치에 끼워 확인하세요.'))
+        else:
+            items.append(_item('fit_clearance', '스템 십자 여유', 'warn', f'{clearance:.2f} mm',
+                               f'{detail}. ' + ('여유가 작아 스위치에 끼워지지 않을 수 있습니다.' if clearance < 0.1 else '여유가 커서 키캡이 헐겁게 빠질 수 있습니다.'),
+                               '처음에는 0.1~0.3 mm로 시험해 보세요.', 'fit_clearance'))
+        clearance = None
     if clearance is not None:
         if clearance < 0.2:
             items.append(_item('fit_clearance', '끼움 여유', 'warn', f'{clearance:.2f} mm',
