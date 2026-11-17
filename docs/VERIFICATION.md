@@ -134,6 +134,21 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-17 v0.15.0 공개 릴리스
+
+[v0.15.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.15.0)을 2026-11-17 03:33:51 UTC에 `35416f7`에서 게시했습니다(PR #8·#9·#10 병합).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44010260872) Python **738개**·컨트롤러 **209개**·Chromium **86개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44010260911)
+세 OS 각 **327개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44010260897)가 모두 실행 차수 1로 통과했습니다. 공개 자산 7개를 인증 없이 내려받아
+wheel(284,700바이트, `919ef2f3edd5178b…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며
+보고서가 모두 통과 상태임을 확인했습니다. wheel에 `printer_send.py`가 들어 있고 `result.json`은 없습니다.
+
+로컬 확인(이 Mac, 출시 전): 실제 Studio 02.09.01.70으로 앱이 만든 두 색 키링 색상 3MF를 두 필라멘트로 슬라이싱해 레이어 1~10은
+필라멘트 1, 11~20은 필라멘트 2를 쓰는 것을 확인했고, 실제 Studio로 슬라이싱한 키링을 브라우저에서 합성 프린터로 보내 `started`까지
+확인했습니다. 실제 프린터 전송과 실물 출력은 확인하지 않았습니다.
+
+앱 안 여러 필라멘트 슬라이싱은 시험 결과 보류했습니다([COLORS.md](COLORS.md)): 일부 필라멘트 배열이 1개뿐인 프로젝트에서 Studio가
+성공을 보고하면서 글자 부품을 빼고 출력했고, 공식 전체 프리셋은 필라멘트별 배열을 압출 변형별로 펼쳐 저장합니다.
+
 ## 2026-11-17 Studio 확인이 남기던 result.json
 
 macOS Studio CLI는 `--help`만 실행해도 실행 위치에 `result.json`을 씁니다(빈 폴더에서 재현). 앱의 슬라이서 확인이 실행 위치를 지정하지

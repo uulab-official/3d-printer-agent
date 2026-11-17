@@ -2,11 +2,11 @@
 
 Date: 2026-11-17 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.12 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.15 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
 
-Version 0.15 adds [sending a verified slice to a LAN printer](PRINT_SEND.md): a single-use review of printer state, nozzle and filament slots, an explicit bed-clear confirmation, FTPS upload with a size check, the `project_file` command and the printer's own start report, recorded on the job without the access code. It is verified against the synthetic printer (including a real Studio slice on macOS), not yet on a physical printer.
+Version 0.15 adds [sending a verified slice to a LAN printer](PRINT_SEND.md): a single-use review of printer state, nozzle and filament slots, an explicit bed-clear confirmation, FTPS upload with a size check, the `project_file` command and the printer's own start report, recorded on the job without the access code. It is verified against the synthetic printer (including a real Studio slice on macOS), not yet on a physical printer. Published as [v0.15.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.15.0) on 2026-11-17 from `35416f7`, together with the 0.13 and 0.14 changes.
 
 Version 0.14 adds optional filament colours for every template and a separate letter colour for name tags, set by request or edit sentences or swatches, shown in the preview, and exported for two-colour name tags as a Bambu Studio part/filament 3MF (verified with a local two-filament Studio slice, not a physical print). Edits also change name-tag text and its own sizes, and an edited name tag regenerates again. See [COLORS.md](COLORS.md).
 
