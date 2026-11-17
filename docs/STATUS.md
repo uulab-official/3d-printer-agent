@@ -2,11 +2,11 @@
 
 Date: 2026-11-17 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.23 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.24 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
 
-Version 0.24 records caliper measurements of printed samples with the outcome and compares them with the CAD size against a declared tolerance, as user-measured evidence aligned with the [field qualification checklist](FIELD_QUALIFICATION.md).
+Version 0.24 records caliper measurements of printed samples with the outcome and compares them with the CAD size against a declared tolerance, as user-measured evidence aligned with the [field qualification checklist](FIELD_QUALIFICATION.md). Published as [v0.24.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.24.0) on 2026-11-17 from `c800064`.
 
 Version 0.23 makes the colour swatches and store filters keyboard radio groups (one Tab stop, arrow keys). Published as [v0.23.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.23.0) on 2026-11-17 from `95cfcf0`, together with the 0.21 (hook starters and qualification) and 0.22 (update check) changes and PR #2 (placement oracle and field qualification checklist).
 
