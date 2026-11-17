@@ -61,11 +61,19 @@ FIELD_LABELS = {
 }
 
 
-def _default_text(key, value):
+TEMPLATE_FIELD_LABELS = {
+    'phone_stand': {'wall':'등판·앞턱 두께','fit_clearance':'홈 여유'},
+    'name_tag': {'wall':'테두리 여백','bottom':'받침 두께'},
+}
+
+
+def _default_text(key, value, template=None):
+    """One unset field as the owner sees it in the parameter panel."""
     if key == 'text':
         return f'글자 “{value}”'
     unit = '개' if key in ('slots', 'dividers') else '°' if key == 'lean_angle' else ' mm'
-    return f'{FIELD_LABELS.get(key, key)} {float(value):g}{unit}'
+    label = TEMPLATE_FIELD_LABELS.get(template, {}).get(key) or FIELD_LABELS.get(key, key)
+    return f'{label} {float(value):g}{unit}'
 
 
 def _question(message, *, action=None, engine='template_rules'):
@@ -281,7 +289,7 @@ def plan_from_text(text: str) -> dict:
     return {
         'status':'ready','engine':'template_rules','message':f'{LABELS[template]}의 제작안을 준비했습니다. 입력하지 않은 치수는 표시된 기본값을 사용합니다.',
         'parameters':parameters,'questions':[],
-        'assumptions':notes+adjusted+([f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value) for key,value in defaults.items())] if defaults else []),
+        'assumptions':notes+adjusted+([f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value,template) for key,value in defaults.items())] if defaults else []),
         'capability':'supported_template_only',
     }
 
@@ -336,7 +344,7 @@ def _plan_name_tag(text: str) -> dict:
     return {
         'status':'ready','engine':'template_rules','message':'이름 키링의 제작안을 준비했습니다. 가로·세로는 글자 길이에 맞춰 정해집니다.',
         'parameters':parameters,'questions':[],
-        'assumptions':notes+([f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value) for key,value in defaults.items())] if defaults else []),
+        'assumptions':notes+([f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value,'name_tag') for key,value in defaults.items())] if defaults else []),
         'capability':'supported_template_only',
     }
 
@@ -361,7 +369,7 @@ def validate_llm_plan(raw: dict) -> dict:
     if not isinstance(message,str) or len(message)>2000:
         raise ValueError('LLM 설명 형식이 올바르지 않습니다.')
     unset={key:value for key,value in DEFAULTS[spec.template].items() if key not in params}
-    defaults=[f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value) for key,value in unset.items())] if unset else []
+    defaults=[f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value,spec.template) for key,value in unset.items())] if unset else []
     # Execution facts always come from the application, never provider prose.
     message='LLM이 제안한 치수를 검토할 수 있습니다. 아직 모델 생성·슬라이싱·프린터 출력은 실행하지 않았습니다.'
     return {'status':'ready','engine':'llm','message':message,'parameters':spec.model_dump(),'questions':[],'assumptions':defaults,'capability':'supported_template_only'}

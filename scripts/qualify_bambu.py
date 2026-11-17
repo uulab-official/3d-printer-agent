@@ -614,6 +614,10 @@ def project_adapter_smoke(executable, evidence, env, adapter_report, report, *, 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work-dir", type=Path, default=Path("qa-output/native-bambu"))
+    parser.add_argument("--studio-executable", type=Path, default=None,
+                        help="Use an already installed Studio executable of the pinned version instead of the Linux AppImage "
+                             "(for example /Applications/BambuStudio.app/Contents/MacOS/BambuStudio). Its program settings use "
+                             "an isolated --datadir inside the work directory; nothing is installed or updated.")
     args = parser.parse_args()
     root = args.work_dir.expanduser().resolve()
     if root.exists() and any(root.iterdir()):
@@ -625,6 +629,7 @@ def main():
     manifest = {
         "schema_version": 2, "started_at": datetime.now(timezone.utc).isoformat(),
         "scope": "native_bootstrap_synthetic_adapter_and_project_adapter_smoke", "status": "running",
+        "runtime_kind": "installed_executable" if args.studio_executable else "pinned_linux_appimage",
         "native_bootstrap": {"status": "not_run"}, "native_adapter_smoke": {"status": "not_run"},
         "native_project_smoke": {"status": "not_run"}, "native_edited_project_smoke": {"status": "not_run"},
         "adapter_qualified": False, "project_adapter_qualified": False, "edited_project_adapter_qualified": False,
@@ -641,23 +646,38 @@ def main():
                 "XDG_DATA_HOME": str(runtime / "user-data")})
     try:
         manifest["native_bootstrap"]["status"] = "running"
-        print("Downloading and verifying the pinned official runtime and CLI examples.", flush=True)
-        runtime_source = download(APPIMAGE, runtime)
-        manifest["sources"].append(runtime_source)
+        if args.studio_executable:
+            print("Using the installed Studio executable; downloading and verifying the pinned CLI examples.", flush=True)
+        else:
+            print("Downloading and verifying the pinned official runtime and CLI examples.", flush=True)
+            runtime_source = download(APPIMAGE, runtime)
+            manifest["sources"].append(runtime_source)
         for source in CONFIGS:
             manifest["sources"].append(download(source, inputs))
             read_config(inputs / source["filename"])
         model = inputs / "original-cube-10x10x2.stl"
         manifest["model"] = cube_stl(model)
-        image = runtime / APPIMAGE["filename"]
-        image.chmod(0o755)
-        extraction = run_command([str(image), "--appimage-extract"], runtime, env, logs, "extract", 120)
-        manifest["commands"].append(extraction)
-        if extraction["returncode"] != 0 or extraction["timed_out"]:
-            raise RuntimeError("AppImage extraction failed; inspect extract logs.")
-        executable = runtime / "squashfs-root" / "AppRun"
-        if not executable.is_file():
-            raise RuntimeError("Extracted runtime has no AppRun launcher.")
+        isolation = []
+        if args.studio_executable:
+            executable = args.studio_executable.expanduser().resolve()
+            if not executable.is_file() or not os.access(executable, os.X_OK):
+                raise RuntimeError("--studio-executable is not an executable file.")
+            manifest["installed_runtime"] = {"path": str(executable), "sha256": sha256(executable),
+                                             "bytes": executable.stat().st_size}
+            # XDG variables do not apply on macOS/Windows; keep native program
+            # settings for the bootstrap run inside this work directory.
+            isolation = ["--datadir", str(runtime / "studio-data")]
+            (runtime / "studio-data").mkdir()
+        else:
+            image = runtime / APPIMAGE["filename"]
+            image.chmod(0o755)
+            extraction = run_command([str(image), "--appimage-extract"], runtime, env, logs, "extract", 120)
+            manifest["commands"].append(extraction)
+            if extraction["returncode"] != 0 or extraction["timed_out"]:
+                raise RuntimeError("AppImage extraction failed; inspect extract logs.")
+            executable = runtime / "squashfs-root" / "AppRun"
+            if not executable.is_file():
+                raise RuntimeError("Extracted runtime has no AppRun launcher.")
         print("Probing the actual extracted Studio launcher without a virtual display.", flush=True)
         help_run = run_command([str(executable), "--help"], output, env, logs, "help", 30)
         manifest["commands"].append(help_run)
@@ -666,11 +686,13 @@ def main():
         manifest["reported_version"] = match.group(1) if match else None
         if help_run["returncode"] != 0 or help_run["timed_out"]:
             raise RuntimeError("Native --help failed; inspect help logs before changing the runtime environment.")
+        if args.studio_executable and manifest["reported_version"] != VERSION:
+            raise RuntimeError(f"Installed Studio reports {manifest['reported_version']!r}; this qualification is pinned to {VERSION}.")
         required = ("--load-settings", "--load-filaments", "--slice", "--outputdir", "--export-3mf", "--export-settings")
         manifest["observed_cli_options"] = [option for option in required if option in help_text]
         if len(manifest["observed_cli_options"]) != len(required):
             raise RuntimeError("Native --help did not advertise every required bootstrap option.")
-        argv = [str(executable), "--load-settings", f"{inputs / 'machine.json'};{inputs / 'process.json'}",
+        argv = [str(executable), *isolation, "--load-settings", f"{inputs / 'machine.json'};{inputs / 'process.json'}",
                 "--load-filaments", str(inputs / "filament.json"), "--curr-bed-type", "Textured PEI Plate",
                 "--arrange", "1", "--slice", "0", "--debug", "2", "--outputdir", str(output),
                 "--export-settings", str(output / "resolved-project.json"),

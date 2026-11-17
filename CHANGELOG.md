@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1 — 2026-11-17
+
+- Fix Studio-project slicing on macOS: the project command now always passes `--outputdir` (the job folder). Without it the macOS Studio CLI wrote the sliced 3MF into its own app bundle (`BambuStudio.app/Contents/Resources`) and the app reported a missing output. Linux behaviour is unchanged (the job folder was already the working directory). The project path now also requires `--outputdir` in the CLI help.
+- `scripts/qualify_bambu.py --studio-executable PATH` runs the same four native cases with an already installed Studio of the pinned version (for example on macOS) instead of downloading the Linux AppImage; the bootstrap run keeps Studio program settings in an isolated `--datadir`. Observed on macOS 27 (arm64) with Studio 02.09.01.70: all four cases passed.
+- The name keychain card no longer shows “undefined × undefined × undefined mm”; it shows the default text and letter size. The “기본값을 쓴 치수” note uses each template's panel labels (테두리 여백·받침 두께 for the keychain, 등판·앞턱 두께·홈 여유 for the phone stand).
+
 ## 0.12.0 — 2026-11-16
 
 - New `name_tag` template (이름 키링): raised text of 1–20 letters (Hangul, Latin, digits, spaces and a few marks) on a rounded plate with a ring-hole tab, always one solid. Width and depth follow the text; height is base plus letter height. Letters use a pinned bold sans system font per platform (Arial Bold on macOS/Windows, DejaVu Sans Bold on Linux, else the Arial-named fallback); the result names the font and says another computer may draw slightly different letters. Invalid letter outlines (some decorative fonts overlap their strokes) fail with a clear reason instead of producing an open mesh. Requests such as “이름이 민수인 키링”, “"Samantha" 키링” and “서연이라고 적힌 키링” set the text; letter size, height, plate thickness, border and hole size are editable and copy/paste as text. Contextual edits set a new text string. Printability estimates the letter stroke at about 10% of the letter height.

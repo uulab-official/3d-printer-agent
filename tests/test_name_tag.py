@@ -93,6 +93,18 @@ class NameTagTests(unittest.TestCase):
         self.assertEqual(plan_from_text('“Mia”랑 “Lily” 키링')['status'], 'needs_input')
         self.assertEqual(plan_from_text('키링 글자 크기 50mm')['status'], 'needs_input')
 
+    def test_default_note_uses_the_panel_labels_of_each_template(self):
+        tag = ' '.join(plan_from_text('"지우" 이름 키링 만들어줘')['assumptions'])
+        self.assertIn('테두리 여백 3 mm', tag)
+        self.assertIn('받침 두께 2 mm', tag)
+        self.assertNotIn('벽 두께', tag)
+        self.assertNotIn('바닥 두께', tag)
+        stand = ' '.join(plan_from_text('휴대폰 거치대 만들어줘')['assumptions'])
+        self.assertIn('등판·앞턱 두께', stand)
+        self.assertIn('홈 여유', stand)
+        tray = ' '.join(plan_from_text('가로 12cm 세로 8cm 수납함')['assumptions'])
+        self.assertIn('벽 두께', tray)
+
     def test_contextual_edit_sets_new_text_without_touching_numbers(self):
         base = normalize_parameters(GeometryRequest(**TAG).model_dump())
         self.assertEqual(base['text'], 'MINSU')
