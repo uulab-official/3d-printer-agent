@@ -785,14 +785,20 @@ class JobStore:
 
     def record_printer_send(self, job_id, result):
         """Append what happened when this job was sent to a printer. Access codes never reach this record."""
-        if not isinstance(result, dict) or not isinstance(result.get('status'), str):
-            raise ValueError('출력 보내기 기록 형식이 올바르지 않습니다.')
-        record = {key: copy.deepcopy(result[key]) for key in ('status', 'detail', 'target', 'file', 'stages', 'mapping', 'started_at', 'finished_at')
-                  if key in result}
+        return self.record_printer_event(job_id, 'printer_send', result)
+
+    def record_printer_event(self, job_id, kind, result):
+        """Append a send or control outcome for this job; only the listed, code-free fields are kept."""
+        if kind not in ('printer_send', 'printer_control') or not isinstance(result, dict) or not isinstance(result.get('status'), str):
+            raise ValueError('프린터 기록 형식이 올바르지 않습니다.')
+        fields = ('status', 'detail', 'target', 'file', 'stages', 'mapping', 'action', 'command_sent', 'state_before',
+                  'started_at', 'requested_at', 'finished_at')
+        record = {key: copy.deepcopy(result[key]) for key in fields if key in result}
         _json_bytes(record)
         with self.lock:
             job = self._read(job_id)
-            job['events'].append({'at': now_iso(), 'type': 'printer_send', 'message': record['status'], 'report': record})
+            message = f"{record.get('action')}:{record['status']}" if kind == 'printer_control' else record['status']
+            job['events'].append({'at': now_iso(), 'type': kind, 'message': message, 'report': record})
             self._write(job)
             return self._public(job)
 

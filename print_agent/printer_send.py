@@ -12,6 +12,9 @@ This is the only module that can start a print. It is deliberately narrow:
   printer is never sent a job.
 * Stages stay separate in the result: uploaded, command sent, and the printer's own
   report that it began. A reported start is not a physical print result.
+* Once a print runs, only three fixed control commands exist here: pause, resume and
+  stop. Each requires the previously pinned certificate and a printer state in which
+  that command makes sense; stop also needs an explicit confirmation at the API.
 
 The LAN protocol (implicit FTPS on 990 for the file, MQTT over TLS on 8883 for the
 command) is community-documented, not a supported public API. Current Bambu
@@ -363,6 +366,77 @@ def start(review: dict, access_code: str, content: bytes, *, mqtt_port=None, ftp
         result['detail'] = str(exc)
         return result
     except (OSError, ssl.SSLError, printer_lan._Stop) as exc:
+        result['detail'] = f'프린터 연결 중 문제가 생겼습니다({type(exc).__name__}).'
+        return result
+    finally:
+        result['finished_at'] = _now()
+        _SEND_LOCK.release()
+
+
+# ---------------------------------------------------------------------------
+# Controlling a running print: pause, resume, stop. Nothing else.
+
+CONTROL_FROM = {'pause': {'RUNNING'}, 'resume': {'PAUSE'}, 'stop': {'PREPARE', 'SLICING', 'RUNNING', 'PAUSE'}}
+CONTROL_TO = {'pause': {'PAUSE'}, 'resume': {'RUNNING'}, 'stop': {'IDLE', 'FAILED', 'FINISH'}}
+CONTROL_LABELS = {'pause': '일시정지', 'resume': '재개', 'stop': '정지'}
+CONTROL_OBSERVE_SECONDS = 15.0
+
+
+def control_command(action: str) -> bytes:
+    if action not in CONTROL_FROM:
+        raise SendError('지원하는 출력 제어는 일시정지·재개·정지뿐입니다.')
+    return json.dumps({'print': {'sequence_id': str(secrets.randbelow(10 ** 6)), 'command': action, 'param': ''}},
+                      separators=(',', ':')).encode()
+
+
+def control(host, serial, access_code, pinned_sha256, action, *, mqtt_port=None, observe_seconds=None) -> dict:
+    """Send one control command to a printer whose certificate was pinned earlier, then watch its report."""
+    if action not in CONTROL_FROM:
+        raise SendError('지원하는 출력 제어는 일시정지·재개·정지뿐입니다.')
+    if pinned_sha256 is None:
+        raise SendError('먼저 프린터 상태를 읽어 인증서를 확인한 뒤에 제어할 수 있습니다.')
+    host, serial, pinned = validate_target(host, serial, access_code, pinned_sha256)
+    observe_seconds = CONTROL_OBSERVE_SECONDS if observe_seconds is None else observe_seconds
+    if not _SEND_LOCK.acquire(blocking=False):
+        raise SendError('다른 프린터 명령이 진행 중입니다.')
+    label = CONTROL_LABELS[action]
+    result = {'schema_version': 1, 'action': action, 'target': {'host': host, 'serial': serial}, 'status': 'blocked',
+              'command_sent': False, 'state_before': None, 'printer': None, 'detail': '', 'requested_at': _now()}
+    try:
+        deadline = time.monotonic() + 15 + observe_seconds
+        with _mqtt(host, serial, access_code, pinned, mqtt_port or printer_lan.MQTT_PORT, deadline) as sock:
+            before = _current_state(sock, serial)
+            result['state_before'] = before['state']
+            result['printer'] = before
+            if before['state'] not in CONTROL_FROM[action]:
+                result['detail'] = f'프린터가 “{before["state_label"]}” 상태라 {label} 명령을 보내지 않았습니다.'
+                return result
+            sock.sendall(_publish_packet(f'device/{serial}/request', control_command(action)))
+            result['command_sent'] = True
+            merged = {}
+            for report in _reports(sock, serial, time.monotonic() + observe_seconds, merged):
+                printing, _ = normalize_report(report)
+                result['printer'] = printing
+                if printing['state'] in CONTROL_TO[action]:
+                    result['status'] = 'applied'
+                    break
+            try:
+                sock.sendall(_packet(14, 0, b''))
+            except OSError:
+                pass
+        if result['status'] == 'applied':
+            result['detail'] = f'프린터가 {label} 뒤 “{result["printer"]["state_label"]}” 상태를 보고했습니다.'
+            if action == 'stop':
+                result['detail'] += ' 사용자가 정지한 작업도 프린터는 실패로 보고할 수 있습니다.'
+        else:
+            result['status'] = 'unconfirmed'
+            result['detail'] = f'{label} 명령은 보냈지만 제한 시간 안에 바뀐 상태를 받지 못했습니다. 프린터 화면을 확인하세요.'
+        return result
+    except SendError as exc:
+        result['detail'] = str(exc)
+        return result
+    except (OSError, ssl.SSLError, printer_lan._Stop) as exc:
+        result['status'] = 'failed'
         result['detail'] = f'프린터 연결 중 문제가 생겼습니다({type(exc).__name__}).'
         return result
     finally:

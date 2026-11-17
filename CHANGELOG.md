@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.0 — 2026-11-17
+
+- Pause, resume and stop a running print from the progress panel. Buttons follow the printer's reported state (pause while running, resume while paused, stop while preparing, running or paused); stop asks for a second confirmation. `POST /api/printers/print/control` builds only these three commands, requires the previously pinned certificate, the printer state in which the command applies and `stop_confirmed` for a stop, then waits up to 15 seconds for the printer to report the new state. Commands sent for the current job are recorded on it without the access code. Verified against the synthetic printer in a real browser; not on a physical printer.
+
 ## 0.17.0 — 2026-11-17
 
 - Remember a printer: after a successful status read with “이 브라우저에 프린터 기억하기” ticked, the browser keeps the host, serial, reported product name and certificate fingerprint (never the access code). On the next visit the most recent printer is filled in and its fingerprint stays pinned, so a different device answering at that address is stopped before the code is sent. Saved printers can be chosen or deleted; clearing the pin also clears the remembered one. Storage failures leave the app working.

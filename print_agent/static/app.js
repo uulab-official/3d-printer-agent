@@ -3760,6 +3760,7 @@
     if (state.printFollow) state.printFollow.timer = null;
     if (state.printFollow) state.printFollow.active = false;
     if (message && $("print-follow-status")) $("print-follow-status").textContent = message;
+    if (message) updatePrintControls(null);
     if ($("print-follow-stop")) $("print-follow-stop").hidden = true;
   }
 
@@ -3776,7 +3777,57 @@
     if (Number.isFinite(printing?.layer) && Number.isFinite(printing?.total_layers)) parts.push(`레이어 ${printing.layer}/${printing.total_layers}`);
     if (printing?.error_code_hex) parts.push(`오류 ${printing.error_code_hex}`);
     $("print-follow-text").textContent = parts.join(" · ");
+    updatePrintControls(printing?.state);
     $("print-follow-status").textContent = `${dateTime(observedAt)} 프린터 보고 · ${PRINT_FOLLOW_SECONDS}초마다 다시 읽습니다.`;
+  }
+
+  function updatePrintControls(printerState) {
+    // Offer only commands the printer's reported state allows (see printer_send.CONTROL_FROM).
+    const allowed = { pause: ["RUNNING"], resume: ["PAUSE"], stop: ["PREPARE", "SLICING", "RUNNING", "PAUSE"] };
+    const busy = Boolean(state.printControlPending);
+    for (const action of Object.keys(allowed)) {
+      const button = $(`print-control-${action}`);
+      if (!button) continue;
+      button.hidden = !allowed[action].includes(printerState);
+      button.disabled = busy;
+    }
+    if (!allowed.stop.includes(printerState) && $("print-stop-confirm")) $("print-stop-confirm").hidden = true;
+  }
+
+  function askPrintStop() {
+    $("print-stop-confirm").hidden = false;
+    $("print-stop-yes").focus();
+  }
+
+  async function sendPrintControl(action) {
+    const follow = state.printFollow;
+    const target = currentPrinterTarget();
+    const pin = state.printerPins[`${target.host}|${target.serial}`];
+    if (!follow || state.printControlPending) return;
+    if (!pin || !target.access_code) {
+      $("print-control-feedback").textContent = "프린터 액세스 코드와 확인한 인증서가 있어야 제어할 수 있습니다.";
+      return;
+    }
+    state.printControlPending = true;
+    $("print-stop-confirm").hidden = true;
+    updatePrintControls(follow.lastState);
+    const labels = { pause: "일시정지", resume: "재개", stop: "정지" };
+    $("print-control-feedback").textContent = `${labels[action]} 명령을 보내는 중…`;
+    try {
+      const result = await api("/api/printers/print/control", { ...target, pinned_certificate_sha256: pin, action,
+        stop_confirmed: action === "stop", job_id: state.job?.id || null });
+      $("print-control-feedback").textContent = result.detail || "";
+      if (result.printer) { follow.lastState = result.printer.state; renderPrintFollow(result.printer, result.finished_at || new Date().toISOString()); }
+      if (action === "stop" && result.status === "applied") {
+        stopPrintFollow("출력을 정지했습니다. 출력판을 비우고, 필요하면 결과를 기록해 주세요.");
+        showNotice("print-send-feedback", "프린터가 정지 뒤 상태를 보고했습니다.", "warning");
+      }
+    } catch (error) {
+      $("print-control-feedback").textContent = error.message;
+    } finally {
+      state.printControlPending = false;
+      updatePrintControls(state.printFollow?.lastState);
+    }
   }
 
   async function pollPrintFollow() {
@@ -3796,6 +3847,7 @@
       if (result.connection?.state !== "reporting") {
         $("print-follow-status").textContent = `${result.connection?.detail || "프린터 보고를 받지 못했습니다."} 다음 주기에 다시 시도합니다.`;
       } else {
+        follow.lastState = result.print?.state;
         renderPrintFollow(result.print, result.observed_at);
         const state_ = result.print?.state;
         const sameJob = !follow.jobName || result.print?.job_name === follow.jobName;
@@ -3834,9 +3886,35 @@
     stop.id = "print-follow-stop";
     stop.type = "button";
     stop.addEventListener("click", () => stopPrintFollow("자동 갱신을 멈췄습니다."));
-    area.append(node("h3", "", "출력 진행"), track, text, status, stop);
+    const controls = node("div", "button-row print-control-row");
+    controls.id = "print-control";
+    for (const [action, label, kind] of [["pause", "일시정지", "button-secondary"], ["resume", "재개", "button-secondary"], ["stop", "정지…", "button-danger"]]) {
+      const button = node("button", `button ${kind}`, label);
+      button.type = "button";
+      button.id = `print-control-${action}`;
+      button.hidden = true;
+      button.addEventListener("click", () => action === "stop" ? askPrintStop() : sendPrintControl(action));
+      controls.append(button);
+    }
+    const confirm = node("div", "print-stop-confirm");
+    confirm.id = "print-stop-confirm";
+    confirm.hidden = true;
+    const confirmText = node("p", "", "출력을 정지하면 되돌릴 수 없습니다. 지금 정지할까요?");
+    const confirmYes = node("button", "button button-danger", "네, 정지합니다");
+    confirmYes.type = "button";
+    confirmYes.id = "print-stop-yes";
+    confirmYes.addEventListener("click", () => sendPrintControl("stop"));
+    const confirmNo = node("button", "button button-secondary", "취소");
+    confirmNo.type = "button";
+    confirmNo.addEventListener("click", () => { $("print-stop-confirm").hidden = true; });
+    confirm.append(confirmText, confirmYes, confirmNo);
+    const controlFeedback = node("p", "field-help", "");
+    controlFeedback.id = "print-control-feedback";
+    controlFeedback.setAttribute("role", "status");
+    area.append(node("h3", "", "출력 진행"), track, text, status, controls, confirm, controlFeedback, stop);
     $("print-send-result").append(area);
     state.printFollow = { active: true, timer: null, startedAt: Date.now(), host: target.host, serial: target.serial, jobName: result.subtask || result.printer?.job_name || null };
+    state.printFollow.lastState = result.printer?.state || null;
     if (result.printer) renderPrintFollow(result.printer, result.finished_at || new Date().toISOString());
     state.printFollow.timer = setTimeout(pollPrintFollow, PRINT_FOLLOW_SECONDS * 1000);
   }

@@ -6,6 +6,8 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
+Version 0.18 adds pause, resume and confirmed stop for a running print, limited to those three commands and to a pinned certificate, verified against the synthetic printer.
+
 Version 0.17 remembers a printer in the browser (host, serial, product name and certificate pin; never the access code) and follows a started print every 30 seconds until the printer reports finish, failure or idle, verified against the synthetic printer.
 
 Version 0.16 adds a dated [where-to-buy directory](STORES.md) of 28 Korean filament stores, filterable by material and seller kind, with unconfirmed stores kept apart and closed ones excluded; it stores no prices or stock. Published as [v0.16.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.16.0) on 2026-11-17 from `c45a33e`.

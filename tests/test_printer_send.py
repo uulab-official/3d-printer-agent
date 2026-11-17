@@ -250,5 +250,72 @@ class SendFlowTests(unittest.TestCase):
             'review_token': 'x' * 32, 'access_code': CODE, 'bed_clear_confirmed': True}).status_code, 403)
 
 
+class ControlTests(unittest.TestCase):
+    """Pause, resume and stop against the synthetic printer, through the API."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.app = create_app(Path(self.temp.name), test_mode=True)
+        self.client = TestClient(self.app)
+        self.headers = {'X-Session-Token': self.client.get('/api/bootstrap').json()['session_token']}
+        printer_lan._LAST_STATUS.clear()
+        self.simulator, self.mqtt, _ = fake_printer(state='RUNNING')
+        with patch.object(printer_lan, 'MQTT_PORT', self.mqtt):
+            status = printer_lan.read_status('127.0.0.1', SERIAL, CODE, timeout=3, report_window=0.2)
+        self.pin = status['certificate']['sha256']
+
+    def tearDown(self):
+        self.client.close()
+        self.temp.cleanup()
+
+    def control(self, action, **extra):
+        body = {'host': '127.0.0.1', 'serial': SERIAL, 'access_code': CODE, 'pinned_certificate_sha256': self.pin,
+                'action': action, **extra}
+        with patch.object(printer_lan, 'MQTT_PORT', self.mqtt), patch.object(printer_send, 'CONTROL_OBSERVE_SECONDS', 3):
+            return self.client.post('/api/printers/print/control', headers=self.headers, json=body)
+
+    def test_pause_resume_and_confirmed_stop_follow_the_printer_report(self):
+        paused = self.control('pause').json()
+        self.assertEqual((paused['status'], paused['state_before'], paused['printer']['state']), ('applied', 'RUNNING', 'PAUSE'))
+        again = self.control('pause').json()
+        self.assertEqual((again['status'], again['command_sent']), ('blocked', False))
+        resumed = self.control('resume').json()
+        self.assertEqual((resumed['status'], resumed['printer']['state']), ('applied', 'RUNNING'))
+        unconfirmed = self.control('stop')
+        self.assertEqual(unconfirmed.status_code, 422)
+        self.assertNotIn(CODE, unconfirmed.text)
+        stopped = self.control('stop', stop_confirmed=True).json()
+        self.assertEqual((stopped['status'], stopped['printer']['state']), ('applied', 'FAILED'))
+        self.assertNotIn(CODE, json.dumps(stopped))
+        self.assertEqual([c for c in self.simulator.requests if c in ('pause', 'resume', 'stop')], ['pause', 'resume', 'stop'])
+
+    def test_control_needs_a_pinned_certificate_and_a_matching_one(self):
+        missing = self.control('pause', pinned_certificate_sha256=None)
+        self.assertEqual(missing.status_code, 422)
+        self.assertIn('인증서', missing.json()['detail'])
+        wrong = self.control('pause', pinned_certificate_sha256='0' * 64).json()
+        self.assertEqual((wrong['status'], wrong['command_sent']), ('blocked', False))
+        self.assertIn('인증서', wrong['detail'])
+        self.assertNotIn('pause', self.simulator.requests)
+        bad = self.control('home')
+        self.assertEqual(bad.status_code, 422)
+
+    def test_control_is_recorded_on_a_known_job_and_refused_for_an_unknown_one(self):
+        job = self.client.post('/api/models', json={'template': 'tray'}, headers=self.headers).json()
+        self.assertEqual(self.control('pause', job_id='f' * 32).status_code, 404)
+        self.assertNotIn('pause', self.simulator.requests)
+        self.control('pause', job_id=job['id'])
+        event = self.client.get('/api/jobs/' + job['id']).json()['events'][-1]
+        self.assertEqual((event['type'], event['message']), ('printer_control', 'pause:applied'))
+        self.assertNotIn(CODE, json.dumps(event))
+
+    def test_only_three_command_bodies_exist(self):
+        for action in ('pause', 'resume', 'stop'):
+            body = json.loads(printer_send.control_command(action))
+            self.assertEqual(body['print']['command'], action)
+        with self.assertRaises(printer_send.SendError):
+            printer_send.control_command('gcode_line')
+
+
 if __name__ == '__main__':
     unittest.main()
