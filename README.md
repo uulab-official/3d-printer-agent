@@ -48,7 +48,22 @@
 
 권장 실행 경로는 **Python 3.12 가상환경**입니다. Linux·macOS·Windows의 설치 패키지 검증과 native Bambu 실행 검증은 분리합니다. 플랫폼별로 실제 통과한 커밋과 범위는 [검증 기록](docs/VERIFICATION.md)을 확인하세요. 이 앱은 자신의 PC에서 사용하는 단일 사용자 앱이며 공개 서버로 배포하는 구성은 제공하지 않습니다.
 
-현재 공개된 패키지는 [검증된 v0.8.0 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.8.0)와 [설치·릴리스 안내](docs/RELEASES.md)를 확인하세요. 같은 wheel의 Ubuntu·macOS·Windows 설치 검사는 각각 **287개**, 실제 데스크톱·모바일 Chromium 검사는 총 **54개**를 통과했습니다. 준비 전 출력 크기 비교와 차단, 원본·변경 기록의 보존, 실제 재시작·전체 백업·복원 후 검사 기록과 설정 재사용을 포함합니다. 실제 Linux Studio의 기존 네 합성 슬라이싱 경로도 통과했습니다. 정확한 소스와 배포 파일 해시·검증 범위는 [검증 기록](docs/VERIFICATION.md)에 남깁니다. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지 `libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
+### 설치 파일로 바로 쓰기
+
+코드를 받지 않고 쓰려면 [최신 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/latest)에서 `3d_printer_agent_local-…whl`을 내려받아 Python 3.12 가상환경에 설치합니다.
+릴리스마다 같은 wheel이 Ubuntu·macOS·Windows 설치 검증을 통과했으며, 파일 해시와 검증 범위는 [설치·릴리스 안내](docs/RELEASES.md)와 [검증 기록](docs/VERIFICATION.md)에 있습니다.
+
+```bash
+python3.12 -m venv ~/.printer-agent
+~/.printer-agent/bin/python -m pip install ./3d_printer_agent_local-<버전>-py3-none-any.whl
+~/.printer-agent/bin/printer-agent
+```
+
+터미널에서 실행하면 서버가 준비된 뒤 기본 브라우저에서 앱이 열립니다(`--no-browser`로 끌 수 있습니다). 이미 실행 중이면 새로 띄우지 않고
+그 주소를 알려 주고, 포트를 다른 프로그램이 쓰고 있으면 다음 포트를 제안합니다. Ubuntu 24.04에서는 CAD 의존성을 불러오기 전에 시스템 패키지
+`libgl1`이 필요합니다. 준비 명령과 운영 절차는 [로컬 운영 안내](docs/LOCAL_OPERATION.md)에 있습니다.
+
+### 소스에서 실행하기
 
 저장소를 받은 다음 프로젝트 폴더로 이동합니다.
 
@@ -74,7 +89,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m print_agent
 ```
 
-브라우저에서 `http://127.0.0.1:8765`를 엽니다. 서버는 자신의 PC에서만 접속할 수 있는 주소에 바인딩합니다. 종료는 `Ctrl+C`입니다. CadQuery를 처음 설치할 때는 CAD 엔진 의존성을 다운로드하므로 시간이 걸릴 수 있습니다.
+터미널에서 실행하면 준비된 뒤 브라우저에서 `http://127.0.0.1:8765`가 열립니다(`--no-browser`로 끌 수 있습니다). 서버는 자신의 PC에서만 접속할 수 있는 주소에 바인딩합니다. 종료는 `Ctrl+C`입니다. CadQuery를 처음 설치할 때는 CAD 엔진 의존성을 다운로드하므로 시간이 걸릴 수 있습니다.
 
 ```bash
 python -m print_agent doctor
