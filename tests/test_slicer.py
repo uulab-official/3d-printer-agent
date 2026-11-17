@@ -188,6 +188,23 @@ class SlicerTests(unittest.TestCase):
         self.assertEqual(result["printer_status"], "not_checked")
         self.assertEqual(len(calls), 1)
 
+    def test_help_probe_runs_in_a_throwaway_folder_not_the_users_directory(self):
+        # macOS Studio writes result.json into its working directory even for --help.
+        folders = []
+        def invoke(argv, **kwargs):
+            folder = Path(kwargs["cwd"])
+            folders.append(folder)
+            self.assertTrue(folder.is_dir())
+            self.assertNotEqual(folder.resolve(), Path.cwd().resolve())
+            (folder / "result.json").write_text("{}", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, HELP_TEXT, "")
+        before = set(Path.cwd().iterdir())
+        with patch.dict(os.environ, {"PPA_BAMBU_PATH": str(self.executable)}), patch.object(self.slicer.subprocess, "run", side_effect=invoke):
+            self.assertTrue(self.slicer.probe_environment()["cli_supported"])
+        self.assertEqual(len(folders), 1)
+        self.assertFalse(folders[0].exists())
+        self.assertEqual(set(Path.cwd().iterdir()), before)
+
     def test_explicit_environment_probe_does_not_launch_a_missing_executable(self):
         probe = getattr(self.slicer, "probe_environment", None)
         self.assertTrue(callable(probe))
