@@ -11,7 +11,10 @@ read-back and measured printed parts as three separate claims.
 - A qualified combination does **not** qualify another printer, firmware,
   toolhead, filament variant, temperature or sliced model automatically.
 - A human operator must examine the actual machine and remain able to stop it.
-  This application does not transmit to a printer or certify safety.
+  This application does not certify safety. Since v0.15 it can send a verified
+  slice over LAN after a single-use review and an explicit bed-clear
+  confirmation, and since v0.18 it can pause, resume or (after confirmation)
+  stop that print; qualify that path separately from Studio's own send.
 - Do not bypass machine interlocks, bed exclusion areas, temperature limits or
   vendor maintenance recommendations in order to pass a test.
 
@@ -59,8 +62,10 @@ out of public issues and CI artifacts.
 
 ## Gate B — controlled physical print
 
-1. Use Studio's normal reviewed print workflow. The local agent does not send
-   printer commands. Confirm selected machine and plate on the actual device.
+1. Use either Studio's normal reviewed print workflow or the application's LAN
+   send (review → bed-clear confirmation → start), and record which one was
+   used. Confirm the selected machine and plate on the actual device; keep the
+   printer's own stop control within reach even when the app can stop the job.
 2. Follow the vendor's ventilation, materials, fire and supervision guidance.
    Verify appropriate bed adhesion and that the area is unobstructed.
 3. Observe the first layer and record adhesion, collisions, unexpected travel,
@@ -71,6 +76,10 @@ out of public issues and CI artifacts.
 5. Measure X/Y/Z and relevant inner-fit features after cooling using a
    calibrated instrument. Define dimensional tolerances before the print,
    record numeric deviations and repeatability on at least three samples.
+   The job's outcome card can store up to five X/Y/Z samples and the declared
+   tolerance (v0.24); it reports per-axis mean/maximum deviation and spread
+   against the CAD size as **user-measured** evidence. That record supports,
+   but does not replace, the full evidence table above.
 6. Save original files, exact software and printer versions, photos,
    measurements and disposition together. Retest after relevant changes.
 

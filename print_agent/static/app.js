@@ -1592,6 +1592,7 @@
     $("outcome-result").value = job.user_outcome?.result || "not_tested";
     $("outcome-notes").value = job.user_outcome?.notes || "";
     syncOutcomeReasons(job.user_outcome?.reasons || []);
+    fillMeasurements(job.user_outcome);
     loadRecovery(job);
     state.modelCleanSignature = modelDraftSignature();
     hideNotice("outcome-feedback");
@@ -2700,6 +2701,62 @@
     $("model-edit-propose").click();
   }
 
+  // ---------------------------------------------------------------------------
+  // Caliper measurements of printed samples (user-measured, compared with the CAD size).
+
+  function collectMeasurements() {
+    const samples = [];
+    for (const row of document.querySelectorAll("[data-measure-row]")) {
+      const inputs = [...row.querySelectorAll("[data-measure]")];
+      const filled = inputs.filter((input) => input.value.trim() !== "");
+      if (!filled.length) continue;
+      if (filled.length !== 3 || inputs.some((input) => !Number.isFinite(Number(input.value)) || Number(input.value) <= 0)) {
+        throw new Error(`샘플 ${row.dataset.measureRow}의 가로·세로·높이를 모두 0보다 큰 숫자로 적어 주세요.`);
+      }
+      samples.push(Object.fromEntries(inputs.map((input) => [input.dataset.measure, Number(input.value)])));
+    }
+    const toleranceText = $("outcome-tolerance").value.trim();
+    const tolerance = toleranceText === "" ? null : Number(toleranceText);
+    if (tolerance !== null && !samples.length) throw new Error("허용 오차는 실측값과 함께 적어 주세요.");
+    return { samples, tolerance };
+  }
+
+  function fillMeasurements(outcome) {
+    const samples = Array.isArray(outcome?.measurements) ? outcome.measurements : [];
+    for (const row of document.querySelectorAll("[data-measure-row]")) {
+      const sample = samples[Number(row.dataset.measureRow) - 1];
+      for (const input of row.querySelectorAll("[data-measure]")) input.value = sample ? String(sample[input.dataset.measure]) : "";
+    }
+    $("outcome-tolerance").value = Number.isFinite(outcome?.tolerance_mm) ? String(outcome.tolerance_mm) : "";
+    if (samples.length && $("outcome-measure")) $("outcome-measure").open = true;
+    renderMeasurementReview(outcome?.measurement_review);
+  }
+
+  function renderMeasurementReview(review) {
+    const area = $("outcome-measure-review");
+    if (!review || !Array.isArray(review.rows)) { area.hidden = true; area.replaceChildren(); return; }
+    const labels = { within: ["허용 오차 안", "success"], outside: ["허용 오차 밖", "warning"], not_judged: ["허용 오차 미지정", "neutral"] };
+    const [label, tone] = labels[review.status] || ["판정 없음", "neutral"];
+    const head = node("div", "measure-head");
+    const badge = node("span", `badge badge-${tone}`, label);
+    head.append(node("h3", "", `실측 ${review.samples}개 · CAD 치수와 비교`), badge);
+    const table = node("table", "measure-table");
+    const header = node("tr", "");
+    for (const text of ["", "CAD", "평균 차이", "최대 차이", "샘플 간 편차"]) header.append(node("th", "", text));
+    table.append(header);
+    const sign = (value) => `${value > 0 ? "+" : ""}${numberFormat.format(value)}`;
+    for (const [axis, name] of [["x", "가로 X"], ["y", "세로 Y"], ["z", "높이 Z"]]) {
+      const data = review.axes?.[axis];
+      if (!data) continue;
+      const row = node("tr", "");
+      row.append(node("th", "", name), node("td", "", `${numberFormat.format(data.expected)} mm`), node("td", "", `${sign(data.mean_deviation)} mm`),
+        node("td", "", `${numberFormat.format(data.max_abs_deviation)} mm`), node("td", "", `${numberFormat.format(data.spread)} mm`));
+      table.append(row);
+    }
+    area.replaceChildren(head, table, ...(review.notes || []).map((note) => node("p", "field-help", note)), node("p", "field-help", review.scope || ""));
+    area.hidden = false;
+  }
+
   $("outcome-result").addEventListener("change", () => { $("outcome-reasons").hidden = $("outcome-result").value !== "failure"; });
   $("outcome-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -2708,8 +2765,11 @@
       await withWorkflow($("save-outcome"), "기록 중", async () => {
         const jobId = state.job.id;
         const result = $("outcome-result").value;
-        const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/outcome`, { result, notes: $("outcome-notes").value, reasons: result === "failure" ? selectedOutcomeReasons() : [] });
+        const measured = collectMeasurements();
+        const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/outcome`, { result, notes: $("outcome-notes").value, reasons: result === "failure" ? selectedOutcomeReasons() : [],
+          measurements: measured.samples.length ? measured.samples : null, tolerance_mm: measured.tolerance });
         state.job = job;
+        renderMeasurementReview(job.user_outcome?.measurement_review);
         loadRecovery(job);
         showNotice("outcome-feedback", "직접 보고한 출력 결과를 기록했습니다. CAD 검증 상태와 별도로 보관합니다.", "success");
         renderJourney();

@@ -423,3 +423,30 @@ test('a wall hook from a request prints without supports and edits by its own wo
   await page.locator('#model-edit-apply').click();
   await expect(page.locator('#parameter-depth')).toHaveValue('60');
 });
+
+test('caliper measurements are recorded with the outcome and compared with the CAD size', async ({ page }) => {
+  const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const job = await (await generated).json();
+  const { x, y, z } = job.result.dimensions_mm;
+  await page.locator('#outcome-result').selectOption('success');
+  await page.locator('#outcome-measure > summary').click();
+  const values = [[x - 0.1, y + 0.05, z], [x - 0.15, y, z + 0.05], [x - 0.1, y - 0.05, z]];
+  for (const [index, sample] of values.entries()) {
+    const row = page.locator(`[data-measure-row="${index + 1}"]`);
+    for (const [axis, value] of ['x', 'y', 'z'].map((axis, i) => [axis, sample[i]])) await row.locator(`[data-measure="${axis}"]`).fill(String(value));
+  }
+  await page.locator('#outcome-tolerance').fill('0.2');
+  const saved = page.waitForResponse(r => r.url().endsWith(`/api/jobs/${job.id}/outcome`));
+  await page.locator('#save-outcome').click();
+  const outcome = (await (await saved).json()).user_outcome;
+  expect(outcome.measurement_review.status).toBe('within');
+  const review = page.locator('#outcome-measure-review');
+  await expect(review).toContainText('실측 3개');
+  await expect(review).toContainText('허용 오차 안');
+  await expect(review.locator('tr')).toHaveCount(4);
+  // A half-filled sample is refused before anything is sent.
+  await page.locator('[data-measure-row="3"] [data-measure="z"]').fill('');
+  await page.locator('#save-outcome').click();
+  await expect(page.locator('#outcome-feedback')).toContainText('샘플 3');
+});

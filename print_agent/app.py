@@ -296,6 +296,8 @@ class OutcomePayload(StrictPayload):
     result: Literal['success','failure','not_tested']
     notes: str = Field(default='', max_length=4000)
     reasons: list[str] = Field(default_factory=list, max_length=6)
+    measurements: list[dict] | None = Field(default=None, max_length=5)
+    tolerance_mm: float | None = None
 
 
 def create_app(data_dir: Path | None = None, *, test_mode=False):
@@ -593,7 +595,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
 
     @app.post('/api/jobs/{job_id}/outcome')
     def outcome(job_id: str,payload: OutcomePayload):
-        return store.record_outcome(job_id,payload.result,payload.notes,payload.reasons)
+        return store.record_outcome(job_id,payload.result,payload.notes,payload.reasons,payload.measurements,payload.tolerance_mm)
 
     @app.get('/api/jobs/{job_id}/recovery')
     def job_recovery(job_id: str):

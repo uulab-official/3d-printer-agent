@@ -836,3 +836,17 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 
 /* A radio group is one Tab stop; make the focused choice obvious. */
 [role="radio"]:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+/* Caliper measurements in the outcome card. */
+.outcome-measure { grid-column: 1 / -1; margin: 6px 0; }
+.outcome-measure summary { cursor: pointer; font-weight: 650; font-size: 0.88rem; }
+.measure-row { display: grid; grid-template-columns: 56px repeat(3, minmax(0, 1fr)); gap: 8px; align-items: end; margin: 6px 0; font-size: 0.8rem; }
+.measure-row label, .measure-tolerance { display: grid; gap: 3px; font-size: 0.78rem; }
+.measure-tolerance { max-width: 180px; margin-top: 6px; }
+.outcome-measure-review { margin-top: 12px; display: grid; gap: 8px; }
+.measure-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.measure-head h3 { margin: 0; font-size: 0.95rem; }
+.measure-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+.measure-table th, .measure-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+.measure-table th:first-child { text-align: left; }
+@media (max-width: 560px) { .measure-row { grid-template-columns: repeat(3, minmax(0, 1fr)); } .measure-row > span { grid-column: 1 / -1; } }

@@ -760,16 +760,25 @@ class JobStore:
             archive.writestr('job.json', public_record)
         return stream.getvalue()
 
-    def record_outcome(self, job_id, result, notes, reasons=None):
+    def record_outcome(self, job_id, result, notes, reasons=None, measurements=None, tolerance_mm=None):
         if result not in ('success', 'failure', 'not_tested') or not isinstance(notes, str) or len(notes) > 4000:
             raise ValueError('출력 결과와 4,000자 이내의 메모가 필요합니다.')
+        from .measurements import review_measurements, validate_measurements
         from .recovery import validate_reasons
         reasons = validate_reasons(result, reasons)
+        samples, tolerance = validate_measurements(measurements, tolerance_mm)
+        if samples and result == 'not_tested':
+            raise ValueError('출력하지 않은 결과에는 실측값을 기록할 수 없습니다.')
         with self.lock:
             job = self._read(job_id)
             report = {'result': result, 'notes': notes, 'source': 'user_reported', 'recorded_at': now_iso()}
             if reasons:
                 report['reasons'] = reasons
+            if samples:
+                # Measured by the person; compared with the CAD size, never with a printer report.
+                report['measurements'] = samples
+                report['tolerance_mm'] = tolerance
+                report['measurement_review'] = review_measurements((job.get('result') or {}).get('dimensions_mm'), samples, tolerance)
             job['user_outcome'] = report
             job['events'].append({'at': now_iso(), 'type': 'user_reported_outcome', 'message': result, 'report': report})
             self._write(job)
