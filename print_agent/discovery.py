@@ -13,7 +13,7 @@ from .schemas import GeometryRequest
 
 
 Dimension = Annotated[float, Field(strict=True, gt=0, le=10000, allow_inf_nan=False)]
-Purpose = Literal['all', 'organization', 'cables', 'display']
+Purpose = Literal['all', 'organization', 'cables', 'display', 'hanging']
 
 
 class AvailableSpace(BaseModel):
@@ -48,6 +48,7 @@ def project_catalog() -> dict:
     tray_limits = ['칸막이와 벽이 내부 공간을 차지합니다. 외부 치수로 내용물 맞춤을 판단하지 마세요.']
     cable_limits = ['위가 열린 홈입니다. 스냅 고정장치가 아니며 케이블 유지력을 보장하지 않습니다.']
     stand_limits = ['휴대폰을 세워 두는 받침입니다. 충전 케이블 구멍이 없고, 넘어짐 방지나 하중을 보장하지 않습니다.']
+    hook_limits = ['나사 구멍이 두 개 있는 후크입니다. 걸 물건의 무게와 벽 재질에 맞는 나사·앵커를 쓰세요. 하중과 벽 고정력은 보장하지 않습니다.']
     frame_limits = ['원형 포켓만 있습니다. 걸이·스탠드·자석 고정 구조는 포함하지 않습니다.',
                     '여유값은 포켓 지름 전체에 더합니다. 실제 끼워맞춤은 따로 확인하세요.']
     definitions = [
@@ -90,6 +91,16 @@ def project_catalog() -> dict:
          ['케이스를 포함한 휴대폰 두께와 거치대를 놓을 책상 공간을 측정하세요.'], stand_limits,
          dict(width=70, depth=80, height=90, wall=4, bottom=4, lean_angle=65,
               device_thickness=12, lip_height=12, fit_clearance=1)),
+        ('key-hook', '현관 열쇠 후크', 'hanging', 'wall_hook',
+         '열쇠나 작은 소품을 거는 작은 벽걸이 후크입니다.',
+         '서포트 없이 출력되는 작은 후크로 나사 구멍과 걸이 길이를 맞춰 보기 좋습니다.',
+         ['걸 물건 고리의 안쪽 폭과 쓰려는 나사의 지름을 측정하세요.'], hook_limits,
+         dict(width=20, depth=35, height=50, wall=4, bottom=4, hole_diameter=4, lip_height=10)),
+        ('headphone-hook', '헤드폰 걸이', 'hanging', 'wall_hook',
+         '책상 옆이나 벽에 헤드폰을 걸어 두는 넓은 후크입니다.',
+         '헤드밴드 폭에 맞춰 가로와 걸이 길이를 조정하는 시작안입니다.',
+         ['헤드밴드의 폭·두께와 걸 위치 주변 공간을 측정하세요.'], hook_limits,
+         dict(width=30, depth=50, height=60, wall=4, bottom=4, hole_diameter=4, lip_height=12)),
     ]
     projects = []
     for project_id, title, purpose, template, description, reason, measurements, limits, values in definitions:
@@ -109,7 +120,8 @@ def project_catalog() -> dict:
             'purposes': [{'id': 'all', 'title': '전체'},
                          {'id': 'organization', 'title': '책상·서랍 정리'},
                          {'id': 'cables', 'title': '케이블 정리'},
-                         {'id': 'display', 'title': '사진·장식'}],
+                         {'id': 'display', 'title': '사진·장식'},
+                         {'id': 'hanging', 'title': '벽에 걸기'}],
             'projects': projects}
 
 

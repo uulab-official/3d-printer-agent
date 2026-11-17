@@ -587,6 +587,11 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .project-art-phone_stand .project-shape::before { content: ""; position: absolute; left: -10px; right: -10px; bottom: -8px; height: 9px; border-radius: 3px; background: #7aa585; }
 .project-art-magnet_frame .project-shape { width: 69px; height: 69px; border-radius: 3px; border: 0; background: #d3ae86; box-shadow: 4px 5px 0 #b88f67; transform: perspective(220px) rotateX(32deg) rotateZ(-16deg); }
 .project-art-magnet_frame .project-shape::before { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: #f0dcca; box-shadow: inset 3px 5px 0 #bd956e; }
+/* Wall hook: a standing back plate with two screw holes and a J-shaped arm. */
+.project-art-wall_hook { background: #f4f1fa; }
+.project-art-wall_hook .project-shape { width: 30px; height: 66px; border: 0; border-radius: 3px; background: #a99cc8; box-shadow: 4px 5px 0 #8a7cad; transform: perspective(220px) rotateX(12deg) rotateZ(-6deg); }
+.project-art-wall_hook .project-shape::before { content: ""; position: absolute; left: 11px; top: 14px; width: 8px; height: 8px; border-radius: 50%; background: #f4f1fa; box-shadow: 0 22px 0 #f4f1fa; }
+.project-art-wall_hook .project-shape::after { content: ""; position: absolute; left: 24px; bottom: 0; width: 34px; height: 18px; border: 7px solid #8a7cad; border-top: 0; border-left: 0; border-radius: 0 0 10px 0; }
 .project-detail { margin-top: 17px; border: 1px solid #cfdbed; background: #fff; padding: 21px; border-radius: 13px; }
 .project-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .project-detail-heading h3 { margin-top: 7px; }

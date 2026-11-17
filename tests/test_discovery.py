@@ -31,6 +31,8 @@ RECIPES = [
     ('round-insert-frame', 'display', 'magnet_frame', 65, 65, 7, {}),
     ('desk-phone-stand', 'organization', 'phone_stand', 70, 80, 90,
      {'wall': 4, 'bottom': 4, 'lean_angle': 65, 'device_thickness': 12, 'lip_height': 12, 'fit_clearance': 1}),
+    ('key-hook', 'hanging', 'wall_hook', 20, 35, 50, {'wall': 4, 'bottom': 4, 'hole_diameter': 4, 'lip_height': 10}),
+    ('headphone-hook', 'hanging', 'wall_hook', 30, 50, 60, {'wall': 4, 'bottom': 4, 'hole_diameter': 4, 'lip_height': 12}),
 ]
 
 
@@ -45,8 +47,8 @@ class DiscoveryTests(unittest.TestCase):
         catalog = project_catalog()
         self.assertEqual(catalog['schema_version'], 1)
         self.assertEqual([p['id'] for p in catalog['purposes']],
-                         ['all', 'organization', 'cables', 'display'])
-        self.assertEqual(len(catalog['projects']), 7)
+                         ['all', 'organization', 'cables', 'display', 'hanging'])
+        self.assertEqual(len(catalog['projects']), 9)
         for card, (project_id, purpose, template, width, depth, height, extras) in zip(catalog['projects'], RECIPES):
             with self.subTest(project=project_id):
                 self.assertEqual((card['id'], card['purpose'], card['template']),
@@ -89,7 +91,7 @@ class DiscoveryTests(unittest.TestCase):
     def test_no_space_returns_all_in_order_without_claiming_a_fit(self):
         result = self.matches()
         self.assertEqual(result['schema_version'], 1)
-        self.assertEqual(result['total_in_purpose'], 7)
+        self.assertEqual(result['total_in_purpose'], 9)
         self.assertEqual(result['excluded_count'], 0)
         self.assertEqual(result['query'], {'purpose': 'all', 'available_space':
                                         {'width': None, 'depth': None, 'height': None}})
@@ -150,8 +152,8 @@ class DiscoveryTests(unittest.TestCase):
     def test_zero_matches_is_a_successful_comparison(self):
         result = self.matches(available_space={'width': 1})
         self.assertEqual(result['matches'], [])
-        self.assertEqual(result['total_in_purpose'], 7)
-        self.assertEqual(result['excluded_count'], 7)
+        self.assertEqual(result['total_in_purpose'], 9)
+        self.assertEqual(result['excluded_count'], 9)
         self.assertTrue(result['limits'])
 
     def test_space_rejects_coercion_nonfinite_zero_and_unknown_fields(self):
