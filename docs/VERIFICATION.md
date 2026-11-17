@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-17 v0.20.0 공개 릴리스
+
+[v0.20.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.20.0)을 2026-11-17 06:35:19 UTC에 `0e3645b`에서 게시했습니다.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44031399678) Python **762개**·컨트롤러 **214개**·Chromium **94개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44031399682)
+세 OS 각 **337개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44031399774)가 모두 실행 차수 1로 통과했습니다. 공개 자산 7개를 인증 없이 내려받아
+wheel(304,612바이트, `0f5342fde630425c…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며
+보고서가 모두 통과 상태임을 확인했습니다. 출시 전 로컬에서 “헤드폰 걸이 만들어줘 검정색”으로 만든 후크(30 × 50 × 60 mm)가 형상 점검을
+통과했고(오버행 없음), 앱 화면에서 등판의 나사 구멍 두 개·걸이·끝 턱을 확인했습니다. 하중과 실물 출력은 확인하지 않았습니다.
+
 ## 2026-11-17 v0.19.0 공개 릴리스
 
 [v0.19.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.19.0)을 2026-11-17 06:03:05 UTC에 `554e120`에서 게시했습니다(PR #13·#14·#15 병합).

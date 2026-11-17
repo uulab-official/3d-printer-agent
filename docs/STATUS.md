@@ -2,11 +2,11 @@
 
 Date: 2026-11-17 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.19 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.20 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
 
-Version 0.20 adds a sixth template, a wall hook with teardrop screw holes that prints without supports, chosen by requests such as “헤드폰 걸이”.
+Version 0.20 adds a sixth template, a wall hook with teardrop screw holes that prints without supports, chosen by requests such as “헤드폰 걸이”. Published as [v0.20.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.20.0) on 2026-11-17 from `0e3645b`.
 
 Version 0.19 records reasons with a reported failure and suggests next steps, including reviewable, in-range model edits through the existing edit flow. Published as [v0.19.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.19.0) on 2026-11-17 from `554e120`, together with the 0.17 and 0.18 changes.
 
