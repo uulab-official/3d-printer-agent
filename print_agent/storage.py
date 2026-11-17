@@ -26,7 +26,8 @@ from .model_edits import normalize_parameters, validate_model_edit_record
 from .schemas import GeometryRequest
 
 
-_GENERATED_FILES = {'stl': 'model.stl', 'step': 'model.step', 'three_mf': 'model.3mf', 'source': 'model.py'}
+_GENERATED_FILES = {'stl': 'model.stl', 'step': 'model.step', 'three_mf': 'model.3mf', 'source': 'model.py',
+                    'color_three_mf': 'model-colors.3mf'}
 _SLICE_FILES = {'sliced_three_mf', 'prepared_three_mf'}
 _ALLOWED_FILES = {*_GENERATED_FILES, 'manifest', *_SLICE_FILES}
 _JOB_STATUSES = {'generating', 'geometry_validated', 'failed', 'interrupted'}

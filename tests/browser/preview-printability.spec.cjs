@@ -253,7 +253,7 @@ test('review regressions: comparison follows the current model and only 3MF coun
 });
 
 test('parameter panel edits with steppers and sliders, and copied settings paste back exactly', async ({ page, context, browserName }, testInfo) => {
-  await expect(page.locator('#parameter-fields .parameter-group legend')).toHaveText(['크기', '두께', '모양']);
+  await expect(page.locator('#parameter-fields .parameter-group legend')).toHaveText(['크기', '두께', '모양', '색']);
   await page.getByRole('button', { name: '가로 늘리기 (1 mm)' }).click();
   await page.getByRole('button', { name: '가로 늘리기 (1 mm)' }).click();
   await expect(page.locator('#parameter-width')).toHaveValue('122');
@@ -312,4 +312,62 @@ test('name keychain: text field, request parsing, readable top view and a single
   await expect(page.locator('#model-result')).toBeHidden();
   await page.locator('#generate-button').click();
   await expect(page.locator('#parameter-text')).toHaveJSProperty('validity.valueMissing', true);
+});
+
+test('a coloured keychain request, a spoken colour edit and the two-filament 3MF', async ({ page }) => {
+  // Colours are named filament choices; the screen colour only approximates them.
+  await page.locator('#request-text').fill('빨간 글자로 "지우" 키링, 판은 흰색');
+  await page.locator('#plan-button').click();
+  await expect(page.locator('#parameter-text')).toHaveValue('지우');
+  await expect(page.locator('#parameter-color')).toHaveValue('white');
+  await expect(page.locator('#parameter-accent_color')).toHaveValue('red');
+  await expect(page.locator('[data-color-for="accent_color"][data-color-value="red"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('#parameter-fields .parameter-group legend')).toHaveText(['글자', '두께', '모양', '색']);
+  const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const job = await (await generated).json();
+  expect(job.result.color_parts.map(part => [part.key, part.color, part.filament])).toEqual([['base', 'white', 1], ['letters', 'red', 2]]);
+  await expect(page.locator('#preview-colors')).toContainText('글자: 빨강 · 필라멘트 2');
+  await expect(page.locator('#preview-colors')).toContainText('받침: 흰색 · 필라멘트 1');
+  const colorLink = page.locator('#download-links a.download-link', { hasText: '색상 3MF' });
+  await expect(colorLink).toHaveAttribute('href', new RegExp(job.artifacts.color_three_mf.replace(/[/.]/g, '\\$&') + '$'));
+  const download = await page.request.get(job.artifacts.color_three_mf);
+  expect(download.status()).toBe(200);
+  expect((await download.body()).subarray(0, 2).toString()).toBe('PK');
+  // The canvas really paints the letter colour: count strongly red pixels.
+  await page.locator('#preview-canvas, canvas').first().scrollIntoViewIfNeeded();
+  const redPixels = async () => page.evaluate(() => {
+    const canvas = document.querySelector('#preview-stage canvas');
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let red = 0, blue = 0;
+    for (let index = 0; index < data.length; index += 4) {
+      const [r, g, b] = [data[index], data[index + 1], data[index + 2]];
+      if (r > 150 && g < 90 && b < 90) red += 1;
+      if (b > 150 && r < 90 && g < 140) blue += 1;
+    }
+    return { red, blue };
+  });
+  await expect.poll(async () => (await redPixels()).red).toBeGreaterThan(50);
+
+  // A spoken edit changes only the letter colour; dimensions and text stay.
+  await page.locator('#model-edit-text').fill('글자를 파란색으로 바꿔줘');
+  await page.locator('#model-edit-propose').click();
+  await expect(page.locator('#model-edit-changes')).toContainText('글자 색');
+  await page.locator('#model-edit-apply').click();
+  await expect(page.locator('#parameter-accent_color')).toHaveValue('blue');
+  await expect(page.locator('#parameter-text')).toHaveValue('지우');
+  const regenerated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const editedResponse = await regenerated;
+  const edited = await editedResponse.json();
+  expect(editedResponse.status(), JSON.stringify(edited)).toBe(200);
+  expect(edited.result.parameters).toMatchObject({ text: '지우', color: 'white', accent_color: 'blue' });
+  expect(edited.result.dimensions_mm).toEqual(job.result.dimensions_mm);
+  await expect(page.locator('#preview-colors')).toContainText('글자: 파랑');
+  await expect.poll(async () => (await redPixels()).blue).toBeGreaterThan(50);
+
+  // Choosing a swatch by hand is an ordinary draft change.
+  await page.locator('[data-color-for="color"][data-color-value="black"]').click();
+  await expect(page.locator('#parameter-color')).toHaveValue('black');
+  await expect(page.locator('[data-color-for="color"][data-color-value="black"]')).toHaveAttribute('aria-checked', 'true');
 });

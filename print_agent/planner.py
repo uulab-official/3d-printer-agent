@@ -11,7 +11,7 @@ import httpx
 from pydantic import ValidationError
 
 from .geometry_rules import _validate_geometry
-from .schemas import GeometryRequest
+from .schemas import PALETTE, GeometryRequest
 
 
 DEFAULTS = {
@@ -21,6 +21,75 @@ DEFAULTS = {
     'phone_stand': {'width':70,'depth':80,'height':90,'wall':4,'bottom':4,'lean_angle':65,'device_thickness':12,'lip_height':12,'fit_clearance':1},
     'name_tag': {'text':'MINSU','text_size':12,'text_depth':2,'wall':3,'bottom':2,'hole_diameter':4},
 }
+COLOR_WORDS = {
+    'white': r'흰색|하얀색|하얀|하양|흰|화이트|white',
+    'black': r'검정색|검은색|까만색|검정|검은|까만|블랙|black',
+    'gray': r'회색|그레이|grey|gray',
+    'red': r'빨간색|빨강색|빨간|빨강|레드|red',
+    'orange': r'주황색|주황|오렌지|orange',
+    'yellow': r'노란색|노랑색|노란|노랑|옐로우|옐로|yellow',
+    'green': r'초록색|초록|녹색|그린|green',
+    'blue': r'파란색|파랑색|파란|파랑|블루|blue',
+    'purple': r'보라색|보라|퍼플|purple',
+    'pink': r'분홍색|분홍|핑크|pink',
+    'brown': r'갈색|브라운|brown',
+}
+
+
+def _bounded(words: str) -> str:
+    # English names must be whole words ("red" is not inside "shared").
+    return '|'.join(f'(?<![a-z]){word}(?![a-z])' if word.isascii() else word for word in words.split('|'))
+
+
+_COLOR = '(?P<color>' + '|'.join(f'(?P<c_{key}>{_bounded(words)})' for key, words in COLOR_WORDS.items()) + ')'
+_COLOR_TAIL = r'(?:\s*색(?:깔|상)?)?(?:\s*(?:으로|로))?(?:\s*(?:(?:바꿔|변경해|설정해|칠해|해|만들어)(?:\s*(?:줘|주세요))?|바꾸고|칠하고|하고))?'
+_ACCENT_PART = r'(?:글자|글씨|문자|텍스트)'
+_BODY_PART = r'(?:받침판|받침|바탕|배경|몸체|본체|전체|판|색깔|색상|색)'
+_PARTICLE = r'\s*(?:색(?:깔|상)?)?\s*(?:은|는|을|를|이|가|:|=)?\s*'
+_COLOR_PATTERNS = (
+    ('accent_color', re.compile(_ACCENT_PART + _PARTICLE + _COLOR + _COLOR_TAIL, re.I)),
+    ('accent_color', re.compile(_COLOR + r'(?:\s*색)?\s*(?:의\s*)?' + _ACCENT_PART + r'(?:\s*(?:으로|로))?', re.I)),
+    ('color', re.compile(_BODY_PART + _PARTICLE + _COLOR + _COLOR_TAIL, re.I)),
+    ('color', re.compile(_COLOR + _COLOR_TAIL, re.I)),
+)
+
+
+def color_label(key: str) -> str:
+    return PALETTE[key][0] if key in PALETTE else key
+
+
+def extract_colors(text: str) -> tuple[dict, str]:
+    """Read named filament colours. Returns the fields and the text with those phrases removed.
+
+    "글자" phrases set the letter colour; every other colour word sets the model colour.
+    Two different colours for the same part raise ValueError instead of picking one."""
+    found: dict = {}
+    def take(field):
+        def replace(match):
+            key = next(name[2:] for name, value in match.groupdict().items() if name.startswith('c_') and value)
+            if found.get(field, key) != key:
+                raise ValueError(f'{"글자" if field == "accent_color" else "모델"} 색이 여러 개입니다({color_label(found[field])}, {color_label(key)}). 하나만 알려주세요.')
+            found[field] = key
+            return ' '
+        return replace
+    for field, pattern in _COLOR_PATTERNS:
+        text = pattern.sub(take(field), text)
+    return found, text
+
+
+def _with_colors(result: dict, colors: dict) -> dict:
+    if result.get('status') != 'ready' or not colors:
+        return result
+    try:
+        parameters = GeometryRequest(**{**result['parameters'], **colors}).model_dump()
+    except ValidationError as exc:
+        message = next((str(error.get('ctx', {}).get('error', '')) for error in exc.errors() if error.get('ctx')), '')
+        return _question(message or '지원하지 않는 색입니다.')
+    named = ', '.join(('글자 ' if field == 'accent_color' else '모델 ') + color_label(key) for field, key in sorted(colors.items(), reverse=True))
+    return {**result, 'parameters': parameters,
+            'assumptions': result['assumptions'] + [f'색: {named}. 화면 색은 비슷하게 보여 줄 뿐이며 실제 필라멘트 색과 다를 수 있습니다.']}
+
+
 KEYCHAIN_WORDS = ('키링','키홀더','열쇠고리','이름표','네임택','name tag','keychain','key ring')
 LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대','name_tag':'이름 키링'}
 NUMBER = r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'
@@ -108,6 +177,14 @@ def plan_from_text(text: str) -> dict:
     routed = _route_existing_workflow(text)
     if routed is not None:
         return routed
+    try:
+        colors, uncolored = extract_colors(text)
+    except ValueError as exc:
+        return _question(str(exc))
+    return _with_colors(_plan_uncolored(uncolored), colors)
+
+
+def _plan_uncolored(text: str) -> dict:
     lowered=text.lower()
     if any(word in lowered for word in KEYCHAIN_WORDS):
         return _plan_name_tag(text)

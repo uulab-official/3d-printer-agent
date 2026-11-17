@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0 — 2026-11-17
+
+- Model colours ([docs/COLORS.md](docs/COLORS.md)): every template takes an optional filament colour (`color`) and a name tag also takes a letter colour (`accent_color`), from eleven named colours. Requests and edits read Korean and whole-word English colour names (“빨간 글자로 "지우" 키링, 판은 흰색”, “글자를 파랑으로 바꿔줘”); conflicting colours ask, and letter colours on other templates are refused. The parameter panel has a colour group with swatches, copy/paste carries colours, and the preview paints the chosen colours with a legend. Unchosen colours are omitted from canonical parameters, so earlier jobs, recipes and hashes keep their shape.
+- A name tag whose letters differ in colour also gets `model-colors.3mf`: the plate (filament 1) and the letters (filament 2), split at the plate top with a volume check, as parts of one object in Bambu Studio's part/filament format. Sliced locally with Studio 02.09.01.70 and two filaments, layers 1–10 used filament 1 and 11–20 filament 2 with one filament change.
+- Natural-language edits now also change the name-tag text (“이름을 지우로 바꿔줘”), letter size/height, hole diameter, border and plate thickness, and combine them (“글자를 "Mia"로 바꾸고 글자 크기 15mm”).
+- Fix: an edited name tag could not be regenerated (the edit check required width, depth and height, which a name tag does not use), and the browser rejected every text edit because it accepted only numeric operations.
+
 ## 0.13.0 — 2026-11-17
 
 - Owner-friendly launch: `printer-agent` opens the app in the default browser once the server answers (only when started from a terminal; `--no-browser` or `PPA_NO_BROWSER=1` turns it off, and CI/services never get a window). Starting it again while it runs prints the running address (and opens it) instead of a bind error. A port held by another program prints a Korean message with the next port; a data folder used by another running copy fails before the server starts with the app's message instead of a traceback.

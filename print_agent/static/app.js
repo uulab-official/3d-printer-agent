@@ -23,9 +23,21 @@
     text_size: { label: "글자 크기", min: 6, max: 40, step: 0.5 },
     text_depth: { label: "글자 높이", min: 0.6, max: 6, step: 0.1 },
     hole_diameter: { label: "고리 구멍 지름", min: 2, max: 10, step: 0.1 },
+    color: { label: "모델 색", kind: "color", unit: "" },
+    accent_color: { label: "글자 색", kind: "color", unit: "" },
   };
+  // Same keys and names as schemas.PALETTE. Hex values only approximate the filament on screen.
+  const PALETTE = {
+    white: ["흰색", "#F4F4F1"], black: ["검정", "#232323"], gray: ["회색", "#8E9096"],
+    red: ["빨강", "#D2302C"], orange: ["주황", "#F07F1F"], yellow: ["노랑", "#F4C430"],
+    green: ["초록", "#2E9E4F"], blue: ["파랑", "#2563C9"], purple: ["보라", "#7B4BB8"],
+    pink: ["분홍", "#EE7FB2"], brown: ["갈색", "#8B5A2B"],
+  };
+  // Optional colours: an empty value means "not chosen" and is never an incomplete input.
+  const COLOR_PARAMETERS = new Set(["color", "accent_color"]);
   // Fields read and sent as strings rather than numbers.
   const TEXT_PARAMETERS = new Set(["text"]);
+  const STRING_PARAMETERS = new Set([...TEXT_PARAMETERS, ...COLOR_PARAMETERS]);
   // Editing panel: one-line explanations, the +/- step and the group of each field.
   const fieldDescriptions = {
     width: "바깥 가로 길이(좌우)", depth: "바깥 세로 길이(앞뒤)", height: "바닥에서 가장 높은 곳까지",
@@ -35,10 +47,12 @@
     lean_angle: "바닥에서 등판까지의 각도. 클수록 똑바로 섭니다", device_thickness: "케이스를 포함한 기기 두께", lip_height: "앞에서 기기를 받치는 턱 높이",
     text: "키링에 새길 글자(한글·영문·숫자, 20자 이하)", text_size: "글자의 높이. 8 mm 이상이면 획이 잘 나옵니다", text_depth: "받침판 위로 솟은 글자 높이",
     hole_diameter: "고리나 줄을 끼울 구멍 지름",
+    color: "출력할 필라멘트 색. 화면 색은 비슷하게 보여 줄 뿐입니다",
+    accent_color: "글자만 다른 색으로 뽑을 때 고릅니다(AMS 등 자동 교체 필요)",
   };
   const templateFieldDescriptions = { phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" } };
   const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1, text_size: 0.5, text_depth: 0.2, hole_diameter: 0.5 };
-  const fieldGroups = [["text", "글자", ["text", "text_size", "text_depth"]], ["size", "크기", ["width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]]];
+  const fieldGroups = [["text", "글자", ["text", "text_size", "text_depth"]], ["size", "크기", ["width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]], ["color", "색", ["color", "accent_color"]]];
   const PARAMETER_FORMAT = "3d-printer-agent/parameters";
 
   // Same field, different meaning per template.
@@ -245,6 +259,7 @@
     renderProjectSource("generated-source", null);
     state.slicePrepared = false;
     viewer.clear();
+    renderColorLegend(null);
     $("model-result").hidden = true;
     $("outcome-card").hidden = true;
     $("download-links").replaceChildren();
@@ -486,7 +501,7 @@
     const template = state.templates.find((item) => item.id === state.template);
     return (template?.editable_fields || []).some((key) => {
       const input = $(`parameter-${key}`);
-      return input.validity?.badInput || input.validity?.valid === false || input.value === "" || input.value !== String(state.parameters[key]);
+      return input.validity?.badInput || input.validity?.valid === false || (input.value === "" && !COLOR_PARAMETERS.has(key)) || input.value !== String(state.parameters[key] ?? "");
     });
   }
 
@@ -577,7 +592,12 @@
     const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 }, name_tag: { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 } };
     const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"], name_tag: ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"] };
     const expected = { ...defaults, ...(laterFields[parameters?.template] || {}) };
-    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== Object.keys(expected).length + 1 || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
+    // Colours appear only when chosen (see schemas.COLOR_FIELDS); letters only on a name tag.
+    const colorKeys = parameters && typeof parameters === "object" ? Object.keys(parameters).filter((key) => COLOR_PARAMETERS.has(key)) : [];
+    for (const key of colorKeys) {
+      if (!Object.hasOwn(PALETTE, parameters[key]) || (key === "accent_color" && parameters.template !== "name_tag")) throw new Error("수정 제안의 색 응답이 올바르지 않습니다.");
+    }
+    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== Object.keys(expected).length + 1 + colorKeys.length || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
     for (const [key, neutral] of Object.entries(expected)) {
       const value = parameters[key];
       if (TEXT_PARAMETERS.has(key)) {
@@ -588,7 +608,7 @@
       const definition = fields[key];
       if (definition && (value < definition.min || value > definition.max)) throw new Error("수정 제안의 치수 범위를 확인해 주세요.");
     }
-    return applicable[parameters.template];
+    return [...applicable[parameters.template], ...colorKeys];
   }
 
   function parameterKeys(template) {
@@ -606,6 +626,7 @@
     for (const key of template.editable_fields) {
       const input = $(`parameter-${key}`);
       if (!parameterInputComplete(input)) throw new Error("현재 치수 입력을 완성한 뒤 수정 제안을 요청해 주세요.");
+      if (COLOR_PARAMETERS.has(key)) { if (input.value) parameters[key] = input.value; continue; }
       parameters[key] = TEXT_PARAMETERS.has(key) ? input.value.trim() : Number(input.value);
     }
     validateEditParameters(parameters);
@@ -630,7 +651,9 @@
     if (!exact(review, ["schema_version", "selection", "base_sha256", "parameters", "parameters_sha256", "changes", "review_sha256"]) || review.schema_version !== 1 || !hash(review.base_sha256) || !hash(review.parameters_sha256) || !hash(review.review_sha256) || !exact(selection, ["schema_version", "request_text", "base_parameters", "operations", "parent"]) || selection.schema_version !== 1 || selection.request_text !== context.text) fail();
     let editable;
     try { editable = validateEditParameters(review.parameters); validateEditParameters(selection.base_parameters); } catch { fail(); }
-    const keys = parameterKeys(context.base.template);
+    // Colour keys follow the numeric and text keys, in the server's field order.
+    const colorKeys = ["color", "accent_color"].filter((key) => editable.includes(key) || Object.hasOwn(context.base, key));
+    const keys = [...parameterKeys(context.base.template), ...colorKeys];
     if (review.parameters.template !== context.base.template || keys.some(key => selection.base_parameters[key] !== context.base[key])) fail();
     if (context.parent) {
       const parent = selection.parent;
@@ -640,12 +663,27 @@
     if (!Array.isArray(operations) || !operations.length || operations.length > 12) fail();
     const seen = new Set();
     for (const operation of operations) {
-      if (!exact(operation, ["field", "op", "value"]) || !editable.includes(operation.field) || seen.has(operation.field) || !["set", "add"].includes(operation.op) || typeof operation.value !== "number" || !Number.isFinite(operation.value) || (["dividers", "slots"].includes(operation.field) && (operation.op !== "set" || !Number.isSafeInteger(operation.value)))) fail();
+      if (!exact(operation, ["field", "op", "value"]) || seen.has(operation.field) || !["set", "add"].includes(operation.op)) fail();
+      if (COLOR_PARAMETERS.has(operation.field)) {
+        if (operation.op !== "set" || typeof operation.value !== "string" || (operation.value && !Object.hasOwn(PALETTE, operation.value)) || (operation.field === "accent_color" && context.base.template !== "name_tag")) fail();
+        seen.add(operation.field);
+        if ((review.parameters[operation.field] ?? "") !== operation.value) fail();
+        continue;
+      }
+      if (!editable.includes(operation.field)) fail();
+      if (TEXT_PARAMETERS.has(operation.field)) {
+        if (operation.op !== "set" || typeof operation.value !== "string") fail();
+        seen.add(operation.field);
+        if (review.parameters[operation.field] !== operation.value) fail();
+        continue;
+      }
+      if (typeof operation.value !== "number" || !Number.isFinite(operation.value) || (["dividers", "slots"].includes(operation.field) && (operation.op !== "set" || !Number.isSafeInteger(operation.value)))) fail();
       seen.add(operation.field);
       if (operation.op === "set" && review.parameters[operation.field] !== operation.value) fail();
     }
     // Review consistency only: the server rederives operations and geometry before CAD.
-    const expectedChanges = keys.slice(1).filter(key => context.base[key] !== review.parameters[key]).map(field => ({ field, before: context.base[field], after: review.parameters[field] }));
+    const valueOf = (parameters, key) => COLOR_PARAMETERS.has(key) ? (parameters[key] ?? "") : parameters[key];
+    const expectedChanges = keys.slice(1).filter(key => valueOf(context.base, key) !== valueOf(review.parameters, key)).map(field => ({ field, before: valueOf(context.base, field), after: valueOf(review.parameters, field) }));
     if (!expectedChanges.length || expectedChanges.some(change => !seen.has(change.field)) || !Array.isArray(review.changes) || review.changes.length !== expectedChanges.length) fail();
     for (const [index, change] of review.changes.entries()) {
       const expected = expectedChanges[index];
@@ -783,7 +821,7 @@
     const template = state.templates.find((item) => item.id === state.template);
     return (template?.editable_fields || []).some((key) => {
       const input = $(`parameter-${key}`);
-      return input.validity?.badInput || input.validity?.valid === false || input.value === "" || String(input.value) !== String(template.defaults[key]);
+      return input.validity?.badInput || input.validity?.valid === false || (input.value === "" && !COLOR_PARAMETERS.has(key)) || String(input.value) !== String(template.defaults[key] ?? "");
     });
   }
 
@@ -816,7 +854,7 @@
     const template = state.templates.find(item => item.id === state.template);
     return (template?.editable_fields || []).some(key => {
       const input = $(`parameter-${key}`);
-      return input.validity?.badInput || input.validity?.valid === false || input.value !== String(template.defaults[key]);
+      return input.validity?.badInput || input.validity?.valid === false || input.value !== String(template.defaults[key] ?? "");
     });
   }
 
@@ -915,10 +953,12 @@
 
   function readParameter(input) {
     // Text fields stay strings; every other field is a number.
+    if (COLOR_PARAMETERS.has(input.dataset.parameter)) return input.value;
     return TEXT_PARAMETERS.has(input.dataset.parameter) ? input.value.trim() : input.valueAsNumber;
   }
 
   function parameterInputComplete(input) {
+    if (COLOR_PARAMETERS.has(input.dataset.parameter)) return input.value === "" || Object.hasOwn(PALETTE, input.value);
     if (TEXT_PARAMETERS.has(input.dataset.parameter)) return input.value.trim().length > 0 && input.validity?.valid !== false;
     return Boolean(input.value.trim()) && !input.validity?.badInput && input.validity?.valid !== false && Number.isFinite(Number(input.value));
   }
@@ -930,6 +970,7 @@
     container.dataset.field = key;
     const labelText = templateFieldLabels[template.id]?.[key] || definition.label;
     const label = node("label", "", unit ? `${labelText} · ${unit}` : labelText);
+    if (definition.kind === "color") return colorField(template, key, labelText);
     if (definition.kind === "text") {
       container.classList.add("parameter-text");
       const description = node("p", "parameter-desc", templateFieldDescriptions[template.id]?.[key] || fieldDescriptions[key] || "");
@@ -987,6 +1028,52 @@
     return container;
   }
 
+  function colorField(template, key, labelText) {
+    // A hidden input keeps the shared read/compare paths; swatches only set its value.
+    const container = node("div", "parameter-field parameter-color");
+    container.dataset.field = key;
+    const heading = node("span", "parameter-label", labelText);
+    heading.id = `parameter-label-${key}`;
+    const description = node("p", "parameter-desc", templateFieldDescriptions[template.id]?.[key] || fieldDescriptions[key] || "");
+    const input = node("input");
+    input.type = "hidden";
+    input.id = `parameter-${key}`;
+    input.name = key;
+    input.value = state.parameters[key] ?? "";
+    input.dataset.parameter = key;
+    const swatches = node("div", "color-swatches");
+    swatches.setAttribute("role", "radiogroup");
+    swatches.setAttribute("aria-labelledby", heading.id);
+    const options = [["", key === "accent_color" ? "받침과 같게" : "정하지 않음", null], ...Object.entries(PALETTE).map(([value, [name, hex]]) => [value, name, hex])];
+    for (const [value, name, hex] of options) {
+      const button = node("button", "color-swatch" + (hex ? "" : " color-none"));
+      button.type = "button";
+      button.dataset.colorFor = key;
+      button.dataset.colorValue = value;
+      button.setAttribute("role", "radio");
+      button.setAttribute("aria-checked", String(input.value === value));
+      button.setAttribute("aria-label", `${labelText} ${name}`);
+      button.title = name;
+      if (hex) button.style.setProperty("--swatch", hex);
+      else button.textContent = name;
+      swatches.append(button);
+    }
+    const chosen = node("small", "color-chosen", input.value ? PALETTE[input.value]?.[0] || input.value : (key === "accent_color" ? "글자도 받침 색으로 출력" : "필라멘트 색을 정하지 않았습니다"));
+    chosen.id = `parameter-help-${key}`;
+    container.append(heading, description, input, swatches, chosen);
+    return container;
+  }
+
+  function chooseColor(key, value) {
+    const input = $(`parameter-${key}`);
+    if (!input || input.disabled || (value && !Object.hasOwn(PALETTE, value))) return;
+    input.value = value;
+    for (const button of document.querySelectorAll(`[data-color-for="${key}"]`)) button.setAttribute("aria-checked", String(button.dataset.colorValue === value));
+    const chosen = $(`parameter-help-${key}`);
+    if (chosen) chosen.textContent = value ? PALETTE[value][0] : (key === "accent_color" ? "글자도 받침 색으로 출력" : "필라멘트 색을 정하지 않았습니다");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   function stepParameter(key, direction) {
     const input = $(`parameter-${key}`);
     const definition = fields[key];
@@ -1012,6 +1099,7 @@
     for (const key of template.editable_fields) {
       const input = $(`parameter-${key}`);
       if (!input || !parameterInputComplete(input)) throw new Error("모든 치수를 올바르게 입력한 뒤 복사해 주세요.");
+      if (COLOR_PARAMETERS.has(key)) { if (input.value) parameters[key] = input.value; continue; }
       parameters[key] = TEXT_PARAMETERS.has(key) ? input.value.trim() : Number(input.value);
     }
     return { format: PARAMETER_FORMAT, version: 1, template: template.id, title: template.title, parameters };
@@ -1030,6 +1118,11 @@
       if (["format", "version", "template", "title", "parameters"].includes(key)) continue;
       if (!template.editable_fields.includes(key)) throw new Error(`${fieldNames[key] || key}은(는) ${template.title}에서 쓰지 않는 치수입니다.`);
       const definition = fields[key];
+      if (definition.kind === "color") {
+        if (typeof value !== "string" || (value && !Object.hasOwn(PALETTE, value))) throw new Error(`${fieldNames[key] || key}은(는) ${Object.values(PALETTE).map(([name]) => name).join("·")} 중 하나여야 합니다.`);
+        parameters[key] = value;
+        continue;
+      }
       if (definition.kind === "text") {
         if (typeof value !== "string" || !value.trim() || value.length > definition.maxLength) throw new Error(`${fieldNames[key] || key}은(는) 1~${definition.maxLength}자의 글자여야 합니다.`);
         parameters[key] = value.trim();
@@ -1103,7 +1196,8 @@
     const grid = $("parameter-fields");
     grid.replaceChildren();
     const grouped = new Set(fieldGroups.flatMap(([, , keys]) => keys));
-    const groups = [...fieldGroups, ["shape", "모양", template.editable_fields.filter((key) => !grouped.has(key))]];
+    // Colour comes last: it changes the print, not the shape.
+    const groups = [...fieldGroups.filter(([id]) => id !== "color"), ["shape", "모양", template.editable_fields.filter((key) => !grouped.has(key))], ...fieldGroups.filter(([id]) => id === "color")];
     for (const [groupId, groupLabel, keys] of groups) {
       const present = keys.filter((key) => template.editable_fields.includes(key) && fields[key]);
       if (!present.length) continue;
@@ -1129,6 +1223,8 @@
     if (event.target.dataset.parameter) { syncParameterSlider(event.target.dataset.parameter); manualModelChanged(); }
   });
   $("model-form").addEventListener("click", (event) => {
+    const swatch = event.target.closest("[data-color-for]");
+    if (swatch) { chooseColor(swatch.dataset.colorFor, swatch.dataset.colorValue); return; }
     const button = event.target.closest("[data-step-for]");
     if (button) stepParameter(button.dataset.stepFor, Number(button.dataset.direction));
   });
@@ -1223,7 +1319,7 @@
   function renderDownloads(job) {
     const area = $("download-links");
     area.replaceChildren();
-    const labels = { stl: "STL", step: "STEP", three_mf: "3MF 형상", source: "Python 소스", manifest: "생성 기록", prepared_three_mf: "설정 포함 3MF", sliced_three_mf: "슬라이스 3MF", slice: "슬라이스 결과" };
+    const labels = { stl: "STL", step: "STEP", three_mf: "3MF 형상", color_three_mf: "색상 3MF (받침·글자 필라멘트 지정)", source: "Python 소스", manifest: "생성 기록", prepared_three_mf: "설정 포함 3MF", sliced_three_mf: "슬라이스 3MF", slice: "슬라이스 결과" };
     const files = { ...(job.artifacts || {}) };
     if (["running", "interrupted"].includes(job.latest_slice?.phase)) { delete files.prepared_three_mf; delete files.sliced_three_mf; delete files.slice; }
     if (job.bundle_url) files.bundle = job.bundle_url;
@@ -1351,6 +1447,21 @@
     if (focus) { if (!focus.hasAttribute("tabindex") && focus.matches("h1,h2,h3")) focus.setAttribute("tabindex", "-1"); focus.focus({ preventScroll: true }); }
   }
 
+  function renderColorLegend(parts) {
+    const list = $("preview-colors");
+    const valid = Array.isArray(parts) ? parts.filter((part) => part && typeof part.label === "string") : [];
+    list.hidden = !valid.length;
+    list.replaceChildren(...valid.map((part) => {
+      const item = node("li", "preview-color");
+      const chip = node("span", "color-dot");
+      chip.setAttribute("aria-hidden", "true");
+      if (/^#[0-9a-f]{6}$/i.test(part.hex || "")) chip.style.setProperty("--swatch", part.hex);
+      const grams = Number.isFinite(part.volume_mm3) ? ` · 약 ${numberFormat.format(part.volume_mm3 * 1.24 / 1000)} g(PLA, 꽉 찬 기준)` : "";
+      item.append(chip, node("span", "", `${part.label}: ${part.name}${valid.length > 1 ? ` · 필라멘트 ${part.filament}` : ""}${grams}`));
+      return item;
+    }));
+  }
+
   function renderPrintability(review) {
     state.printabilityReview = review && Array.isArray(review.items) ? review : null;
     const section = $("printability-review");
@@ -1441,6 +1552,7 @@
     renderPrintability(result.printability);
     renderDownloads(job);
     viewer.setMesh(result.mesh, job.title, result.template);
+    renderColorLegend(result.color_parts);
     setBadge("preview-status", "실제 CAD 메시", "blue");
     $("preview-caption").textContent = "생성된 모델 · 드래그 또는 방향키로 조작";
     $("outcome-result").value = job.user_outcome?.result || "not_tested";
@@ -3937,6 +4049,21 @@
       });
     }
 
+    faceColor(index) {
+      // Chosen filament colours, else the neutral preview blue.
+      const parts = this.mesh.parts;
+      if (!Array.isArray(parts) || !parts.length) return [124, 160, 230];
+      const part = parts[this.mesh.face_parts?.[index] ?? 0] || parts[0];
+      return MeshViewer.rgb(part.hex) || [124, 160, 230];
+    }
+
+    static rgb(hex) {
+      const match = /^#([0-9a-f]{6})$/i.exec(hex || "");
+      if (!match) return null;
+      // Keep very light and very dark filaments readable under the shading.
+      return [0, 2, 4].map((offset) => Math.min(225, Math.max(48, parseInt(match[1].slice(offset, offset + 2), 16))));
+    }
+
     setMesh(mesh, title, template = null) {
       if (!mesh?.vertices?.length || !mesh.faces?.length || !this.context) {
         $("preview-empty").hidden = false;
@@ -4114,7 +4241,8 @@
       const raster = ctx.getImageData(0, 0, pixelWidth, pixelHeight);
       const pixels = raster.data;
       const depths = new Float32Array(pixelWidth * pixelHeight);
-      for (const face of this.mesh.faces) {
+      for (let faceIndex = 0; faceIndex < this.mesh.faces.length; faceIndex += 1) {
+        const face = this.mesh.faces[faceIndex];
         const [a, b, c] = face.map((index) => points[index]);
         const denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
         if (Math.abs(denominator) < 1e-9) continue;
@@ -4135,7 +4263,7 @@
         const rim = Math.max(0, 0.55 * viewRight + 0.25 * viewUp + 0.4 * viewDepth);
         const shade = Math.min(1.12, 0.6 + key * 0.42 + rim * 0.12);
         const overhangFace = this.showOverhangs && n[2] < -0.7072 && Math.min(pa[2], pb[2], pc[2]) > this.floor + 1e-6;
-        const base = overhangFace ? [240, 128, 80] : [124, 160, 230];
+        const base = overhangFace ? [240, 128, 80] : this.faceColor(faceIndex);
         const color = base.map((value) => Math.round(Math.min(255, value * shade)));
         const inverse = 1 / denominator;
         for (let y = minY; y <= maxY; y += 1) {
@@ -4315,6 +4443,7 @@
     state.slicerSavedText = "";
     state.modelCleanSignature = null;
     viewer.clear();
+    renderColorLegend(null);
     viewer.forgetPrevious();  // a model from another storage is not this one's previous version
     state.offersResult = null;
     renderProjectSource("generated-source", null);

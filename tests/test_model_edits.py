@@ -182,7 +182,7 @@ class ModelEditTests(unittest.TestCase):
     def test_ambiguous_mixed_unsupported_conflicting_and_zero_effect_requests_fail_closed(self):
         engine=self.engine()
         for text in ('조금 크게','전체를 2배','케이블 받침으로 바꿔줘','높이 35mm 그리고 손잡이 추가',
-                     '높이 35mm, 색은 빨강','높이 35mm, 높이 40mm','높이 30mm','케이블 지름 7mm',
+                     '높이 35mm, 무늬는 줄무늬','색은 청록','높이 35mm, 높이 40mm','높이 30mm','케이블 지름 7mm',
                      '가로 160mm 5mm','가로 160mm 또는 높이 35mm','가로 160인치','가로 160mm 알 수 없는 작업'):
             with self.subTest(text=text):
                 result=engine.plan_model_edit(text,BASE)
