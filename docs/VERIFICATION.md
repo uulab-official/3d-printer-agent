@@ -134,6 +134,14 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-17 v0.12.1 공개 릴리스
+
+[v0.12.1](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.12.1)을 2026-11-17 01:23:23 UTC에 `1ea9a0c`에서 게시했습니다.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/43994307197) Python **703개**·컨트롤러 **207개**·Chromium **84개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/43994307046)
+세 OS 각 **326개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/43994306976)가 모두 실행 차수 1로 통과했습니다. 공개 자산 7개를 인증 없이 내려받아
+wheel(262,422바이트, `cc87d1c849e0a70a…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며
+보고서가 모두 통과 상태임을 확인했습니다. 세 OS의 이름 키링 크기는 v0.12.0과 같습니다. wheel 안에 `result.json`은 없습니다.
+
 ## 2026-11-17 macOS 실제 Bambu Studio 슬라이싱 (로컬)
 
 공개된 v0.12.0 wheel을 새 가상환경에 설치해 사용자처럼 실행했습니다(macOS 27, arm64, Python 3.11, 설치된 Bambu Studio 02.09.01.70).
