@@ -6,6 +6,8 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
+Version 0.19 records reasons with a reported failure and suggests next steps, including reviewable, in-range model edits through the existing edit flow.
+
 Version 0.18 adds pause, resume and confirmed stop for a running print, limited to those three commands and to a pinned certificate, verified against the synthetic printer.
 
 Version 0.17 remembers a printer in the browser (host, serial, product name and certificate pin; never the access code) and follows a started print every 30 seconds until the printer reports finish, failure or idle, verified against the synthetic printer.

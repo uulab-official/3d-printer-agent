@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.0 — 2026-11-17
+
+- After a failed print ([docs/RECOVERY.md](docs/RECOVERY.md)): “출력 실패” now takes up to six reasons (first layer, warping, stringing, too tight, too loose, weak, blurry letters, under-extrusion, mid-print failure), stored with the user-reported outcome. `GET /api/jobs/{id}/recovery` returns general next steps per reason and, where geometry can help, an edit sentence (for example “여유 0.2mm 늘려줘”, “글자 크기 2mm 늘려줘”) that is offered only when the existing edit parser turns it into a valid in-range edit of the current model. “모델 수정 검토” fills the contextual edit and opens its review; nothing changes until the person applies it and regenerates. Reasons are refused for success/not-tested outcomes; older records open unchanged.
+
 ## 0.18.0 — 2026-11-17
 
 - Pause, resume and stop a running print from the progress panel. Buttons follow the printer's reported state (pause while running, resume while paused, stop while preparing, running or paused); stop asks for a second confirmation. `POST /api/printers/print/control` builds only these three commands, requires the previously pinned certificate, the printer state in which the command applies and `stop_confirmed` for a stop, then waits up to 15 seconds for the printer to report the new state. Commands sent for the current job are recorded on it without the access code. Verified against the synthetic printer in a real browser; not on a physical printer.

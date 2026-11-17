@@ -831,7 +831,10 @@
   }
 
   function outcomeHasUnsavedChanges() {
-    return Boolean(state.job) && ($("outcome-result").value !== (state.job.user_outcome?.result || "not_tested") || $("outcome-notes").value !== (state.job.user_outcome?.notes || ""));
+    if (!state.job) return false;
+    const savedReasons = JSON.stringify(state.job.user_outcome?.reasons || []);
+    const reasons = $("outcome-result").value === "failure" && typeof selectedOutcomeReasons === "function" ? JSON.stringify(selectedOutcomeReasons()) : "[]";
+    return $("outcome-result").value !== (state.job.user_outcome?.result || "not_tested") || $("outcome-notes").value !== (state.job.user_outcome?.notes || "") || reasons !== savedReasons;
   }
 
   function hasPendingWork() {
@@ -1559,6 +1562,8 @@
     $("preview-caption").textContent = "생성된 모델 · 드래그 또는 방향키로 조작";
     $("outcome-result").value = job.user_outcome?.result || "not_tested";
     $("outcome-notes").value = job.user_outcome?.notes || "";
+    syncOutcomeReasons(job.user_outcome?.reasons || []);
+    loadRecovery(job);
     state.modelCleanSignature = modelDraftSignature();
     hideNotice("outcome-feedback");
     $("slice-result").replaceChildren();
@@ -2591,14 +2596,90 @@
   $("prepare-studio-project").addEventListener("click", () => runStudioSlice(false));
   $("execute-studio-project").addEventListener("click", () => runStudioSlice(true));
 
+  // ---------------------------------------------------------------------------
+  // After a failed print: the person's reasons, and reviewable next steps.
+
+  function setFailureReasons(reasons) {
+    state.failureReasons = reasons && typeof reasons === "object" ? reasons : {};
+    $("outcome-reason-list").replaceChildren(...Object.entries(state.failureReasons).map(([code, label]) => {
+      const item = node("label", "outcome-reason");
+      const box = node("input");
+      box.type = "checkbox";
+      box.value = code;
+      box.dataset.outcomeReason = code;
+      item.append(box, node("span", "", label));
+      return item;
+    }));
+    syncOutcomeReasons(state.job?.user_outcome?.reasons || []);
+  }
+
+  function selectedOutcomeReasons() {
+    return [...document.querySelectorAll("[data-outcome-reason]")].filter((box) => box.checked).map((box) => box.value);
+  }
+
+  function syncOutcomeReasons(reasons) {
+    const wanted = new Set(Array.isArray(reasons) ? reasons : []);
+    for (const box of document.querySelectorAll("[data-outcome-reason]")) box.checked = wanted.has(box.value);
+    $("outcome-reasons").hidden = $("outcome-result").value !== "failure";
+  }
+
+  async function loadRecovery(job) {
+    const area = $("outcome-recovery");
+    const reasons = job?.user_outcome?.result === "failure" ? job.user_outcome.reasons || [] : [];
+    if (!job || !reasons.length) { area.hidden = true; area.replaceChildren(); return; }
+    const request = state.recoveryRequest = (state.recoveryRequest || 0) + 1;
+    try {
+      const plan = await api(`/api/jobs/${encodeURIComponent(job.id)}/recovery`);
+      if (request !== state.recoveryRequest || state.job?.id !== job.id) return;
+      renderRecovery(plan);
+    } catch (error) {
+      if (request === state.recoveryRequest) { area.hidden = false; area.replaceChildren(node("p", "field-help", error.message)); }
+    }
+  }
+
+  function renderRecovery(plan) {
+    const area = $("outcome-recovery");
+    const items = Array.isArray(plan?.items) ? plan.items : [];
+    area.replaceChildren(node("h3", "", "다음에 바꿔 볼 것"), ...items.map((item) => {
+      const block = node("div", "recovery-item");
+      block.dataset.reason = item.reason;
+      block.append(node("strong", "", item.label));
+      const list = node("ul", "");
+      for (const action of item.actions || []) list.append(node("li", "", action));
+      block.append(list);
+      if (item.model_edit?.text) {
+        const changes = (item.model_edit.changes || []).map((change) => `${fieldNames[change.field] || change.field} ${change.before} → ${change.after}`).join(", ");
+        const button = node("button", "button button-secondary", `모델 수정 검토: ${changes}`);
+        button.type = "button";
+        button.dataset.recoveryEdit = item.model_edit.text;
+        button.addEventListener("click", () => proposeRecoveryEdit(item.model_edit.text));
+        block.append(button);
+      }
+      return block;
+    }), node("p", "field-help", plan?.scope || ""));
+    area.hidden = !items.length;
+  }
+
+  function proposeRecoveryEdit(text) {
+    // Reuse the reviewed edit flow: the person still checks and applies the change.
+    const input = $("model-edit-text");
+    input.value = text;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    $("model-edit-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    $("model-edit-propose").click();
+  }
+
+  $("outcome-result").addEventListener("change", () => { $("outcome-reasons").hidden = $("outcome-result").value !== "failure"; });
   $("outcome-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!state.job) return;
     try {
       await withWorkflow($("save-outcome"), "기록 중", async () => {
         const jobId = state.job.id;
-        const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/outcome`, { result: $("outcome-result").value, notes: $("outcome-notes").value });
+        const result = $("outcome-result").value;
+        const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/outcome`, { result, notes: $("outcome-notes").value, reasons: result === "failure" ? selectedOutcomeReasons() : [] });
         state.job = job;
+        loadRecovery(job);
         showNotice("outcome-feedback", "직접 보고한 출력 결과를 기록했습니다. CAD 검증 상태와 별도로 보관합니다.", "success");
         renderJourney();
       });
@@ -5097,6 +5178,7 @@
       else renderTemplates();
       setDiscoveryCatalog(data.discovery, Boolean(state.discovery));
       setStoreGuide(data.store_guide);
+      setFailureReasons(data.failure_reasons);
       ["plan-button", "review-profile", "compare-offers"].forEach((id) => { $(id).disabled = false; });
       updateWorkflowControls();
       updateWorkspaceStatus();
