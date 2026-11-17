@@ -2663,6 +2663,8 @@
   function proposeRecoveryEdit(text) {
     // Reuse the reviewed edit flow: the person still checks and applies the change.
     const input = $("model-edit-text");
+    // The sentence is written for the rule engine; never hand it to an external model.
+    if ($("model-edit-mode").value !== "templates") $("model-edit-mode").value = "templates";
     input.value = text;
     input.dispatchEvent(new Event("input", { bubbles: true }));
     $("model-edit-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -3801,9 +3803,10 @@
     $("printer-saved").hidden = !items.length;
     $("printer-saved-list").replaceChildren(...items.map((item) => {
       const group = node("span", "saved-printer");
-      const choose = node("button", "purpose-button", `${item.label ? item.label + " · " : ""}${item.host}`);
+      // Name it by what the person entered; the printer-reported product name is only a hint.
+      const choose = node("button", "purpose-button", `${item.host} · …${item.serial.slice(-4)}`);
       choose.type = "button";
-      choose.title = `${item.serial}${item.pin ? " · 인증서 고정됨" : ""}`;
+      choose.title = `${item.serial}${item.label ? ` · 프린터 보고: ${item.label}` : ""}${item.pin ? " · 인증서 고정됨" : ""}`;
       choose.addEventListener("click", () => {
         $("printer-host").value = item.host;
         $("printer-serial").value = item.serial;
@@ -3833,7 +3836,9 @@
   // ---------------------------------------------------------------------------
   // Following a started print: re-read the printer's own report on a fixed interval.
 
-  const PRINT_FOLLOW_SECONDS = 30;
+  // Each read asks the printer for its full state; P1/A1 integrations warn against frequent full pushes,
+  // so progress is re-read every five minutes (and on request), without the version query.
+  const PRINT_FOLLOW_SECONDS = 300;
   const PRINT_FOLLOW_LIMIT_MS = 12 * 60 * 60 * 1000;
 
   function stopPrintFollow(message) {
@@ -3843,6 +3848,7 @@
     if (message && $("print-follow-status")) $("print-follow-status").textContent = message;
     if (message) updatePrintControls(null);
     if ($("print-follow-stop")) $("print-follow-stop").hidden = true;
+    if ($("print-follow-refresh")) $("print-follow-refresh").hidden = true;
   }
 
   function renderPrintFollow(printing, observedAt) {
@@ -3859,18 +3865,19 @@
     if (printing?.error_code_hex) parts.push(`오류 ${printing.error_code_hex}`);
     $("print-follow-text").textContent = parts.join(" · ");
     updatePrintControls(printing?.state);
-    $("print-follow-status").textContent = `${dateTime(observedAt)} 프린터 보고 · ${PRINT_FOLLOW_SECONDS}초마다 다시 읽습니다.`;
+    $("print-follow-status").textContent = `${dateTime(observedAt)} 프린터 보고 · ${Math.round(PRINT_FOLLOW_SECONDS / 60)}분마다 다시 읽습니다.`;
   }
 
   function updatePrintControls(printerState) {
     // Offer only commands the printer's reported state allows (see printer_send.CONTROL_FROM).
     const allowed = { pause: ["RUNNING"], resume: ["PAUSE"], stop: ["PREPARE", "SLICING", "RUNNING", "PAUSE"] };
-    const busy = Boolean(state.printControlPending);
+    const pending = state.printControlPending;
     for (const action of Object.keys(allowed)) {
       const button = $(`print-control-${action}`);
       if (!button) continue;
       button.hidden = !allowed[action].includes(printerState);
-      button.disabled = busy;
+      // A stop never waits behind a pending pause or resume.
+      button.disabled = Boolean(pending) && (action !== "stop" || pending === "stop");
     }
     if (!allowed.stop.includes(printerState) && $("print-stop-confirm")) $("print-stop-confirm").hidden = true;
   }
@@ -3884,12 +3891,12 @@
     const follow = state.printFollow;
     const target = currentPrinterTarget();
     const pin = state.printerPins[`${target.host}|${target.serial}`];
-    if (!follow || state.printControlPending) return;
+    if (!follow || (state.printControlPending && (action !== "stop" || state.printControlPending === "stop"))) return;
     if (!pin || !target.access_code) {
       $("print-control-feedback").textContent = "프린터 액세스 코드와 확인한 인증서가 있어야 제어할 수 있습니다.";
       return;
     }
-    state.printControlPending = true;
+    state.printControlPending = action;
     $("print-stop-confirm").hidden = true;
     updatePrintControls(follow.lastState);
     const labels = { pause: "일시정지", resume: "재개", stop: "정지" };
@@ -3906,7 +3913,7 @@
     } catch (error) {
       $("print-control-feedback").textContent = error.message;
     } finally {
-      state.printControlPending = false;
+      if (state.printControlPending === action) state.printControlPending = false;
       updatePrintControls(state.printFollow?.lastState);
     }
   }
@@ -3920,8 +3927,9 @@
       stopPrintFollow("프린터 입력이 바뀌었거나 액세스 코드가 없어 자동 갱신을 멈췄습니다.");
       return;
     }
-    const body = { ...target };
+    const body = { ...target, include_version: false };
     if (state.printerPins[`${target.host}|${target.serial}`]) body.pinned_certificate_sha256 = state.printerPins[`${target.host}|${target.serial}`];
+    if (follow.timer) { clearTimeout(follow.timer); follow.timer = null; }
     try {
       const result = await api("/api/printers/status", body);
       if (state.printFollow !== follow || !follow.active) return;
@@ -3932,8 +3940,10 @@
         renderPrintFollow(result.print, result.observed_at);
         const state_ = result.print?.state;
         const sameJob = !follow.jobName || result.print?.job_name === follow.jobName;
-        if (["FINISH", "FAILED", "IDLE"].includes(state_) && sameJob) {
-          const done = state_ === "FINISH" ? "프린터가 완료를 보고했습니다. 출력물을 확인하고 아래에 결과를 기록해 주세요." : state_ === "FAILED" ? "프린터가 실패를 보고했습니다. 프린터 화면을 확인하고 결과를 기록해 주세요." : "프린터가 대기 상태로 돌아갔습니다.";
+        // A finished, failed or idle printer is no longer running this job, whatever name it reports.
+        if (["FINISH", "FAILED", "IDLE"].includes(state_)) {
+          const done = !sameJob ? `프린터가 “${result.print?.state_label || state_}” 상태이며 이 작업 이름을 보고하지 않았습니다. 프린터 화면을 확인하고 결과를 기록해 주세요.`
+            : state_ === "FINISH" ? "프린터가 완료를 보고했습니다. 출력물을 확인하고 아래에 결과를 기록해 주세요." : state_ === "FAILED" ? "프린터가 실패를 보고했습니다. 프린터 화면을 확인하고 결과를 기록해 주세요." : "프린터가 대기 상태로 돌아갔습니다.";
           stopPrintFollow(done);
           showNotice("print-send-feedback", done, state_ === "FINISH" ? "success" : "warning");
           return;
@@ -3963,6 +3973,10 @@
     text.id = "print-follow-text";
     const status = node("small", "field-help", "");
     status.id = "print-follow-status";
+    const refresh = node("button", "text-button", "지금 다시 읽기");
+    refresh.id = "print-follow-refresh";
+    refresh.type = "button";
+    refresh.addEventListener("click", () => { if (state.printFollow?.active) pollPrintFollow(); });
     const stop = node("button", "text-button", "자동 갱신 멈추기");
     stop.id = "print-follow-stop";
     stop.type = "button";
@@ -3992,7 +4006,7 @@
     const controlFeedback = node("p", "field-help", "");
     controlFeedback.id = "print-control-feedback";
     controlFeedback.setAttribute("role", "status");
-    area.append(node("h3", "", "출력 진행"), track, text, status, controls, confirm, controlFeedback, stop);
+    area.append(node("h3", "", "출력 진행"), track, text, status, controls, confirm, controlFeedback, refresh, stop);
     $("print-send-result").append(area);
     state.printFollow = { active: true, timer: null, startedAt: Date.now(), host: target.host, serial: target.serial, jobName: result.subtask || result.printer?.job_name || null };
     state.printFollow.lastState = result.printer?.state || null;
@@ -5048,6 +5062,7 @@
       const details = node("details", "help-details");
       details.open = true;
       details.append(node("summary", "", draft.title || "이전 작업의 출력 메모"), node("p", "", `원래 저장 위치: ${draft.storage_path}`), node("p", "", `작업 ID: ${draft.job_id} · ${labels[draft.result] || draft.result}`), node("pre", "", draft.notes || "텍스트 메모 없음"));
+      if (draft.reasons?.length) details.append(node("p", "", `고른 실패 원인: ${draft.reasons.map((code) => state.failureReasons?.[code] || code).join(", ")}`));
       const dismiss = node("button", "button button-secondary", "메모를 옮겼어요 · 보관 해제");
       dismiss.type = "button";
       dismiss.addEventListener("click", () => {
@@ -5061,7 +5076,8 @@
 
   function retainOutcomeDraft(storagePath = state.storage?.path || "저장 위치 미확인") {
     if (!outcomeHasUnsavedChanges()) return;
-    const draft = { job_id: state.job.id, title: state.job.title, storage_path: storagePath, result: $("outcome-result").value, notes: $("outcome-notes").value };
+    const draft = { job_id: state.job.id, title: state.job.title, storage_path: storagePath, result: $("outcome-result").value, notes: $("outcome-notes").value,
+      reasons: $("outcome-result").value === "failure" && typeof selectedOutcomeReasons === "function" ? selectedOutcomeReasons() : [] };
     if (!state.retainedOutcomeDrafts.some(item => JSON.stringify(item) === JSON.stringify(draft))) state.retainedOutcomeDrafts.push(draft);
     renderRetainedOutcomes();
   }

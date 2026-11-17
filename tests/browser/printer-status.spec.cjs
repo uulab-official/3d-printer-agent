@@ -113,7 +113,9 @@ test('a remembered printer survives a reload with its pin but never the access c
   await page.locator('#printer-remember').check();
   await page.locator('#printer-check').click();
   await expect(page.locator('#printer-saved')).toBeVisible();
-  await expect(page.locator('#printer-saved-list')).toContainText('Synthetic P1S');
+  // Named by what the person entered; the printer-reported product name is only a hint.
+  await expect(page.locator('#printer-saved-list')).toContainText('127.0.0.1 · …R001');
+  await expect(page.locator('#printer-saved-list button').first()).toHaveAttribute('title', /프린터 보고: Synthetic P1S/);
   const stored = await page.evaluate(() => localStorage.getItem('ppa.printers.v1'));
   expect(stored).toContain(fingerprint);
   expect(stored).not.toContain(CODE);

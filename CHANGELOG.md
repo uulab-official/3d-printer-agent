@@ -3,6 +3,7 @@
 ## 0.19.0 — 2026-11-17
 
 - After a failed print ([docs/RECOVERY.md](docs/RECOVERY.md)): “출력 실패” now takes up to six reasons (first layer, warping, stringing, too tight, too loose, weak, blurry letters, under-extrusion, mid-print failure), stored with the user-reported outcome. `GET /api/jobs/{id}/recovery` returns general next steps per reason and, where geometry can help, an edit sentence (for example “여유 0.2mm 늘려줘”, “글자 크기 2mm 늘려줘”) that is offered only when the existing edit parser turns it into a valid in-range edit of the current model. “모델 수정 검토” fills the contextual edit and opens its review; nothing changes until the person applies it and regenerates. Reasons are refused for success/not-tested outcomes; older records open unchanged.
+- Review fixes for 0.17–0.18: print progress is re-read every five minutes instead of 30 seconds and without the version query (`include_version: false`), with a “지금 다시 읽기” button, because P1/A1 integrations warn against frequent full-state pushes; following ends on any finish/failure/idle report even when the printer does not repeat the job name; a stop no longer waits behind a pending pause/resume (they use a separate lock and the stop button stays enabled); retained unsaved outcome drafts keep their failure reasons; recovery edits always use the rule engine, never an external model; remembered printers are named by the entered host and serial, with the printer-reported product name only as a hint.
 
 ## 0.18.0 — 2026-11-17
 

@@ -51,6 +51,8 @@ READY_STATES = {'IDLE', 'FINISH', 'FAILED'}
 STARTED_STATES = {'PREPARE', 'SLICING', 'RUNNING'}
 _PLATE_GCODE = re.compile(r'Metadata/plate_(\d{1,3})\.gcode')
 _SEND_LOCK = threading.Lock()
+# Pause/resume serialize with each other; a stop never waits for them.
+_CONTROL_LOCK = threading.Lock()
 
 
 class SendError(ValueError):
@@ -397,8 +399,9 @@ def control(host, serial, access_code, pinned_sha256, action, *, mqtt_port=None,
         raise SendError('먼저 프린터 상태를 읽어 인증서를 확인한 뒤에 제어할 수 있습니다.')
     host, serial, pinned = validate_target(host, serial, access_code, pinned_sha256)
     observe_seconds = CONTROL_OBSERVE_SECONDS if observe_seconds is None else observe_seconds
-    if not _SEND_LOCK.acquire(blocking=False):
-        raise SendError('다른 프린터 명령이 진행 중입니다.')
+    lock = None if action == 'stop' else _CONTROL_LOCK
+    if lock is not None and not lock.acquire(blocking=False):
+        raise SendError('다른 일시정지·재개 명령이 진행 중입니다. 정지는 언제든 보낼 수 있습니다.')
     label = CONTROL_LABELS[action]
     result = {'schema_version': 1, 'action': action, 'target': {'host': host, 'serial': serial}, 'status': 'blocked',
               'command_sent': False, 'state_before': None, 'printer': None, 'detail': '', 'requested_at': _now()}
@@ -441,7 +444,8 @@ def control(host, serial, access_code, pinned_sha256, action, *, mqtt_port=None,
         return result
     finally:
         result['finished_at'] = _now()
-        _SEND_LOCK.release()
+        if lock is not None:
+            lock.release()
 
 
 # ---------------------------------------------------------------------------

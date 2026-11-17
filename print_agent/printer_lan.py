@@ -346,17 +346,20 @@ def _reserve(host, serial):
 
 
 def read_status(host, serial, access_code, *, pinned_sha256=None, timeout=STATUS_TIMEOUT_SECONDS,
-                report_window=REPORT_WINDOW_SECONDS, port=None):
-    """Connect once, ask for the current state, and disconnect. Never raises for network outcomes."""
+                report_window=REPORT_WINDOW_SECONDS, port=None, include_version=True):
+    """Connect once, ask for the current state, and disconnect. Never raises for network outcomes.
+
+    ``include_version=False`` skips the module/firmware query for repeated progress reads."""
     host, serial, pinned_sha256 = validate_target(host, serial, access_code, pinned_sha256)
     _reserve(host, serial)
     try:
-        return _read_status(host, serial, access_code, pinned_sha256, timeout, report_window, port or MQTT_PORT)
+        return _read_status(host, serial, access_code, pinned_sha256, timeout, report_window, port or MQTT_PORT,
+                            include_version)
     finally:
         _STATUS_LOCK.release()
 
 
-def _read_status(host, serial, access_code, pinned, timeout, report_window, port):
+def _read_status(host, serial, access_code, pinned, timeout, report_window, port, include_version=True):
     deadline = time.monotonic() + timeout
     certificate = None
     try:
@@ -386,14 +389,14 @@ def _read_status(host, serial, access_code, pinned, timeout, report_window, port
                     return _result(host, serial, 'tls_failed', certificate=certificate)
                 if pinned is not None and fingerprint != pinned:
                     return _result(host, serial, 'certificate_changed', certificate=certificate)
-                return _session(sock, host, serial, access_code, certificate, deadline, report_window)
+                return _session(sock, host, serial, access_code, certificate, deadline, report_window, include_version)
     except _Stop as stop:
         return _result(host, serial, stop.state, certificate=certificate)
     except (OSError, ssl.SSLError):
         return _result(host, serial, 'protocol_error' if certificate else 'tls_failed', certificate=certificate)
 
 
-def _session(sock, host, serial, access_code, certificate, deadline, report_window):
+def _session(sock, host, serial, access_code, certificate, deadline, report_window, include_version=True):
     client_id = 'print-agent-' + secrets.token_hex(6)
     sock.sendall(_connect_packet(client_id, MQTT_USERNAME, access_code))
     try:
@@ -406,7 +409,8 @@ def _session(sock, host, serial, access_code, certificate, deadline, report_wind
         raise _Stop('access_rejected')
     report_topic = f'device/{serial}/report'
     sock.sendall(_subscribe_packet(1, report_topic))
-    for payload in request_payloads():
+    payloads = request_payloads()
+    for payload in payloads if include_version else payloads[:1]:
         sock.sendall(_publish_packet(f'device/{serial}/request', payload))
     subscribed, merged, info, received = False, {}, None, False
     window_end = None
@@ -444,7 +448,7 @@ def _session(sock, host, serial, access_code, certificate, deadline, report_wind
             if received and window_end is None:
                 # Collect follow-up deltas/version reply for a short bounded window.
                 window_end = time.monotonic() + report_window
-            if 'gcode_state' in merged and info is not None:
+            if 'gcode_state' in merged and (info is not None or not include_version):
                 break
     try:
         sock.sendall(_packet(14, 0, b''))

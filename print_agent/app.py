@@ -264,6 +264,7 @@ class PrinterStatusPayload(StrictPayload):
     serial: str = Field(max_length=64)
     access_code: str = Field(max_length=64)
     pinned_certificate_sha256: str | None = Field(default=None, max_length=64)
+    include_version: bool = True
 
 
 class PrintReviewPayload(PrinterStatusPayload):
@@ -429,7 +430,8 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.post('/api/printers/status')
     def printer_status(payload: PrinterStatusPayload):
         return printer_lan.read_status(payload.host, payload.serial, payload.access_code,
-                                       pinned_sha256=payload.pinned_certificate_sha256)
+                                       pinned_sha256=payload.pinned_certificate_sha256,
+                                       include_version=payload.include_version)
 
     print_reviews = printer_send.ReviewStore()
     app.state.print_reviews = print_reviews

@@ -309,6 +309,28 @@ class ControlTests(unittest.TestCase):
         self.assertEqual((event['type'], event['message']), ('printer_control', 'pause:applied'))
         self.assertNotIn(CODE, json.dumps(event))
 
+    def test_stop_never_waits_behind_a_pending_pause_or_resume(self):
+        # Simulate a pause/resume still watching for its new state.
+        self.assertTrue(printer_send._CONTROL_LOCK.acquire(blocking=False))
+        try:
+            blocked = self.control('pause')
+            self.assertEqual(blocked.status_code, 422)
+            self.assertIn('정지는 언제든', blocked.json()['detail'])
+            stopped = self.control('stop', stop_confirmed=True).json()
+            self.assertEqual((stopped['status'], stopped['printer']['state']), ('applied', 'FAILED'))
+        finally:
+            printer_send._CONTROL_LOCK.release()
+
+    def test_progress_reads_can_skip_the_version_query(self):
+        printer_lan._LAST_STATUS.clear()
+        before = len(self.simulator.requests)
+        with patch.object(printer_lan, 'MQTT_PORT', self.mqtt):
+            response = self.client.post('/api/printers/status', headers=self.headers, json={
+                'host': '127.0.0.1', 'serial': SERIAL, 'access_code': CODE, 'pinned_certificate_sha256': self.pin,
+                'include_version': False})
+        self.assertEqual(response.json()['connection']['state'], 'reporting')
+        self.assertEqual(self.simulator.requests[before:], ['pushall'])
+
     def test_only_three_command_bodies_exist(self):
         for action in ('pause', 'resume', 'stop'):
             body = json.loads(printer_send.control_command(action))
