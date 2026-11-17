@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.0 — 2026-11-17
+
+- Caliper measurements with an outcome: the outcome card takes up to three X/Y/Z samples (API: up to five) and a tolerance declared before printing. The stored, user-measured review compares them with the job's CAD size: per-axis mean and maximum deviation, spread between samples, and whether every sample is within the tolerance. It notes when fewer than three samples were measured and when X/Y come out systematically small (suggesting more clearance or the slicer's X-Y compensation). Measurements are refused for “not printed” outcomes and without samples; they are never treated as printer qualification.
+- docs/FIELD_QUALIFICATION.md (merged from PR #2 with its 300-case placement oracle test) now reflects the LAN send and print controls and points Gate B measurements to this record.
+
 ## 0.23.0 — 2026-11-17
 
 - Keyboard and screen-reader behaviour for the radio groups added in 0.14–0.16 (colour swatches, store material and kind filters): each group is one Tab stop (roving `tabindex`), Arrow keys move and select the choice (wrapping), Home/End jump to the ends, and the focused choice has a visible outline. Store filter chips now expose only `aria-checked` (not `aria-pressed`, which is invalid on `role="radio"`), with the same selected styling.
