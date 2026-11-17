@@ -373,8 +373,9 @@ def qualify(args, report):
               'lean_angle': 65, 'device_thickness': 12, 'lip_height': 12, 'fit_clearance': 1}, (70, 80, 90)),
             # Text width depends on the platform's system font, so it is compared with the
             # job's own reported size; the plate-plus-letter height is fixed at 4 mm.
+            # White plate with red letters also produces the two-filament colour 3MF.
             ({'template': 'name_tag', 'text': 'MINSU', 'text_size': 12, 'text_depth': 2, 'wall': 3, 'bottom': 2,
-              'hole_diameter': 4}, None),
+              'hole_diameter': 4, 'color': 'white', 'accent_color': 'red'}, None),
         ]
         models = []
         for payload, dimensions in requests:
@@ -400,7 +401,8 @@ def qualify(args, report):
                 status, content, _ = request(server.base, job['artifacts'][artifact_kind])
                 check('download_receipt_' + kind + '_' + artifact_kind,
                       status == 200 and len(content) == metadata['bytes'] and sha256(content) == metadata['sha256'])
-                filename = {'stl': 'model.stl', 'step': 'model.step', 'three_mf': 'model.3mf', 'source': 'model.py'}[artifact_kind]
+                filename = {'stl': 'model.stl', 'step': 'model.step', 'three_mf': 'model.3mf', 'source': 'model.py',
+                            'color_three_mf': 'model-colors.3mf'}[artifact_kind]
                 (downloads / f'{kind}-{filename}').write_bytes(content)
             shape = cq.importers.importStep(str(downloads / f'{kind}-model.step')).val()
             check('step_valid_solid_' + kind, shape.isValid() and len(shape.Solids()) == 1 and shape.Volume() > 0)
@@ -416,10 +418,49 @@ def qualify(args, report):
                                for axis in 'xyz'}
                 check('3mf_dimensions_' + kind, all(abs(mesh_bounds[axis] - expected) < 1e-5
                                                   for axis, expected in zip('xyz', dimensions)))
+            if kind == 'name_tag':
+                # Plate (filament 1) and letters (filament 2) as parts of one Studio object.
+                parts = job['result'].get('color_parts') or []
+                with zipfile.ZipFile(downloads / 'name_tag-model-colors.3mf') as archive:
+                    colour_model = ET.fromstring(archive.read('3D/3dmodel.model'))
+                    colour_config = ET.fromstring(archive.read('Metadata/model_settings.config'))
+                    colour_crc = archive.testzip() is None
+                part_meshes = colour_model.findall('.//{*}object/{*}mesh')
+                extruders = [part.find("metadata[@key='extruder']").get('value') for part in colour_config.iter('part')]
+                colour_vertices = [vertex for mesh in part_meshes for vertex in mesh.findall('.//{*}vertex')]
+                colour_bounds = {axis: max(float(v.attrib[axis]) for v in colour_vertices) - min(float(v.attrib[axis]) for v in colour_vertices)
+                                 for axis in 'xyz'}
+                check('color_parts_name_tag', [(p.get('key'), p.get('color'), p.get('filament')) for p in parts]
+                      == [('base', 'white', 1), ('letters', 'red', 2)]
+                      and abs(sum(p['volume_mm3'] for p in parts) - job['result']['volume_mm3']) < 1e-3
+                      and job['result']['parameters'].get('accent_color') == 'red', json.dumps(parts)[:300])
+                check('color_3mf_two_filament_parts_name_tag', colour_crc and len(part_meshes) == 2 and extruders == ['1', '2']
+                      and all(abs(colour_bounds[axis] - expected) < 1e-4 for axis, expected in zip('xyz', dimensions)),
+                      json.dumps({'meshes': len(part_meshes), 'extruders': extruders, 'bounds': colour_bounds}))
             models.append({'template': kind, 'id': job['id'], 'expected_dimensions_mm': dict(zip('xyz', dimensions)),
                            'mesh_vertices': len(vertices), 'artifacts': manifest['artifacts'],
                            'source': job.get('design_source')})
         report['models'] = models
+
+        # Sending to a printer: an installed server must refuse a job without a verified
+        # slice, an unknown review and a missing bed confirmation, never echoing the code.
+        unsliced = {'id': models[0]['id']}  # generated, not sliced (no native slicer runs here)
+        status, content, _ = request(server.base, '/api/printers/print/review', method='POST', token=token,
+                                     payload={'job_id': unsliced['id'], 'host': '127.0.0.1', 'serial': '01S00QUALIFY0001',
+                                              'access_code': probe_code})
+        check('printer_send_requires_verified_slice', status == 422 and probe_code.encode() not in content
+              and '슬라이스' in json.loads(content).get('detail', ''), f'HTTP {status}')
+        status, content, _ = request(server.base, '/api/printers/print/start', method='POST', token=token,
+                                     payload={'review_token': 'q' * 32, 'access_code': probe_code, 'bed_clear_confirmed': True})
+        check('printer_send_unknown_review_is_refused', status == 422 and probe_code.encode() not in content
+              and '만료' in json.loads(content).get('detail', ''), f'HTTP {status}')
+        status, content, _ = request(server.base, '/api/printers/print/start', method='POST', token=token,
+                                     payload={'review_token': 'q' * 32, 'access_code': probe_code, 'bed_clear_confirmed': False})
+        check('printer_send_requires_bed_confirmation_without_echo', status == 422 and probe_code.encode() not in content,
+              f'HTTP {status}')
+        unsliced_record = get_json(server, '/api/jobs/' + unsliced['id'])
+        check('printer_send_refusals_record_nothing', not any(event['type'] == 'printer_send' for event in unsliced_record['events']))
+
 
         # A supported source format is not a sufficient build-volume review.
         # Exercise actual installed HTTP boundaries and verify that no partial
