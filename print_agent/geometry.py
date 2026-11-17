@@ -35,6 +35,10 @@ def template_catalog() -> list[dict]:
          "description": "둥근 받침판 위에 글자를 올리고 고리 구멍을 둔 키링입니다. 가로·세로는 글자 길이에 맞춰 정해집니다.",
          "defaults": {"text": "MINSU", "text_size": 12, "text_depth": 2, "wall": 3, "bottom": 2, "hole_diameter": 4},
          "editable_fields": ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"]},
+        {"id": "wall_hook", "title": "벽걸이 후크",
+         "description": "나사 구멍 두 개가 있는 등판과 앞으로 나온 걸이, 끝 턱으로 된 후크입니다. 놓인 방향 그대로 서포트 없이 출력합니다.",
+         "defaults": {"width": 20, "depth": 35, "height": 50, "wall": 4, "bottom": 4, "hole_diameter": 4, "lip_height": 10},
+         "editable_fields": ["width", "depth", "height", "wall", "bottom", "hole_diameter", "lip_height"]},
         {"id": "phone_stand", "title": "휴대폰 거치대",
          "description": "앞턱과 기울어진 등판 사이에 휴대폰을 세워 두는 거치대입니다.",
          "defaults": {"width": 70, "depth": 80, "height": 90, "wall": 4, "bottom": 4,
@@ -118,6 +122,21 @@ def _build_solid(p: dict) -> cq.Shape:
         body = plate.cut(ring)
         offset = (tab + margin - letter_box.xmin, margin + (plate_d - 2 * margin - letter_box.ylen) / 2 - letter_box.ymin, bottom)
         body = body.union(letters.translate(offset))
+    elif p["template"] == "wall_hook":
+        # Printed as modelled: the arm lies on the bed, the back plate and tip stand up (no supports).
+        arm = cq.Workplane("XY").box(w, d, bottom, centered=False)
+        back = cq.Workplane("XY").box(w, wall, h, centered=False)
+        tip = cq.Workplane("XY").box(w, wall, bottom + p["lip_height"], centered=False).translate((0, d - wall, 0))
+        body = arm.union(back).union(tip)
+        # Teardrop screw holes: the top closes at 45° so the horizontal hole prints without support.
+        import math
+        radius = p["hole_diameter"] / 2
+        tangent = radius * math.sqrt(0.5)
+        for z in (bottom + (h - bottom) * 0.45, bottom + (h - bottom) * 0.8):
+            screw = cq.Workplane("XZ").workplane(offset=1).center(w / 2, z).circle(radius).extrude(-(wall + 2))
+            point = (cq.Workplane("XZ").workplane(offset=1).center(w / 2, z)
+                     .polyline([(-tangent, tangent), (0, radius * math.sqrt(2)), (tangent, tangent)]).close().extrude(-(wall + 2)))
+            body = body.cut(screw.union(point))
     elif p["template"] == "phone_stand":
         import math
         body = cq.Workplane("XY").box(w, d, bottom, centered=False)
@@ -330,6 +349,8 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
         warnings.append("위가 열린 케이블 받침입니다. 스냅 고정이나 케이블 유지력을 보장하지 않습니다.")
     elif spec.template == "name_tag":
         warnings.append(f"글꼴 {_name_tag_font()['label']}로 글자를 만들었습니다. 운영체제마다 정해진 굵은 글꼴(Arial Bold·DejaVu Sans Bold)을 쓰므로 다른 PC에서는 글자 모양이 조금 다를 수 있고, 고리의 강도는 보장하지 않습니다.")
+    elif spec.template == "wall_hook":
+        warnings.append("걸 물건의 무게와 벽 재질에 맞는 나사·앵커를 쓰세요. 후크의 하중이나 벽 고정력은 보장하지 않습니다.")
     elif spec.template == "phone_stand":
         warnings.append("기기 두께와 여유로 홈 폭을 정합니다. 실제 기기·케이스 두께와 넘어짐·충전 케이블 위치는 직접 확인하세요.")
     elif spec.template == "magnet_frame":

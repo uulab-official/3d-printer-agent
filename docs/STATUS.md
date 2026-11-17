@@ -6,6 +6,8 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
+Version 0.20 adds a sixth template, a wall hook with teardrop screw holes that prints without supports, chosen by requests such as “헤드폰 걸이”.
+
 Version 0.19 records reasons with a reported failure and suggests next steps, including reviewable, in-range model edits through the existing edit flow. Published as [v0.19.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.19.0) on 2026-11-17 from `554e120`, together with the 0.17 and 0.18 changes.
 
 Version 0.18 adds pause, resume and confirmed stop for a running print, limited to those three commands and to a pinned certificate, verified against the synthetic printer.

@@ -20,6 +20,7 @@ DEFAULTS = {
     'magnet_frame': {'width':65,'depth':65,'height':7,'wall':2,'bottom':2,'inset_diameter':52,'inset_depth':2,'fit_clearance':0.3},
     'phone_stand': {'width':70,'depth':80,'height':90,'wall':4,'bottom':4,'lean_angle':65,'device_thickness':12,'lip_height':12,'fit_clearance':1},
     'name_tag': {'text':'MINSU','text_size':12,'text_depth':2,'wall':3,'bottom':2,'hole_diameter':4},
+    'wall_hook': {'width':20,'depth':35,'height':50,'wall':4,'bottom':4,'hole_diameter':4,'lip_height':10},
 }
 COLOR_WORDS = {
     'white': r'흰색|하얀색|하얀|하양|흰|화이트|white',
@@ -91,7 +92,14 @@ def _with_colors(result: dict, colors: dict) -> dict:
 
 
 KEYCHAIN_WORDS = ('키링','키홀더','열쇠고리','이름표','네임택','name tag','keychain','key ring')
-LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대','name_tag':'이름 키링'}
+LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대','name_tag':'이름 키링','wall_hook':'벽걸이 후크'}
+HOOK_WORDS = ('후크','훅','벽걸이','걸이','hook','hanger')
+# Starting sizes for what is hung; the person's own numbers always win.
+HOOK_RECIPES = (
+    (('헤드폰','헤드셋','headphone'), {'width':30,'depth':50,'height':60,'lip_height':12}, '헤드폰 걸이는 폭 30 mm, 걸이 길이 50 mm로 시작합니다.'),
+    (('가방','백팩','bag'), {'width':30,'depth':45,'height':60,'wall':5,'bottom':6,'hole_diameter':5}, '가방 걸이는 두께를 늘려(등판 5 mm, 걸이 6 mm) 시작합니다.'),
+    (('수건','타월','towel'), {'width':25,'depth':45,'height':50,'lip_height':12}, '수건 걸이는 걸이 길이 45 mm로 시작합니다.'),
+)
 NUMBER = r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'
 # Everyday names mapped to the closest supported template. Each starting size is
 # announced in the plan; the user's own numbers always override it.
@@ -133,6 +141,7 @@ FIELD_LABELS = {
 TEMPLATE_FIELD_LABELS = {
     'phone_stand': {'wall':'등판·앞턱 두께','fit_clearance':'홈 여유'},
     'name_tag': {'wall':'테두리 여백','bottom':'받침 두께'},
+    'wall_hook': {'depth':'걸이 길이','wall':'등판·끝 턱 두께','bottom':'걸이 두께','hole_diameter':'나사 구멍 지름','lip_height':'끝 턱 높이'},
 }
 
 
@@ -188,8 +197,12 @@ def _plan_uncolored(text: str) -> dict:
     lowered=text.lower()
     if any(word in lowered for word in KEYCHAIN_WORDS):
         return _plan_name_tag(text)
-    if any(word in lowered for word in ('뚜껑','경첩','방수','피규어','dragon','hinge','lid','손잡이','handle','나사','screw','곡면','둥근 모서리','rounded corner','구멍')):
-        return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임, 휴대폰 거치대를 지원합니다. 지원 템플릿으로 바꿀까요?')
+    hook_requested = any(word in lowered for word in HOOK_WORDS) and not any(word in lowered for word in STAND_WORDS)
+    unsupported = ('뚜껑','경첩','방수','피규어','dragon','hinge','lid','손잡이','handle','곡면','둥근 모서리','rounded corner')
+    if not hook_requested:
+        unsupported += ('나사','screw','구멍')  # a hook has screw holes of its own
+    if any(word in lowered for word in unsupported):
+        return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크를 지원합니다. 지원 템플릿으로 바꿀까요?')
     for words,message in UNSUPPORTED_ITEMS:
         if any(word in lowered for word in words):
             return _question(message)
@@ -199,10 +212,12 @@ def _plan_uncolored(text: str) -> dict:
     # Words that name a template win; an everyday item only supplies starting sizes
     # when it agrees with that template, or when no template word was written.
     other_template=any(word in lowered for word in ('케이블','cable','수납','트레이','정리함','프레임','액자'))
-    if stand_requested and (DEVICE_PATTERN.search(lowered) or not (other_template or any(word in lowered for word in OTHER_HOLDER_WORDS))):
+    if hook_requested and not other_template:
+        template='wall_hook'
+    elif stand_requested and (DEVICE_PATTERN.search(lowered) or not (other_template or any(word in lowered for word in OTHER_HOLDER_WORDS))):
         template='phone_stand'
     elif stand_requested and any(word in lowered for word in OTHER_HOLDER_WORDS):
-        return _question('어떤 물건을 올릴 거치대인가요? 이 버전은 휴대폰·태블릿 거치대만 만듭니다. 무게를 받치는 거치대는 지원하지 않습니다.')
+        return _question('어떤 물건을 올릴 거치대인가요? 이 버전은 휴대폰·태블릿 거치대만 만듭니다. 헤드폰·가방처럼 거는 물건은 “헤드폰 걸이”처럼 벽걸이 후크로 만들 수 있습니다.')
     elif any(word in lowered for word in ('프레임','마그넷','magnet','frame')):
         template='magnet_frame'
     elif any(word in lowered for word in ('케이블','cable','콤','comb')):
@@ -213,13 +228,15 @@ def _plan_uncolored(text: str) -> dict:
         template=None
     recipe=next(((recipe_template,overrides,note) for words,recipe_template,overrides,note in ITEM_RECIPES
                  if any(word in lowered for word in words) and template in (None,recipe_template)),None)
+    if template=='wall_hook':
+        recipe=next((('wall_hook',overrides,note) for words,overrides,note in HOOK_RECIPES if any(word in lowered for word in words)),None)
     notes=[]
     recipe_defaults={}
     if recipe:
         template,recipe_defaults,note=recipe
         notes.append(note)
     elif template is None:
-        return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임, 휴대폰 거치대 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
+        return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
     if template=='tray' and any(word in lowered for word in ('원형','동그란','원통','circular','round','cylinder')):
         return _question('수납함 템플릿은 직사각형입니다. 원형 수납함은 아직 지원하지 않습니다. 직사각형으로 만들까요?')
     if re.search(r'\b(inch|inches)\b|인치|\d\s*m\b',lowered):
@@ -236,8 +253,11 @@ def _plan_uncolored(text: str) -> dict:
         'inset_depth':r'(?:인셋\s*깊이|포켓\s*깊이|inset\s*depth)',
         'fit_clearance':r'(?:여유|공차|clearance)',
         'device_thickness':r'(?:기기|폰|휴대폰|스마트폰|케이스)\s*(?:포함\s*)?두께',
-        'lip_height':r'(?:앞\s*턱(?:\s*높이)?|턱\s*높이)',
+        'lip_height':r'(?:앞\s*턱(?:\s*높이)?|끝\s*턱(?:\s*높이)?|턱\s*높이)',
     }
+    if template=='wall_hook':
+        aliases.update({'hole_diameter':r'(?:나사\s*)?구멍\s*(?:지름|크기)?', 'depth':r'(?:걸이\s*(?:길이|깊이)|세로|깊이|depth)',
+                        'bottom':r'(?:걸이\s*두께|바닥\s*두께|바닥|bottom)'})
     occupied=[]
     # Parse the qualified dimensions first so "인셋 깊이" is not also overall depth.
     for field,pattern in sorted(aliases.items(),key=lambda item:item[0] in ('width','depth','height')):

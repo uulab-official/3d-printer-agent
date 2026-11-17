@@ -404,3 +404,22 @@ test('a reported failure with reasons offers next steps and a reviewed model fix
   expect(fixed.result.parameters.fit_clearance).toBe(0.5);
   expect(fixed.model_edit.changes).toEqual([{ field: 'fit_clearance', before: 0.3, after: 0.5 }]);
 });
+
+test('a wall hook from a request prints without supports and edits by its own words', async ({ page }) => {
+  await page.locator('#request-text').fill('헤드폰 걸이 만들어줘');
+  await page.locator('#plan-button').click();
+  await expect(page.locator('#parameter-depth')).toHaveValue('50');
+  await expect(page.locator('[data-field="depth"] label')).toContainText('걸이 길이');
+  await expect(page.locator('[data-field="hole_diameter"] label')).toContainText('나사 구멍 지름');
+  const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const job = await (await generated).json();
+  expect(job.result.template).toBe('wall_hook');
+  expect(job.result.dimensions_mm).toEqual({ x: 30, y: 50, z: 60 });
+  expect(job.result.printability.items.find(item => item.id === 'overhang').status).toBe('pass');
+  await page.locator('#model-edit-text').fill('걸이 길이 10mm 늘려줘');
+  await page.locator('#model-edit-propose').click();
+  await expect(page.locator('#model-edit-changes')).toContainText('60');
+  await page.locator('#model-edit-apply').click();
+  await expect(page.locator('#parameter-depth')).toHaveValue('60');
+});

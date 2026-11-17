@@ -193,17 +193,17 @@ def _response(engine, review=None):
 
 
 _ALIASES = {
-    'width':r'가로|너비|폭|width', 'depth':r'세로|깊이|depth', 'height':r'높이|height',
-    'wall':r'벽\s*두께|등판\s*두께|앞턱\s*두께|테두리(?:\s*여백)?|여백|벽|wall', 'bottom':r'바닥\s*두께|받침\s*두께|바닥|bottom',
+    'width':r'가로|너비|폭|width', 'depth':r'걸이\s*길이|세로|깊이|depth', 'height':r'높이|height',
+    'wall':r'벽\s*두께|등판\s*두께|앞턱\s*두께|테두리(?:\s*여백)?|여백|벽|wall', 'bottom':r'바닥\s*두께|받침\s*두께|걸이\s*두께|바닥|bottom',
     'text_size':r'(?:글자|글씨)\s*크기|text\s*size', 'text_depth':r'(?:글자|글씨)\s*높이|text\s*depth',
-    'hole_diameter':r'(?:고리\s*)?구멍(?:\s*(?:지름|크기))?|hole\s*diameter',
+    'hole_diameter':r'(?:고리\s*|나사\s*)?구멍(?:\s*(?:지름|크기))?|hole\s*diameter',
     'cable_diameter':r'케이블\s*(?:지름|직경)|cable\s*diameter',
     'inset_diameter':r'(?:인셋|디스크|마그넷)\s*지름|inset\s*diameter',
     'inset_depth':r'(?:인셋|포켓)\s*깊이|inset\s*depth',
     'fit_clearance':r'여유|공차|clearance', 'dividers':r'칸막이|dividers?', 'slots':r'슬롯|홈|slots?',
     'lean_angle':r'(?:등판\s*)?(?:각도|기울기)|lean\s*angle',
     'device_thickness':r'(?:기기|폰|휴대폰|스마트폰|케이스)\s*(?:포함\s*)?두께|device\s*thickness',
-    'lip_height':r'앞\s*턱(?:\s*높이)?|턱\s*높이|lip\s*height',
+    'lip_height':r'앞\s*턱(?:\s*높이)?|끝\s*턱(?:\s*높이)?|턱\s*높이|lip\s*height',
 }
 _ANGLES = {'lean_angle'}
 _NUMBER = r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)'

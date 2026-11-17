@@ -107,7 +107,7 @@ class GeometryTests(unittest.TestCase):
         self.assertIsNotNone(template_catalog, "The geometry catalog is missing")
         catalog = template_catalog()
         templates = {item["id"] for item in catalog}
-        self.assertEqual(templates, {"tray", "cable_comb", "magnet_frame", "phone_stand", "name_tag"})
+        self.assertEqual(templates, {"tray", "cable_comb", "magnet_frame", "phone_stand", "name_tag", "wall_hook"})
         for item in catalog:
             template = item["id"]
             with self.subTest(template=template):
