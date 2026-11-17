@@ -778,3 +778,22 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .print-send-stages { list-style: none; padding: 0; margin: 10px 0 4px; display: grid; gap: 4px; font-size: 0.88rem; }
 .print-send-stages .is-done { color: var(--green); }
 .print-send-stages .is-pending { color: var(--muted); }
+
+/* Where to buy: filters and store cards. */
+.store-filters { display: grid; gap: 10px; margin: 12px 0; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.store-search { display: grid; gap: 4px; font-size: 12px; font-weight: 650; max-width: 360px; }
+.store-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.store-item { border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 6px; align-content: start; background: var(--surface); }
+.store-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; align-items: baseline; }
+.store-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.store-tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--blue-soft); color: var(--blue-dark); }
+.store-tag-bambu { background: var(--green-soft); color: var(--green); }
+.store-sells { margin: 0; font-size: 0.86rem; }
+.store-note { margin: 0; font-size: 0.8rem; color: var(--muted); }
+.store-materials { margin: 0; font-size: 0.78rem; color: var(--soft); }
+.store-links { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.84rem; }
+.store-link { color: var(--blue-dark); font-weight: 600; }
+.store-evidence { color: var(--soft); font-size: 0.74rem; }
+.store-unconfirmed { margin: 8px 0; font-size: 0.84rem; color: var(--muted); }
+.store-unconfirmed li { margin: 4px 0; }

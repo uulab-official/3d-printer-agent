@@ -435,6 +435,19 @@
       <section id="view-offers" class="view" aria-labelledby="offers-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">COMPARE WHAT MATTERS</p><h1 id="offers-heading">같은 기준으로 비교하세요</h1><p class="page-description">찾아둔 상품의 가격과 중량, 배송비를 넣어 kg당 비용을 비교합니다.</p></div><span class="badge badge-neutral">실시간 가격 미연결</span></div>
         <p id="offers-model-hint" class="notice notice-info" hidden></p>
+        <section id="store-guide" class="card" aria-labelledby="store-guide-heading" hidden>
+          <div class="card-heading"><div><span id="store-guide-checked" class="step-label">판매처 안내</span><h2 id="store-guide-heading">어디서 살까요?</h2></div><span class="badge badge-neutral">광고·제휴 아님</span></div>
+          <p class="card-copy">국내에서 필라멘트를 살 수 있는 곳을 재료와 판매처 종류로 좁혀 보세요. 운영 여부만 확인했고, 가격·재고는 판매처에서 확인해야 합니다.</p>
+          <div class="store-filters">
+            <div id="store-material-filters" class="chip-row" role="radiogroup" aria-label="재료로 좁히기"></div>
+            <div id="store-kind-filters" class="chip-row" role="radiogroup" aria-label="판매처 종류로 좁히기"></div>
+            <label class="store-search" for="store-search">이름·브랜드 검색<input id="store-search" type="search" placeholder="예: 뱀부, 태강, PETG" autocomplete="off"></label>
+          </div>
+          <p id="store-guide-count" class="field-help" role="status"></p>
+          <ul id="store-guide-list" class="store-list"></ul>
+          <details id="store-guide-unconfirmed" class="store-unconfirmed"><summary id="store-guide-unconfirmed-summary">운영을 확인하지 못한 곳</summary><ul id="store-guide-unconfirmed-list"></ul></details>
+          <p id="store-guide-scope" class="field-help"></p>
+        </section>
         <section class="card" aria-labelledby="offer-input-heading">
           <div class="card-heading"><div><span class="step-label">사용자가 확인한 가격</span><h2 id="offer-input-heading">비교할 필라멘트</h2></div><label for="offer-currency" class="currency-control">통화<select id="offer-currency" form="offers-form"><option value="KRW">KRW · 원</option><option value="USD">USD · 달러</option><option value="EUR">EUR · 유로</option><option value="JPY">JPY · 엔</option><option value="CNY">CNY · 위안</option></select></label></div>
           <form id="offers-form"><div id="offer-rows" class="offer-rows"></div><div class="offer-actions"><p class="field-help">배송비를 모르면 비워 두세요. 무료 배송이 확인된 경우에만 0을 입력합니다.</p><button id="compare-offers" class="button button-primary" type="submit" disabled>배송비 포함 단가 비교 <span aria-hidden="true">→</span></button></div></form>

@@ -29,6 +29,7 @@ from .discovery import (
 from .geometry import generate_model, template_catalog
 from .model_edits import model_edit_record, normalize_parameters, plan_model_edit, plan_model_edit_with_llm
 from .offers import compare_offers
+from .stores import store_guide
 from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
 from . import printer_lan, printer_send
@@ -391,7 +392,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.get('/api/bootstrap')
     def bootstrap():
         return {'app':{'name':'3D Printer Agent','version':__version__},'templates':template_catalog(),
-                'discovery':project_catalog(), 'environment':detect_environment(),
+                'discovery':project_catalog(), 'store_guide':store_guide(), 'environment':detect_environment(),
                 'provider':provider_config(),'session_token':token,
                 'storage': {**selection, 'recovery': dict(recovery)}}
 

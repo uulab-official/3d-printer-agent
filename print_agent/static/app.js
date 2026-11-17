@@ -3973,6 +3973,104 @@
     return new Intl.NumberFormat("ko-KR", { style: "currency", currency, maximumFractionDigits: currency === "KRW" || currency === "JPY" ? 0 : 2 }).format(value);
   }
 
+  // ---------------------------------------------------------------------------
+  // Where to buy: a dated, curated directory. Links open the store; nothing is fetched from it.
+
+  function setStoreGuide(guide) {
+    const valid = guide && Array.isArray(guide.stores) && Array.isArray(guide.materials);
+    state.storeGuide = valid ? guide : null;
+    state.storeFilter = state.storeFilter || { material: "all", kind: "all", query: "" };
+    $("store-guide").hidden = !valid;
+    if (!valid) return;
+    $("store-guide-checked").textContent = `판매처 안내 · ${guide.checked_on} 확인`;
+    const chip = (group, value, label) => {
+      const button = node("button", "purpose-button", label);
+      button.type = "button";
+      button.dataset.storeFilter = group;
+      button.dataset.value = value;
+      button.setAttribute("role", "radio");
+      return button;
+    };
+    $("store-material-filters").replaceChildren(chip("material", "all", "모든 재료"), ...guide.materials.map((material) => chip("material", material, material)));
+    const kinds = [["all", "모든 판매처"], ["bambu", "Bambu 정품"], ...Object.entries(guide.kinds || {})];
+    $("store-kind-filters").replaceChildren(...kinds.map(([value, label]) => chip("kind", value, label)));
+    $("store-guide-scope").textContent = `${guide.scope || ""}${guide.excluded?.length ? ` 운영 종료가 확인된 ${guide.excluded.map((item) => item.name).join(", ")}은(는) 목록에서 뺐습니다.` : ""}`;
+    renderStoreGuide();
+  }
+
+  function storeMatches(store, filter) {
+    if (filter.material !== "all" && !(store.materials || []).includes(filter.material)) return false;
+    if (filter.kind === "bambu" && !store.bambu) return false;
+    if (!["all", "bambu"].includes(filter.kind) && !(store.kinds || []).includes(filter.kind)) return false;
+    const query = filter.query.trim().toLowerCase();
+    if (!query) return true;
+    const haystack = [store.name, store.sells, store.note, ...(store.materials || [])].join(" ").toLowerCase();
+    const aliases = { 뱀부: "bambu", 뱀부랩: "bambu", 폴리메이커: "polymaker", 크리얼리티: "creality", 애니큐빅: "anycubic" };
+    return haystack.includes(query) || Boolean(aliases[query] && haystack.includes(aliases[query]));
+  }
+
+  function storeLink(link) {
+    // Only http(s) links from the curated list; a new tab without the opener.
+    const anchor = node("a", "store-link", `${link.label} ↗`);
+    try {
+      const url = new URL(link.url);
+      if (!["http:", "https:"].includes(url.protocol)) return null;
+      anchor.href = url.href;
+    } catch { return null; }
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    return anchor;
+  }
+
+  function renderStoreGuide() {
+    const guide = state.storeGuide;
+    if (!guide) return;
+    const filter = state.storeFilter;
+    for (const button of document.querySelectorAll("[data-store-filter]")) {
+      button.setAttribute("aria-checked", String(filter[button.dataset.storeFilter] === button.dataset.value));
+      button.setAttribute("aria-pressed", String(filter[button.dataset.storeFilter] === button.dataset.value));
+    }
+    const matches = guide.stores.filter((store) => storeMatches(store, filter));
+    $("store-guide-count").textContent = matches.length ? `${matches.length}곳 · 운영을 확인한 ${guide.stores.length}곳 중` : "조건에 맞는 판매처가 없습니다. 재료나 판매처 종류를 바꿔 보세요.";
+    $("store-guide-list").replaceChildren(...matches.map((store) => {
+      const item = node("li", "store-item");
+      item.dataset.store = store.id;
+      const head = node("div", "store-head");
+      head.append(node("strong", "", store.name));
+      const tags = node("div", "store-tags");
+      if (store.bambu) tags.append(node("span", "store-tag store-tag-bambu", "Bambu 정품"));
+      for (const kind of store.kinds || []) tags.append(node("span", "store-tag", guide.kinds?.[kind] || kind));
+      head.append(tags);
+      const links = node("div", "store-links");
+      for (const link of store.urls || []) { const anchor = storeLink(link); if (anchor) links.append(anchor); }
+      item.append(head, node("p", "store-sells", store.sells || ""));
+      if (store.note) item.append(node("p", "store-note", store.note));
+      item.append(node("p", "store-materials", (store.materials || []).join(" · ")), links,
+        node("small", "store-evidence", `확인 ${guide.checked_on} · ${store.evidence || ""}`));
+      return item;
+    }));
+    const unconfirmed = guide.unconfirmed || [];
+    $("store-guide-unconfirmed").hidden = !unconfirmed.length;
+    $("store-guide-unconfirmed-summary").textContent = `운영을 확인하지 못한 곳 ${unconfirmed.length}곳`;
+    $("store-guide-unconfirmed-list").replaceChildren(...unconfirmed.map((store) => {
+      const item = node("li", "", `${store.name} — ${store.reason || ""} `);
+      for (const link of store.urls || []) { const anchor = storeLink(link); if (anchor) item.append(anchor); }
+      return item;
+    }));
+  }
+
+  $("store-guide").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-store-filter]");
+    if (!button || !state.storeFilter) return;
+    state.storeFilter[button.dataset.storeFilter] = button.dataset.value;
+    renderStoreGuide();
+  });
+  $("store-search").addEventListener("input", (event) => {
+    if (!state.storeFilter) return;
+    state.storeFilter.query = event.target.value;
+    renderStoreGuide();
+  });
+
   function renderOffers(result) {
     $("offers-result").hidden = false;
     const area = $("offer-comparison");
@@ -4748,6 +4846,7 @@
       if (!state.template && state.templates.length) applyDraft(state.templates[0].id);
       else renderTemplates();
       setDiscoveryCatalog(data.discovery, Boolean(state.discovery));
+      setStoreGuide(data.store_guide);
       ["plan-button", "review-profile", "compare-offers"].forEach((id) => { $(id).disabled = false; });
       updateWorkflowControls();
       updateWorkspaceStatus();

@@ -6,7 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview','readParameter','parameterInputComplete','parameterField','stepParameter','syncParameterSlider','currentParameterSnapshot','parseParameterText','copyParameters','openPastePanel','applyPastedParameters','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget','templateSizeText','renderColorLegend','colorField','chooseColor','printSendReady','resetPrintSend','printSendTarget','updatePrintSendControls','printSendSlotChoice','renderPrintSendSlots','renderPrintSendSummary','reviewPrintSend','startPrintSend','renderPrintSendResult','currentPrinterTarget','syncPrintSend');
+names.push('renderPrintVolumeReview','readParameter','parameterInputComplete','parameterField','stepParameter','syncParameterSlider','currentParameterSnapshot','parseParameterText','copyParameters','openPastePanel','applyPastedParameters','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget','templateSizeText','renderColorLegend','colorField','chooseColor','printSendReady','resetPrintSend','printSendTarget','updatePrintSendControls','printSendSlotChoice','renderPrintSendSlots','renderPrintSendSummary','reviewPrintSend','startPrintSend','renderPrintSendResult','currentPrinterTarget','syncPrintSend','setStoreGuide','storeMatches','storeLink','renderStoreGuide');
 const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -1881,6 +1881,33 @@ const printVolumeReport = (overrides={}) => ({
     c.$('print-send-confirm').checked=true;c.updatePrintSendControls();
     assert.equal(c.$('print-send-start').disabled,true);
     c.resetPrintSend(null);assert.equal(c.$('print-send-card').hidden,true);
+  });
+  await check('The store guide filters by material, kind and name and only links http(s) addresses',()=>{
+    const c=fixture();
+    const guide={checked_on:'2026-11-17',materials:['PLA','PETG'],kinds:{own_brand:'자체 브랜드'},scope:'s',excluded:[{name:'퓨어필라'}],
+      stores:[{id:'a',name:'Bambu Lab 한국 공식 스토어',bambu:true,kinds:['official_brand_store'],materials:['PLA','PETG'],sells:'Bambu Lab 정품',urls:[{label:'스토어',url:'https://kr.store.bambulab.com/'}],evidence:'e'},
+              {id:'b',name:'태강쓰리디',bambu:false,kinds:['own_brand'],materials:['PLA'],sells:'국산 PLA+',urls:[{label:'x',url:'javascript:alert(1)'}],evidence:'e'}],
+      unconfirmed:[{id:'u',name:'플라실',reason:'확인 못함',urls:[]}]};
+    c.setStoreGuide(guide);
+    assert.equal(c.$('store-guide').hidden,false);
+    assert.match(c.$('store-guide-checked').textContent,/2026-11-17/);
+    assert.match(c.$('store-guide-scope').textContent,/퓨어필라/);
+    assert.equal(c.$('store-guide-list').children.length,2);
+    c.state.storeFilter={material:'PETG',kind:'all',query:''};c.renderStoreGuide();
+    assert.equal(c.$('store-guide-list').children.length,1);
+    c.state.storeFilter={material:'all',kind:'bambu',query:''};c.renderStoreGuide();
+    assert.equal(c.$('store-guide-list').children[0].dataset.store,'a');
+    c.state.storeFilter={material:'all',kind:'own_brand',query:''};c.renderStoreGuide();
+    assert.equal(c.$('store-guide-list').children[0].dataset.store,'b');
+    c.state.storeFilter={material:'all',kind:'all',query:'뱀부'};c.renderStoreGuide();
+    assert.equal(c.$('store-guide-list').children.length,1);
+    c.state.storeFilter={material:'all',kind:'all',query:'없는 이름'};c.renderStoreGuide();
+    assert.match(c.$('store-guide-count').textContent,/없습니다/);
+    assert.equal(c.storeLink({label:'x',url:'javascript:alert(1)'}),null);
+    const link=c.storeLink({label:'스토어',url:'https://kr.store.bambulab.com/'});
+    assert.equal(link.rel,'noopener noreferrer');assert.equal(link.target,'_blank');
+    assert.match(c.$('store-guide-unconfirmed-summary').textContent,/1곳/);
+    c.setStoreGuide(null);assert.equal(c.$('store-guide').hidden,true);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();
