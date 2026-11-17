@@ -30,6 +30,7 @@ from .geometry import generate_model, template_catalog
 from .model_edits import model_edit_record, normalize_parameters, plan_model_edit, plan_model_edit_with_llm
 from .offers import compare_offers
 from .stores import store_guide
+from .recovery import REASONS as FAILURE_REASONS, recovery_plan
 from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
 from . import printer_lan, printer_send
@@ -263,6 +264,7 @@ class PrinterStatusPayload(StrictPayload):
     serial: str = Field(max_length=64)
     access_code: str = Field(max_length=64)
     pinned_certificate_sha256: str | None = Field(default=None, max_length=64)
+    include_version: bool = True
 
 
 class PrintReviewPayload(PrinterStatusPayload):
@@ -292,6 +294,7 @@ class PrintabilityPayload(StrictPayload):
 class OutcomePayload(StrictPayload):
     result: Literal['success','failure','not_tested']
     notes: str = Field(default='', max_length=4000)
+    reasons: list[str] = Field(default_factory=list, max_length=6)
 
 
 def create_app(data_dir: Path | None = None, *, test_mode=False):
@@ -399,7 +402,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.get('/api/bootstrap')
     def bootstrap():
         return {'app':{'name':'3D Printer Agent','version':__version__},'templates':template_catalog(),
-                'discovery':project_catalog(), 'store_guide':store_guide(), 'environment':detect_environment(),
+                'discovery':project_catalog(), 'store_guide':store_guide(), 'failure_reasons':FAILURE_REASONS, 'environment':detect_environment(),
                 'provider':provider_config(),'session_token':token,
                 'storage': {**selection, 'recovery': dict(recovery)}}
 
@@ -427,7 +430,8 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.post('/api/printers/status')
     def printer_status(payload: PrinterStatusPayload):
         return printer_lan.read_status(payload.host, payload.serial, payload.access_code,
-                                       pinned_sha256=payload.pinned_certificate_sha256)
+                                       pinned_sha256=payload.pinned_certificate_sha256,
+                                       include_version=payload.include_version)
 
     print_reviews = printer_send.ReviewStore()
     app.state.print_reviews = print_reviews
@@ -583,7 +587,15 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
 
     @app.post('/api/jobs/{job_id}/outcome')
     def outcome(job_id: str,payload: OutcomePayload):
-        return store.record_outcome(job_id,payload.result,payload.notes)
+        return store.record_outcome(job_id,payload.result,payload.notes,payload.reasons)
+
+    @app.get('/api/jobs/{job_id}/recovery')
+    def job_recovery(job_id: str):
+        """Next steps for the reasons recorded with this job's reported failure."""
+        job = store.get(job_id)
+        outcome = job.get('user_outcome') or {}
+        reasons = outcome.get('reasons') if outcome.get('result') == 'failure' else []
+        return recovery_plan((job.get('result') or {}).get('parameters'), reasons if isinstance(reasons, list) else [])
 
     @app.post('/api/profiles/review')
     def profile_review(payload: ProfilePayload):

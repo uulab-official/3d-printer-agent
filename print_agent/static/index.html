@@ -328,9 +328,11 @@
           <form id="outcome-form" class="outcome-form">
             <label for="outcome-result">출력 결과<select id="outcome-result"><option value="not_tested">아직 출력하지 않음</option><option value="success">출력 성공</option><option value="failure">출력 실패</option></select></label>
             <label for="outcome-notes">메모<textarea id="outcome-notes" rows="2" maxlength="2000" placeholder="맞춤 정도나 다음에 바꾸고 싶은 점을 적어 주세요."></textarea></label>
+            <fieldset id="outcome-reasons" class="outcome-reasons" hidden><legend>무엇이 문제였나요? (여러 개 선택)</legend><div id="outcome-reason-list" class="chip-row"></div></fieldset>
             <button id="save-outcome" class="button button-secondary" type="submit">결과 기록</button>
           </form>
           <div id="outcome-feedback" class="notice" role="status" hidden></div>
+          <div id="outcome-recovery" class="outcome-recovery" hidden></div>
         </section>
       </section>
 

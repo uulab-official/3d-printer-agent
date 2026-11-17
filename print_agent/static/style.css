@@ -815,3 +815,13 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .print-control-row { margin: 4px 0; }
 .print-stop-confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--red-soft); }
 .print-stop-confirm p { margin: 0; flex-basis: 100%; color: var(--red); font-weight: 600; }
+
+/* Failed-print reasons and next steps. */
+.outcome-reasons { border: 0; padding: 0; margin: 8px 0; grid-column: 1 / -1; }
+.outcome-reasons legend { font-size: 12px; font-weight: 650; margin-bottom: 6px; }
+.outcome-reason { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 18px; font-size: 0.84rem; background: var(--surface); }
+.outcome-reason input { width: 15px; height: 15px; margin: 0; }
+.outcome-recovery { margin-top: 12px; display: grid; gap: 10px; }
+.outcome-recovery h3 { margin: 0; font-size: 0.95rem; }
+.recovery-item { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; }
+.recovery-item ul { margin: 0; padding-left: 18px; font-size: 0.86rem; }

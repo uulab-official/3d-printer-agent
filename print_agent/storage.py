@@ -760,12 +760,16 @@ class JobStore:
             archive.writestr('job.json', public_record)
         return stream.getvalue()
 
-    def record_outcome(self, job_id, result, notes):
+    def record_outcome(self, job_id, result, notes, reasons=None):
         if result not in ('success', 'failure', 'not_tested') or not isinstance(notes, str) or len(notes) > 4000:
             raise ValueError('출력 결과와 4,000자 이내의 메모가 필요합니다.')
+        from .recovery import validate_reasons
+        reasons = validate_reasons(result, reasons)
         with self.lock:
             job = self._read(job_id)
             report = {'result': result, 'notes': notes, 'source': 'user_reported', 'recorded_at': now_iso()}
+            if reasons:
+                report['reasons'] = reasons
             job['user_outcome'] = report
             job['events'].append({'at': now_iso(), 'type': 'user_reported_outcome', 'message': result, 'report': report})
             self._write(job)

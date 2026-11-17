@@ -371,3 +371,36 @@ test('a coloured keychain request, a spoken colour edit and the two-filament 3MF
   await expect(page.locator('#parameter-color')).toHaveValue('black');
   await expect(page.locator('[data-color-for="color"][data-color-value="black"]')).toHaveAttribute('aria-checked', 'true');
 });
+
+test('a reported failure with reasons offers next steps and a reviewed model fix', async ({ page }) => {
+  await page.locator('[data-template="cable_comb"]').click();
+  const confirm = page.locator('#model-replace-confirm');
+  if (await confirm.isVisible()) await page.locator('#model-replace-confirm button').first().click();
+  const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const job = await (await generated).json();
+  expect(job.result.parameters.fit_clearance).toBe(0.3);
+  await page.locator('#outcome-result').selectOption('failure');
+  await expect(page.locator('#outcome-reasons')).toBeVisible();
+  await page.locator('[data-outcome-reason="too_tight"]').check();
+  await page.locator('[data-outcome-reason="stringing"]').check();
+  const saved = page.waitForResponse(r => r.url().endsWith(`/api/jobs/${job.id}/outcome`));
+  await page.locator('#save-outcome').click();
+  expect((await (await saved).json()).user_outcome.reasons).toEqual(['stringing', 'too_tight']);  // display order
+  const recovery = page.locator('#outcome-recovery');
+  await expect(recovery).toContainText('다음에 바꿔 볼 것');
+  await expect(recovery.locator('[data-reason="stringing"]')).toContainText('노즐 온도');
+  const fix = recovery.locator('[data-recovery-edit]');
+  await expect(fix).toHaveCount(1);
+  await expect(fix).toContainText('0.3 → 0.5');
+  await fix.click();
+  await expect(page.locator('#model-edit-text')).toHaveValue('여유 0.2mm 늘려줘');
+  await expect(page.locator('#model-edit-changes')).toContainText('0.5');
+  await page.locator('#model-edit-apply').click();
+  await expect(page.locator('#parameter-fit_clearance')).toHaveValue('0.5');
+  const regenerated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const fixed = await (await regenerated).json();
+  expect(fixed.result.parameters.fit_clearance).toBe(0.5);
+  expect(fixed.model_edit.changes).toEqual([{ field: 'fit_clearance', before: 0.3, after: 0.5 }]);
+});
