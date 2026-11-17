@@ -83,6 +83,9 @@ REQUIRED_CHECKS = frozenset({
     'printability_review_phone_stand',
     'printability_review_name_tag',
     'name_tag_height_and_text_width',
+    'color_parts_name_tag', 'color_3mf_two_filament_parts_name_tag',
+    'printer_send_requires_verified_slice', 'printer_send_unknown_review_is_refused',
+    'printer_send_requires_bed_confirmation_without_echo', 'printer_send_refusals_record_nothing',
 })
 MAX_JSON = 8 * 1024 * 1024
 MAX_ZIP_BYTES = 64 * 1024 * 1024
