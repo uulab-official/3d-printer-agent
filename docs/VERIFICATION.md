@@ -134,6 +134,19 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-17 v0.19.0 공개 릴리스
+
+[v0.19.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.19.0)을 2026-11-17 06:03:05 UTC에 `554e120`에서 게시했습니다(PR #13·#14·#15 병합).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44027511632) Python **754개**·컨트롤러 **214개**·Chromium **92개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44027511573)
+세 OS 각 **337개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44027511657)가 모두 실행 차수 1로 통과했습니다. 공개 자산 7개를 인증 없이 내려받아
+wheel(302,880바이트, `42bf000649ff12bb…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며
+보고서가 모두 통과 상태임을 확인했습니다.
+
+출시 전 로컬 확인(이 Mac, 합성 프린터): 보내기 → 진행률 0%→60%→완료 보고 후 갱신 종료, 일시정지 → 재개 → 정지(확인) 순서의 명령과
+작업 기록(`started, pause:applied, resume:applied, stop:applied`), 프린터 기억 후 새로고침에서 IP·시리얼 복원(액세스 코드 없음)을 확인했습니다.
+독립 검토로 찾은 6건(잦은 전체 상태 요청, 일시정지 뒤 정지 지연, 대기 상태에서 끝나지 않는 갱신, 보관 메모의 원인 누락, 수정 제안의 LLM 전달,
+프린터가 정한 저장 이름)을 고친 뒤 게시했습니다. 실제 프린터와 실물 출력은 확인하지 않았습니다.
+
 ## 2026-11-17 v0.16.0 공개 릴리스
 
 [v0.16.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.16.0)을 2026-11-17 04:47:16 UTC에 `c45a33e`에서 게시했습니다.
