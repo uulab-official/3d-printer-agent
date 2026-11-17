@@ -6,7 +6,7 @@ const source = fs.readFileSync('print_agent/static/app.js', 'utf8');
 const names = ['newPlanHasPendingWork','retainOutcomeDraft','renderRetainedOutcomes','detachPreviousStorage','updateConnectionActions','renderConnection','connectionFailed','modelHasUnsavedChanges','slicerHasUnsavedChanges','outcomeHasUnsavedChanges','hasPendingWork','replacementSignature','cancelModelReplacement','requestModelReplacement','confirmModelReplacement','performModelReplacement','updateHistoryControls','openHistoryJob','renderHistory','errorMessage','api','node','friendly','showNotice','hideNotice','setBadge','withBusy','withWorkflow','updateWorkflowControls','invalidateCurrentJob','applyDraft','metric','localDownload','renderDownloads','renderJob','updateSliceControls','renderSliceResult','resetSlicePreparation','parseObject','runSlice','dateTime','loadHistory','cancelSlicerReads','renderSlicerFiles','slicerBundle','checkSlicerBundleSize','readSlicerFiles','changeSlicerPlate','assembleSlicerBundle','cancelSlicerAssembly','manualSlicerChanged','readSlicerBundle','renderSlicerEnvironment','probeSlicer','discoverySignature','discoveryQuery','discoveryFiltersChanged','setDiscoveryCatalog','renderDiscovery','renderProjectDetail','renderProjectSource','updateDiscoveryControls','browseProject','draftHasChanges','requestProjectApplication','confirmProjectApplication','cancelProjectApplication','applyProject','detachProjectSource','recommendProjects','modelDraftSignature','preparePlan','generateModel','bootstrap'];
 const studioNames = ['studioSourceIdentity','studioModelSignature','studioContext','studioContextCurrent','studioSourceCurrent','studioHasUnsavedChanges','invalidateStudioRequests','renderStudioSource','renderStudioProject','importStudioProject','cancelStudioCandidate','applyStudioCandidate','revalidateStudioProject','runStudioSlice','studioSettingsIdentity','studioSettingsDirty','renderStudioSettings','openStudioSettings','editStudioSetting','reviewStudioSettings','applyStudioSettings','cancelStudioSettings','resetStudioSettings','renderStudioChanges'];
 names.push(...studioNames);
-names.push('renderPrintVolumeReview','readParameter','parameterInputComplete','parameterField','stepParameter','syncParameterSlider','currentParameterSnapshot','parseParameterText','copyParameters','openPastePanel','applyPastedParameters','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget','templateSizeText','renderColorLegend','colorField','chooseColor','printSendReady','resetPrintSend','printSendTarget','updatePrintSendControls','printSendSlotChoice','renderPrintSendSlots','renderPrintSendSummary','reviewPrintSend','startPrintSend','renderPrintSendResult','currentPrinterTarget','syncPrintSend','setStoreGuide','storeMatches','storeLink','renderStoreGuide','loadSavedPrinters','storeSavedPrinters','rememberPrinter','forgetPrinter','renderSavedPrinters','stopPrintFollow','renderPrintFollow','pollPrintFollow','startPrintFollow','updatePrintControls','askPrintStop','sendPrintControl','setFailureReasons','selectedOutcomeReasons','syncOutcomeReasons','loadRecovery','renderRecovery','proposeRecoveryEdit','checkForUpdate');
+names.push('renderPrintVolumeReview','readParameter','parameterInputComplete','parameterField','stepParameter','syncParameterSlider','currentParameterSnapshot','parseParameterText','copyParameters','openPastePanel','applyPastedParameters','renderSetupPrinterFill','currentModelMaterial','renderOffersModelHint','renderOutcomePrinterHint','historyMatches','historyFacts','setHistoryFilter','renderPrintability','printerReportedNozzle','updatePrintabilityControls','recheckPrintability','journeySteps','journeyNext','renderJourney','goToJourneyTarget','templateSizeText','renderColorLegend','colorField','chooseColor','printSendReady','resetPrintSend','printSendTarget','updatePrintSendControls','printSendSlotChoice','renderPrintSendSlots','renderPrintSendSummary','reviewPrintSend','startPrintSend','renderPrintSendResult','currentPrinterTarget','syncPrintSend','setStoreGuide','storeMatches','storeLink','renderStoreGuide','loadSavedPrinters','storeSavedPrinters','rememberPrinter','forgetPrinter','renderSavedPrinters','stopPrintFollow','renderPrintFollow','pollPrintFollow','startPrintFollow','updatePrintControls','askPrintStop','sendPrintControl','setFailureReasons','selectedOutcomeReasons','syncOutcomeReasons','loadRecovery','renderRecovery','proposeRecoveryEdit','checkForUpdate','syncRadioGroup','radioGroupKey');
 const editNames = ['parameterKeys','modelGeometrySignature','modelEditScope','currentEditParameters','modelEditParentJob','validateEditParameters','validateModelEditResponse','renderModelEdit','cancelModelEdit','modelEditInputChanged','manualModelChanged','planModelEdit','applyModelEdit','renderModelEditRecord'];
 names.push(...editNames.filter(name => new RegExp('^  (?:async )?function '+name+'\\(', 'm').test(source)));
 const libraryNames = ['studioLibraryScope','studioWorkspaceSnapshot','studioWorkspaceSignature','studioWorkspaceDirty','renderStudioLibrary','loadStudioLibrary','validateStudioWorkspace','openStudioLibrary','saveStudioWorkspace','deleteStudioWorkspace','studioLibrarySelectionChanged'];
@@ -18,8 +18,17 @@ class Element {
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this._text=''; this.children=nodes; }
   setAttribute(name,value) { this.attributes[name]=value; }
+  getAttribute(name) { return Object.hasOwn(this.attributes,name) ? this.attributes[name] : null; }
   removeAttribute(name) { delete this.attributes[name]; }
   querySelector() { return new Element(); }
+  querySelectorAll(selector) {
+    // Enough for role lookups: walk descendants and match [role="..."].
+    const role = /\[role="([^"]+)"\]/.exec(selector)?.[1];
+    const found = [];
+    const walk = (node) => { for (const child of node.children || []) { if (child instanceof Element) { if (!role || child.attributes.role === role) found.push(child); walk(child); } } };
+    walk(this);
+    return found;
+  }
   addEventListener(name,callback) { this.listeners[name]=callback; }
   focus() {}
   checkValidity() { return !this.validity || this.validity.valid !== false; }
@@ -32,7 +41,7 @@ function fixture() {
     $, console, URL, Intl, Number, Math, JSON, Object, Array, String, Error, Blob, TextEncoder, Uint8Array, btoa, Event:class { constructor(type){ this.type=type; } },
     state:{offersResult:null,historyFilter:'all',downloadedJobId:null,printabilityReview:null,printabilityRequest:0,printabilityPending:false,printabilityNozzle:0.4,printabilityShown:false,printerStatus:null,offersRevision:0,offersPending:false,retainedOutcomeDrafts:[],connectionState:'connected',connectionEpoch:0,bootstrapPending:false,storage:null,modelCleanSignature:null,modelReplacement:null,modelTransitionRequest:0,slicerSavedText:'',historyItems:[],historyLoaded:false,historyRequest:0,historyPending:false,historyCursor:null,token:'test-token',templates:[{id:'tray',defaults:{width:120},editable_fields:['width'],description:'Tray'},{id:'cable_comb',defaults:{width:80},editable_fields:['width'],description:'Cable'}],template:'tray',parameters:{width:120},environment:{available:true},job:null,slicePrepared:false,workflowBusy:false,slicerFiles:{machine:null,process:null,filaments:[]},slicerStaged:false,slicerContext:0,slicerRequests:{},slicerPending:{},discovery:null,discoveryPurpose:'all',discoveryMatches:[],discoveryBrowsed:null,discoveryPending:false,discoveryRequest:0,discoveryEpoch:0,discoveryRevision:0,projectSource:null,projectReplacement:null,bootstrapRequest:0},
     fields:{width:{label:'width',min:10,max:500,step:0.1}},fieldNames:{},numberFormat:new Intl.NumberFormat('en'),
-    document:{createElement:()=>new Element(),querySelectorAll:()=>[]},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
+    document:{createElement:()=>new Element(),querySelectorAll:()=>[],querySelector:()=>null},window:{location:{origin:'http://localhost'},setTimeout,clearTimeout,confirm:()=>true},
     viewer:{setMesh(){},clear(){this.mesh=null;},forgetPrevious(){this.forgotten=true;},mesh:'old'},workspaceDirty(){return false;},renderTemplates(){},toast(){},updateWorkspaceStatus(){},loadWorkspaces:async()=>{},
   };
   $('parameter-width').value='120';$('outcome-result').value='not_tested';$('offer-currency').value='KRW';
@@ -2039,6 +2048,23 @@ const printVolumeReport = (overrides={}) => ({
     c.api=async()=>{throw new Error('연결 실패');};
     await c.checkForUpdate();
     assert.equal(c.$('update-result').textContent,'연결 실패');
+  });
+  await check('Radio groups are one Tab stop and arrow keys move and select the choice',()=>{
+    const c=fixture();
+    const group=new (c.$('x').constructor)();group.attributes.role='radiogroup';
+    const radios=['all','PLA','PETG'].map((value,index)=>{const r=new (c.$('x').constructor)();r.attributes.role='radio';r.dataset.value=value;r.setAttribute('aria-checked',String(index===1));r.closest=(s)=>s.includes('radiogroup')?group:r;r.clicked=0;r.click=()=>{r.clicked+=1;for(const o of radios)o.setAttribute('aria-checked',String(o===r));};r.focused=0;r.focus=()=>{r.focused+=1;};return r;});
+    group.append(...radios);
+    c.syncRadioGroup(group);
+    assert.deepEqual(radios.map(r=>r.tabIndex),[-1,0,-1]);
+    let prevented=0;
+    c.radioGroupKey({key:'ArrowRight',target:radios[1],preventDefault(){prevented+=1;}});
+    assert.equal(radios[2].clicked,1);assert.equal(radios[2].focused,1);assert.deepEqual(radios.map(r=>r.tabIndex),[-1,-1,0]);
+    c.radioGroupKey({key:'ArrowRight',target:radios[2],preventDefault(){prevented+=1;}});
+    assert.equal(radios[0].clicked,1);  // wraps around
+    c.radioGroupKey({key:'End',target:radios[0],preventDefault(){prevented+=1;}});
+    assert.equal(radios[2].clicked,2);
+    c.radioGroupKey({key:'a',target:radios[2],preventDefault(){prevented+=1;}});
+    assert.equal(prevented,3);
   });
   console.log('State regression checks:',passed,'passed,',failed,'failed');process.exitCode=failed?1:0;
 })();

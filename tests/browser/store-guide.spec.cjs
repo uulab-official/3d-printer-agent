@@ -38,3 +38,35 @@ test('store guide narrows by material and kind, keeps unconfirmed stores apart a
   expect(overflow).toBeLessThanOrEqual(1);
   expect(errors).toEqual([]);
 });
+
+test('store filters and colour swatches are one Tab stop driven by arrow keys', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#generate-button')).toBeEnabled();
+  const menu = page.locator('#menu-toggle');
+  if (await menu.isVisible()) await menu.click();
+  await page.locator('[data-view="offers"]').click();
+  const materials = page.locator('#store-material-filters [role="radio"]');
+  await expect(materials.first()).toHaveAttribute('tabindex', '0');
+  await expect(materials.nth(1)).toHaveAttribute('tabindex', '-1');
+  await materials.first().focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(materials.nth(1)).toHaveAttribute('aria-checked', 'true');
+  await expect(materials.nth(1)).toBeFocused();
+  await expect(materials.nth(1)).toHaveAttribute('tabindex', '0');
+  await page.keyboard.press('End');
+  await expect(materials.last()).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#store-kind-filters [aria-checked="true"]')).toBeFocused();
+
+  if (await menu.isVisible()) await menu.click();
+  await page.locator('[data-view="models"]').click();
+  await page.locator('[data-template="name_tag"]').click();
+  const confirm = page.locator('#model-replace-confirm');
+  if (await confirm.isVisible()) await page.locator('#model-replace-confirm button').first().click();
+  const swatches = page.locator('[data-color-for="accent_color"]');
+  await expect(swatches.first()).toHaveAttribute('tabindex', '0');
+  await swatches.first().focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#parameter-accent_color')).toHaveValue('white');
+  await expect(swatches.nth(1)).toBeFocused();
+});
