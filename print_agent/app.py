@@ -30,6 +30,7 @@ from .geometry import generate_model, template_catalog
 from .model_edits import model_edit_record, normalize_parameters, plan_model_edit, plan_model_edit_with_llm
 from .offers import compare_offers
 from .stores import store_guide
+from . import updates
 from .recovery import REASONS as FAILURE_REASONS, recovery_plan
 from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
@@ -502,6 +503,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         if payload.job_id is not None and result['command_sent']:
             store.record_printer_event(payload.job_id, 'printer_control', result)
         return result
+
+    @app.post('/api/updates/check')
+    def update_check():
+        """Only on request: one anonymous read of the public latest-release record."""
+        return updates.check_for_update()
 
     @app.post('/api/plan')
     async def plan(payload: PlanPayload):
