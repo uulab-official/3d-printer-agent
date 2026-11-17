@@ -134,6 +134,26 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-16 v0.12.0 공개 릴리스
+
+[v0.12.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.12.0)을 2026-11-16 23:57:38 UTC에 `b96e657`에서 게시했습니다.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/43982877129) Python **702개**·컨트롤러 **206개**·Chromium **84개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/43982877138)
+세 OS 각 **326개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/43982877304)가 모두 실행 차수 1로 통과했습니다. 공개 자산 7개를 인증 없이 내려받아
+wheel(262,041바이트, `03090a4137df859f…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며
+보고서가 모두 통과 상태임을 확인했습니다.
+
+설치 검증의 “MINSU” 이름 키링 실측 크기(형상 점검·STEP·3MF 검사 포함 통과):
+
+| 운영체제 | 글꼴 | 크기 (mm) |
+|---|---|---|
+| macOS 15 | Arial Bold | 52.86 × 14.89 × 4.0 |
+| Windows 2025 | arialbd.ttf | 52.86 × 14.89 × 4.0 |
+| Ubuntu 24.04 | DejaVu Sans Bold | 58.63 × 15.08 × 4.0 |
+
+PR 단계 첫 CI에서 Linux 6 mm 글자 키링의 미리보기 메시가 닫히지 않아 실패했습니다. macOS에서 설치된 글꼴 45개로 재현해 필기체
+2개의 글자 윤곽이 서로 겹쳐 유효하지 않은 형상이 됨을 확인했고, 운영체제별 검증된 굵은 글꼴로 고정하고 유효하지 않은 글자 형상은
+이유를 밝혀 거부하도록 고쳤습니다. 실물 출력과 고리 강도는 검증하지 않았습니다.
+
 ## 2026-11-16 v0.11.0 공개 릴리스
 
 [v0.11.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.11.0)을 2026-11-16 13:46:36 UTC에 `1882063`에서 게시했습니다.

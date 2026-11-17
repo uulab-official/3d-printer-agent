@@ -1,10 +1,12 @@
 # Development status
 
-Date: 2026-11-16 (Asia/Seoul).
+Date: 2026-11-17 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.11 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.12 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.12 adds a fifth template, a [name keychain](NAME_TAG.md) with raised system-font text (Korean, Latin, digits and a few symbols, up to 20 characters) on a rounded plate with a ring hole, and keychain request parsing. It fixes a mirrored preview projection, pins known-good bold fonts per OS (Arial Bold on macOS/Windows, DejaVu Sans Bold on Linux) and rejects invalid letter outlines instead of exporting a broken mesh. Published as [v0.12.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.12.0) on 2026-11-16 (UTC) from `b96e657`.
 
 Version 0.11 adds a MakerWorld-style parameter panel (grouped fields with explanations, -/+ steppers and synced sliders) and validated copy/paste of template settings, and keeps reconnect available when a saved-list load stalls after a successful bootstrap. Published as [v0.11.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.11.0) on 2026-11-16 from `1882063`.
 
