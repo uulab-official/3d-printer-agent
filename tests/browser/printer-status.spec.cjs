@@ -92,3 +92,43 @@ test('synthetic reporting response renders reported values and pins its certific
   await expect(page.locator('#printer-feedback')).toContainText('이전 대상의 확인 결과');
   await expect(page.locator('#printer-status-badge')).toHaveText('입력이 바뀌어 다시 확인 필요');
 });
+
+test('a remembered printer survives a reload with its pin but never the access code', async ({ page }) => {
+  const fingerprint = 'cd'.repeat(32);
+  const bodies = [];
+  await page.route('**/api/printers/status', async route => {
+    const body = route.request().postDataJSON();
+    bodies.push(body);
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      schema_version: 1, observed_at: '2026-11-17T00:00:00Z', target: { host: body.host, serial: body.serial, port: 8883 },
+      connection: { state: 'reporting', detail: '프린터가 현재 상태를 보고했습니다.' },
+      certificate: { sha256: fingerprint, issuer_verified: false, pinned: Boolean(body.pinned_certificate_sha256), matches_pin: body.pinned_certificate_sha256 ? true : null },
+      identity: { modules: [], firmware: null, product_name: 'Synthetic P1S' },
+      print: { state: 'IDLE', state_label: '대기 중', progress_percent: null, remaining_minutes: null, layer: null, total_layers: null, job_name: null, file_name: null,
+               error_code: 0, error_code_hex: null, hms: [], temperatures_c: {}, nozzle: { diameter_mm: 0.4, type: null }, wifi_signal: null, material_slots: [] },
+      scope: 'synthetic' }) });
+  });
+  await openPrinters(page);
+  await fillTarget(page, '01S00REMEMBER001');
+  await page.locator('#printer-remember').check();
+  await page.locator('#printer-check').click();
+  await expect(page.locator('#printer-saved')).toBeVisible();
+  await expect(page.locator('#printer-saved-list')).toContainText('Synthetic P1S');
+  const stored = await page.evaluate(() => localStorage.getItem('ppa.printers.v1'));
+  expect(stored).toContain(fingerprint);
+  expect(stored).not.toContain(CODE);
+  await page.reload();
+  await expect(page.locator('#generate-button')).toBeEnabled();
+  await openPrinters(page);
+  await expect(page.locator('#printer-host')).toHaveValue('127.0.0.1');
+  await expect(page.locator('#printer-serial')).toHaveValue('01S00REMEMBER001');
+  await expect(page.locator('#printer-access-code')).toHaveValue('');
+  await page.locator('#printer-access-code').fill(CODE);
+  await page.waitForTimeout(5200);
+  await page.locator('#printer-check').click();
+  await expect.poll(() => bodies.length).toBe(2);
+  expect(bodies[1].pinned_certificate_sha256).toBe(fingerprint);
+  await page.locator('#printer-saved-list').getByRole('button', { name: /기억 삭제/ }).click();
+  await expect(page.locator('#printer-saved')).toBeHidden();
+  expect(await page.evaluate(() => localStorage.getItem('ppa.printers.v1'))).toBe('[]');
+});

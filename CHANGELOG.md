@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.0 — 2026-11-17
+
+- Remember a printer: after a successful status read with “이 브라우저에 프린터 기억하기” ticked, the browser keeps the host, serial, reported product name and certificate fingerprint (never the access code). On the next visit the most recent printer is filled in and its fingerprint stays pinned, so a different device answering at that address is stopped before the code is sent. Saved printers can be chosen or deleted; clearing the pin also clears the remembered one. Storage failures leave the app working.
+- Follow a started print: after a send reports `started`, the card re-reads the printer every 30 seconds and shows its reported state, progress, remaining time and layer, stopping on the printer's own finish/failure/idle report for that job, when the printer inputs change, after 12 hours or on request. A reported finish asks the person to check the print and record the outcome; it is not a measured result.
+
 ## 0.16.0 — 2026-11-17
 
 - Where to buy ([docs/STORES.md](docs/STORES.md)): the purchase view opens with a dated directory of 28 Korean filament stores whose operation was confirmed on 2026-11-17 (own site, Naver store directory or current Naver Shopping listings), filterable by material, “Bambu 정품”, official store/importer, own brand or multi-brand reseller, and by name (Korean brand aliases such as 뱀부). It includes the official Bambu Lab Korea store and Bambu's Korean dealers found by search. 6 listed stores without current evidence are kept in a separate “운영을 확인하지 못한 곳” group, and 퓨어필라 is excluded (its domain is no longer registered). Prices and stock are never stored; links open the store in a new tab with `noopener noreferrer`; seller claims are labelled as claims. Not advertising.

@@ -30,12 +30,14 @@ SERIAL = '01S00SYNTH000001'
 def sliced(filaments=(('1', 'PLA', '#FFFFFF', '2.03'),), plates=(1,), md5_ok=True, gcode=b'; synthetic\nG1 X1 Y1 E1\n',
            nozzle='0.4'):
     stream = io.BytesIO()
+    def entry(name):
+        return zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))  # same bytes on every call
     with zipfile.ZipFile(stream, 'w') as archive:
         for plate in plates:
-            archive.writestr(f'Metadata/plate_{plate}.gcode', gcode)
-            archive.writestr(f'Metadata/plate_{plate}.gcode.md5', hashlib.md5(gcode if md5_ok else b'x').hexdigest())
+            archive.writestr(entry(f'Metadata/plate_{plate}.gcode'), gcode)
+            archive.writestr(entry(f'Metadata/plate_{plate}.gcode.md5'), hashlib.md5(gcode if md5_ok else b'x').hexdigest())
         items = ''.join(f'<filament id="{i}" type="{kind}" color="{color}" used_g="{grams}"/>' for i, kind, color, grams in filaments)
-        archive.writestr('Metadata/slice_info.config',
+        archive.writestr(entry('Metadata/slice_info.config'),
                          '<config><plate><metadata key="index" value="1"/><metadata key="printer_model_id" value="C12"/>'
                          f'<metadata key="nozzle_diameters" value="{nozzle}"/><metadata key="prediction" value="837"/>'
                          f'<metadata key="weight" value="2.69"/>{items}</plate></config>')
@@ -161,7 +163,8 @@ class SendFlowTests(unittest.TestCase):
 
     def test_reviewed_job_is_uploaded_started_and_recorded_without_the_code(self):
         simulator, mqtt, ftps = fake_printer()
-        job_id = self.sliced_job()
+        content = sliced()  # built once: ZIP entries carry the build time
+        job_id = self.sliced_job(content)
         options = self.review(job_id, mqtt).json()
         self.assertFalse(options['ready'])
         self.assertIn('골라', options['problems'][0])
@@ -181,7 +184,7 @@ class SendFlowTests(unittest.TestCase):
         self.assertTrue(result['upload']['size_confirmed'])
         self.assertTrue(result['upload']['matches_mqtt_certificate'])
         stored = simulator.files[review['filename']]
-        self.assertEqual(hashlib.sha256(stored).hexdigest(), hashlib.sha256(sliced()).hexdigest())
+        self.assertEqual(hashlib.sha256(stored).hexdigest(), hashlib.sha256(content).hexdigest())
         command = simulator.print_commands[0]
         self.assertEqual((command['command'], command['use_ams'], command['ams_mapping']), ('project_file', True, [0]))
         self.assertEqual(command['md5'], hashlib.md5(stored).hexdigest())
