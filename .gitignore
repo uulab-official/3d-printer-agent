@@ -16,3 +16,6 @@ playwright-report/
 test-results/
 .playwright-data/
 .DS_Store
+
+# Studio CLI run receipts (macOS writes one into the working directory)
+/result.json

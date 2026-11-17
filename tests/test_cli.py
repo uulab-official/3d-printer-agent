@@ -78,3 +78,89 @@ class DoctorTests(unittest.TestCase):
             main()
         self.assertEqual(exit_result.exception.code, 2)
         serve.assert_not_called()
+
+
+class LaunchTests(unittest.TestCase):
+    def run_main(self, argv, **patches):
+        out, err = io.StringIO(), io.StringIO()
+        with patch('sys.argv', ['printer-agent', *argv]), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                main()
+                code = 0
+            except SystemExit as exit:
+                code = exit.code
+        return code, out.getvalue(), err.getvalue()
+
+    def test_second_launch_points_to_the_running_app_instead_of_failing(self):
+        with patch('print_agent.__main__._port_free', return_value=False), \
+             patch('print_agent.__main__._agent_answers', return_value=True), \
+             patch('print_agent.__main__._should_open_browser', return_value=True), \
+             patch('print_agent.__main__.webbrowser.open') as opened, patch('uvicorn.run') as serve:
+            code, out, _ = self.run_main(['serve', '--port', '8770'])
+        self.assertEqual(code, 0)
+        self.assertIn('이미 실행 중', out)
+        opened.assert_called_once_with('http://127.0.0.1:8770')
+        serve.assert_not_called()
+
+    def test_port_used_by_another_program_suggests_the_next_port(self):
+        with patch('print_agent.__main__._port_free', return_value=False), \
+             patch('print_agent.__main__._agent_answers', return_value=False), \
+             patch('print_agent.__main__.webbrowser.open') as opened, patch('uvicorn.run') as serve:
+            code, _, err = self.run_main(['serve', '--port', '8770'])
+        self.assertEqual(code, 1)
+        self.assertIn('--port 8771', err)
+        opened.assert_not_called()
+        serve.assert_not_called()
+
+    def test_data_folder_in_use_fails_before_the_server_with_a_message(self):
+        from print_agent.runtime import DataDirectoryLease
+        with tempfile.TemporaryDirectory() as temp, DataDirectoryLease(Path(temp)):
+            with patch('print_agent.__main__._port_free', return_value=True), patch('uvicorn.run') as serve:
+                code, _, err = self.run_main(['serve', '--port', '8770', '--data-dir', temp])
+        self.assertEqual(code, 1)
+        self.assertIn('다른 3D Printer Agent가 사용 중', err)
+        self.assertNotIn('Traceback', err)
+        serve.assert_not_called()
+
+    def test_browser_opens_only_for_a_person_at_a_terminal(self):
+        from print_agent.__main__ import _should_open_browser
+        class Args:
+            no_browser = False
+        tty = type('TTY', (), {'isatty': lambda self: True})()
+        pipe = type('Pipe', (), {'isatty': lambda self: False})()
+        with patch.dict('os.environ', {}, clear=False), patch('sys.stdout', tty):
+            os_env = __import__('os').environ
+            os_env.pop('PPA_NO_BROWSER', None)
+            self.assertTrue(_should_open_browser(Args()))
+            Args.no_browser = True
+            self.assertFalse(_should_open_browser(Args()))
+            Args.no_browser = False
+            with patch.dict('os.environ', {'PPA_NO_BROWSER': '1'}):
+                self.assertFalse(_should_open_browser(Args()))
+        with patch('sys.stdout', pipe):
+            self.assertFalse(_should_open_browser(Args()))
+
+    def test_port_check_ignores_time_wait_but_sees_a_listener(self):
+        import socket
+        from print_agent.__main__ import _port_free
+        server = socket.socket(); server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('127.0.0.1', 0)); server.listen(); port = server.getsockname()[1]
+        self.assertFalse(_port_free(port))
+        client = socket.create_connection(('127.0.0.1', port)); accepted, _ = server.accept()
+        accepted.close(); client.close(); server.close()  # the server side closes first -> TIME_WAIT
+        self.assertTrue(_port_free(port))
+
+    def test_no_browser_is_only_for_serve(self):
+        code, _, err = self.run_main(['doctor', '--no-browser'])
+        self.assertEqual(code, 2)
+        self.assertIn('only available with serve', err)
+
+    def test_free_port_starts_the_server_once(self):
+        with patch('print_agent.__main__._port_free', return_value=True), \
+             patch('print_agent.app.create_app', return_value=object()), \
+             patch('print_agent.__main__._should_open_browser', return_value=False), \
+             patch('uvicorn.run') as serve, tempfile.TemporaryDirectory() as temp:
+            code, out, _ = self.run_main(['serve', '--port', '8770', '--data-dir', temp])
+        self.assertEqual(code, 0)
+        serve.assert_called_once()
+        self.assertIn('Starting 3D Printer Agent: http://127.0.0.1:8770', out)

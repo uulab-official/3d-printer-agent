@@ -33,6 +33,7 @@ import re
 import shutil
 import stat
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -166,11 +167,14 @@ def _probe_cli(path: Path, timeout_seconds: float, required_options: tuple = _RE
             return cached
         result = {"supported": False, "version": None, "capabilities": [], "diagnostics": [], "checked_at": time.monotonic()}
         try:
-            completed = subprocess.run(
-                [str(path), "--help"], shell=False, stdin=subprocess.DEVNULL,
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=min(3, timeout_seconds), check=False,
-            )
+            # The macOS Studio CLI writes result.json into its working directory
+            # even for --help; probe in a throwaway folder, never the user's.
+            with tempfile.TemporaryDirectory(prefix="studio-probe-") as scratch:
+                completed = subprocess.run(
+                    [str(path), "--help"], cwd=scratch, shell=False, stdin=subprocess.DEVNULL,
+                    capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    timeout=min(3, timeout_seconds), check=False,
+                )
             output = _text(completed.stdout) + "\n" + _text(completed.stderr)
             result["capabilities"] = [option for option in required_options
                                       if re.search(r"(?<![\w-])" + re.escape(option) + r"(?![\w-])", output)]

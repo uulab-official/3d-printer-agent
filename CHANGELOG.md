@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.0 — 2026-11-17
+
+- Owner-friendly launch: `printer-agent` opens the app in the default browser once the server answers (only when started from a terminal; `--no-browser` or `PPA_NO_BROWSER=1` turns it off, and CI/services never get a window). Starting it again while it runs prints the running address (and opens it) instead of a bind error. A port held by another program prints a Korean message with the next port; a data folder used by another running copy fails before the server starts with the app's message instead of a traceback.
+- README “시작하기” starts with installing the latest release wheel; the stale v0.8.0 numbers are removed.
+- The Studio CLI check (`doctor --probe-slicer`, “설치된 슬라이서 확인” and the check before each slice) runs `--help` in a temporary folder. The macOS Studio CLI writes a `result.json` receipt into its working directory even for `--help`, so the check used to leave that file in whatever folder the app was started from. A stray copy committed at the repository root in 0.12.1 is removed (it was never in the wheel) and `/result.json` is ignored.
+
 ## 0.12.1 — 2026-11-17
 
 - Fix Studio-project slicing on macOS: the project command now always passes `--outputdir` (the job folder). Without it the macOS Studio CLI wrote the sliced 3MF into its own app bundle (`BambuStudio.app/Contents/Resources`) and the app reported a missing output. Linux behaviour is unchanged (the job folder was already the working directory). The project path now also requires `--outputdir` in the CLI help.
