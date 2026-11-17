@@ -2,9 +2,11 @@
 
 Date: 2026-11-17 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.20 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.23 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.23 makes the colour swatches and store filters keyboard radio groups (one Tab stop, arrow keys). Published as [v0.23.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.23.0) on 2026-11-17 from `95cfcf0`, together with the 0.21 (hook starters and qualification) and 0.22 (update check) changes and PR #2 (placement oracle and field qualification checklist).
 
 Version 0.22 adds an explicit, anonymous new-version check against the public latest release; it never downloads or installs.
 

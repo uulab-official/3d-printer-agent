@@ -1,27 +1,35 @@
 # 검증된 패키지의 릴리스 배포
 
-**[v0.20.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.20.0)**가
-2026-11-17 **06:35:19 UTC**에 게시됐습니다. 소스와 tag는
-[`0e3645ba20d5312ac88a27fd4e0518ca64267f3a`](https://github.com/uulab-official/3d-printer-agent/commit/0e3645ba20d5312ac88a27fd4e0518ca64267f3a)이며,
+**[v0.23.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.23.0)**가
+2026-11-17 **07:32:38 UTC**에 게시됐습니다. 소스와 tag는
+[`95cfcf04118e3c3f456434b5e7b843673b86aaa5`](https://github.com/uulab-official/3d-printer-agent/commit/95cfcf04118e3c3f456434b5e7b843673b86aaa5)이며,
 아래 세 검증을 통과한 원본 wheel과 검증 보고서 등 **7개 자산**을 포함합니다.
-[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44032276872)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
+[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44039447641)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
 릴리스 파일은 Actions의 단기 보관 산출물과 구분합니다.
 
-배포 wheel은 `3d_printer_agent_local-0.20.0-py3-none-any.whl`, **304,612바이트**이며
-SHA-256은 `0f5342fde630425cd54c8ebf0c1cd64020abb0436460477f4f41b33189b36c2f`입니다.
+배포 wheel은 `3d_printer_agent_local-0.23.0-py3-none-any.whl`, **308,072바이트**이며
+SHA-256은 `9b3cac3ff54777b5a91906540a5f60f1d3875acc9f9fbbe4add8c51bfe3088ae`입니다.
 이 값은 릴리스 내부 wheel의 해시이며 Actions가 묶은 외부 ZIP의 해시와 다릅니다.
 
 | 같은 main 소스의 검증 | 관측 결과 |
 |---|---|
-| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44031399678) | Python **762개**, 컨트롤러 **214개**, 실제 Chromium **94개**(데스크톱·모바일 각 47개) 통과 |
-| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44031399682) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **337개** 통과 |
-| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/44031399774) | Linux Studio `02.09.01.70`의 기존 합성 슬라이싱 경로 통과 |
+| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44038597238) | Python **769개**, 컨트롤러 **216개**, 실제 Chromium **98개**(데스크톱·모바일 각 49개) 통과 |
+| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44038597293) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **354개** 통과(벽걸이 후크 포함) |
+| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/44038597309) | Linux Studio `02.09.01.70`의 기존 합성 슬라이싱 경로 통과 |
 
-v0.20은 여섯 번째 템플릿인 벽걸이 후크(나사 구멍 두 개의 등판·걸이·끝 턱, 서포트 없이 출력되는 물방울 나사 구멍)와 “헤드폰 걸이”·“가방 걸이” 같은
-요청·수정 문장을 더했습니다. 세 workflow는 모두 실행 차수 1에서 통과했습니다. 공개 자산 7개를 인증 없이 다시 내려받아
-wheel·`SHA256SUMS`·영수증의 해시와 바이트 수가 일치하고, 근거 JSON의 보고서 해시가 내려받은 세 보고서와 같으며, 근거·영수증·보고서의
-소스 커밋이 tag 커밋과 같고 보고서가 모두 통과 상태임을 확인했습니다. 후크의 하중·벽 고정력과 실물 출력은 검증하지 않았습니다.
-이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
+v0.23.0은 PR #17·#18·#19와 이전부터 열려 있던 PR #2를 함께 병합한 릴리스로 v0.21·v0.22의 변경을 포함합니다(그 두 버전은 따로
+게시하지 않았습니다). 벽걸이 후크 시작 프로젝트와 세 OS 설치 검증의 후크 확인, 누를 때만 동작하는 익명 새 버전 확인, 색 견본·구매처 필터의
+키보드 동작, 그리고 출력 크기 배치를 독립적으로 대조하는 300개 사례 테스트와 실제 프린터 인수 점검표를 담았습니다. 세 workflow는 모두 실행
+차수 1에서 통과했습니다. 공개 자산 7개를 인증 없이 다시 내려받아 wheel·`SHA256SUMS`·영수증의 해시와 바이트 수가 일치하고, 근거 JSON의
+보고서 해시가 내려받은 세 보고서와 같으며, 근거·영수증·보고서의 소스 커밋이 tag 커밋과 같고 보고서가 모두 통과 상태임을 확인했습니다.
+실제 프린터와 실물 출력은 검증하지 않았습니다. 이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
+
+### 이전 릴리스 v0.20.0
+
+[v0.20.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.20.0)은 2026-11-17 **06:35:19 UTC**에 [`0e3645b`](https://github.com/uulab-official/3d-printer-agent/commit/0e3645ba20d5312ac88a27fd4e0518ca64267f3a)에서
+게시됐습니다. wheel **304,612바이트**, SHA-256 `0f5342fde630425cd54c8ebf0c1cd64020abb0436460477f4f41b33189b36c2f`.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44031399678)(Python 762·컨트롤러 214·Chromium 94), [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44031399682)(세 OS 각 337개),
+[Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44031399774)가 같은 커밋에서 통과했습니다.
 
 ### 이전 릴리스 v0.19.0
 
@@ -123,7 +131,7 @@ SHA256SUMS 또는 영수증을 함께 받고 실제 wheel의 SHA-256을 비교�
 Python 3.12 가상환경에서 다음과 같이 설치할 수 있습니다.
 
 ```bash
-python -m pip install ./3d_printer_agent_local-0.20.0-py3-none-any.whl
+python -m pip install ./3d_printer_agent_local-0.23.0-py3-none-any.whl
 printer-agent --version
 printer-agent doctor
 printer-agent
