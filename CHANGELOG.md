@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0 — 2026-11-17
+
+- Two wall-hook starting projects under a new “벽에 걸기” purpose: 현관 열쇠 후크 (20 × 35 × 50 mm) and 헤드폰 걸이 (30 × 50 × 60 mm), with what to measure and the load/anchor limits. The starter list is now nine (`NINE SMALL STARTS`), and hook cards have their own illustration (back plate with two holes and a J arm).
+- The installed-package qualification now generates the wall hook on every platform: CAD, STEP and 3MF sizes (20 × 35 × 50), download receipts, and `wall_hook_prints_without_overhang` (the printability review reports no overhang). Restart, history and restored-download counts include it; promotion requires the hook checks.
+
 ## 0.20.0 — 2026-11-17
 
 - New `wall_hook` template ([docs/WALL_HOOK.md](docs/WALL_HOOK.md)), the sixth: a back plate with two screw holes, an arm and an end lip as one solid, printed as modelled (arm on the bed, no supports). Horizontal screw holes are teardrops that close at 45°, so the printability review reports no overhang. Rules keep the lip below the plate, the arm longer than the walls, material beside the holes and room for two holes. Requests such as “헤드폰 걸이 만들어줘”, “가방 걸이 나사 구멍 5mm” and “수건 걸이” choose it with starting sizes per item; a stand for headphones now points to the hook. Edits understand 걸이 길이, 걸이 두께, 끝 턱 and 나사 구멍; the failure recovery suggests a thicker wall for a weak hook. `hole_diameter` and `lip_height` are shared later fields, so earlier templates keep their canonical shape.

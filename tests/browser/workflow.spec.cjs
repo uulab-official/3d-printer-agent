@@ -743,7 +743,7 @@ async function findProjects(page) {
 }
 
 test('local project discovery reaches customized real CAD and preserves its recipe through downloads and history', async ({ page }, testInfo) => {
-  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(7);
+  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(9);
   await page.locator('#discovery-purpose [data-purpose="organization"]').click();
   for (const [axis, value] of Object.entries({ width: '150', depth: '90', height: '30' })) {
     await page.locator(`#space-${axis}`).fill(value);
@@ -894,7 +894,7 @@ test('discovery preserves unfinished drafts and recovers from empty, stale and f
   const fetched = new Promise(resolve => { signalFetched = resolve; });
   const delayedRoute = async route => {
     const actual = await route.fetch();
-    expect((await actual.json()).matches).toHaveLength(7);
+    expect((await actual.json()).matches).toHaveLength(9);
     signalFetched();
     await held;
     await route.fulfill({ response: actual });

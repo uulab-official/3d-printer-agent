@@ -376,6 +376,9 @@ def qualify(args, report):
             # White plate with red letters also produces the two-filament colour 3MF.
             ({'template': 'name_tag', 'text': 'MINSU', 'text_size': 12, 'text_depth': 2, 'wall': 3, 'bottom': 2,
               'hole_diameter': 4, 'color': 'white', 'accent_color': 'red'}, None),
+            # Teardrop screw holes: printed as modelled without supports.
+            ({'template': 'wall_hook', 'width': 20, 'depth': 35, 'height': 50, 'wall': 4, 'bottom': 4,
+              'hole_diameter': 4, 'lip_height': 10}, (20, 35, 50)),
         ]
         models = []
         for payload, dimensions in requests:
@@ -418,6 +421,10 @@ def qualify(args, report):
                                for axis in 'xyz'}
                 check('3mf_dimensions_' + kind, all(abs(mesh_bounds[axis] - expected) < 1e-5
                                                   for axis, expected in zip('xyz', dimensions)))
+            if kind == 'wall_hook':
+                overhang = next((item for item in printability.get('items', []) if item['id'] == 'overhang'), {})
+                check('wall_hook_prints_without_overhang', overhang.get('status') == 'pass'
+                      and job['title'] == '벽걸이 후크 · 20 × 35 × 50 mm', json.dumps(overhang)[:200])
             if kind == 'name_tag':
                 # Plate (filament 1) and letters (filament 2) as parts of one Studio object.
                 parts = job['result'].get('color_parts') or []
@@ -716,8 +723,8 @@ def qualify(args, report):
         servers.append(restarted)
         refreshed = restarted.wait_ready()
         recovery = refreshed['storage']['recovery']
-        # The phone stand and name tag models add two completed jobs to the earlier five.
-        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 7
+        # The phone stand, name tag and wall hook models add three completed jobs to the earlier five.
+        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 8
               and recovery['interrupted'] == 1 and recovery['unreadable'] == 0, json.dumps(recovery))
         check('restart_rotates_session', refreshed['session_token'] != token)
         old_session = get_json(restarted, '/api/discovery', method='POST', payload={}, token=token, expected=403)
@@ -772,7 +779,7 @@ def qualify(args, report):
             cursor = page['next_cursor']
             if cursor is None:
                 break
-        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 7
+        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 8
               and set(paged_ids) == {model['id'] for model in models} | {interrupted_id, contextual_job['id']})
 
         def backup_command(name, arguments, expected_exit=0):
@@ -828,7 +835,7 @@ def qualify(args, report):
             restored_model = get_json(restored_server, '/api/jobs/' + model['id'])
             code, content, _ = request(restored_server.base, restored_model['artifacts']['three_mf'])
             verified_downloads.append(code == 200 and sha256(content) == model['artifacts']['three_mf']['sha256'])
-        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == len(models) == 5)
+        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == len(models) == 6)
         restored_source = get_json(restored_server, '/api/studio-projects/' + imported['source_id'])
         restored_project = get_json(restored_server, '/api/jobs/' + models[1]['id'])
         source_code, restored_source_bytes, _ = request(restored_server.base, imported['archive_url'])
