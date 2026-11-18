@@ -1,28 +1,36 @@
 # 검증된 패키지의 릴리스 배포
 
-**[v0.24.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.24.0)**가
-2026-11-17 **08:13:15 UTC**에 게시됐습니다. 소스와 tag는
-[`c800064da75d1dee368597defb46507184de738f`](https://github.com/uulab-official/3d-printer-agent/commit/c800064da75d1dee368597defb46507184de738f)이며,
+**[v0.25.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.25.0)**가
+2026-11-18 **00:07:15 UTC**에 게시됐습니다. 소스와 tag는
+[`bf7c1865c8148a0dcec185b247c2255e25d039c1`](https://github.com/uulab-official/3d-printer-agent/commit/bf7c1865c8148a0dcec185b247c2255e25d039c1)이며,
 아래 세 검증을 통과한 원본 wheel과 검증 보고서 등 **7개 자산**을 포함합니다.
-[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44044770405)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
+[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44205082259)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
 릴리스 파일은 Actions의 단기 보관 산출물과 구분합니다.
 
-배포 wheel은 `3d_printer_agent_local-0.24.0-py3-none-any.whl`, **311,861바이트**이며
-SHA-256은 `a45aa89b004ba0a9bc7a865f009162dc70558775e8809e487064b0ad8f99fcbb`입니다.
+배포 wheel은 `3d_printer_agent_local-0.25.0-py3-none-any.whl`, **317,618바이트**이며
+SHA-256은 `30e4585867878fc5c70e90d9dd3ca4bf2bd53d26f26ea1ade3380feec650aabb`입니다.
 이 값은 릴리스 내부 wheel의 해시이며 Actions가 묶은 외부 ZIP의 해시와 다릅니다.
 
 | 같은 main 소스의 검증 | 관측 결과 |
 |---|---|
-| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44043739144) | Python **772개**, 컨트롤러 **216개**, 실제 Chromium **100개**(데스크톱·모바일 각 50개) 통과 |
-| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44043739272) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **355개** 통과 |
-| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/44043739125) | Linux Studio `02.09.01.70`의 기존 합성 슬라이싱 경로 통과 |
+| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44202886373) | Python **784개**, 컨트롤러 **217개**, 실제 Chromium **102개**(데스크톱·모바일 각 51개) 통과 |
+| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44202886379) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **372개** 통과 |
+| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/44202886330) | Linux Studio `02.09.01.70`의 기존 합성 슬라이싱 경로 통과 |
 
-v0.24.0은 출력 결과와 함께 캘리퍼 실측값(샘플 최대 5개의 X/Y/Z)과 미리 정한 허용 오차를 기록하고, CAD 치수와의 축별 평균·최대 오차와
-샘플 간 차이를 보여 주는 기능(PR #20)을 더했습니다. 이 비교는 사용자가 잰 값으로만 표시하며 프린터 인증이 아닙니다. 실제 프린터 인수
-점검표도 v0.15 LAN 전송·v0.18 제어를 반영하도록 고쳤습니다. 세 workflow는 모두 실행 차수 1에서 통과했습니다(먼저 끝난 게이트가 부른 두 번의
-승격 실행은 나머지 게이트를 기다리며 게시 없이 끝났습니다). 공개 자산 7개를 인증 없이 다시 내려받아 wheel·`SHA256SUMS`·영수증의 해시와
-바이트 수가 일치하고, 근거 JSON의 보고서 해시가 내려받은 세 보고서와 같으며, 근거·영수증·보고서의 소스 커밋이 tag 커밋과 같고 보고서가
-모두 통과 상태임을 확인했습니다. 실제 프린터와 실물 출력은 검증하지 않았습니다. 이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
+v0.25.0은 일곱 번째 고정 템플릿인 체리 MX 호환 키캡(PR #21)을 더했습니다. 키 크기 1~7u(9가지), 윗면에 새기는 6자 이하 글자(비우면 무지),
+십자 스템과 2u 이상의 스태빌라이저 스템, 키 이름(ESC·Enter·Space 등) 요청, 키캡 용어 수정 문장, 십자 여유 복구 제안을 포함합니다.
+설치 패키지 검증은 세 OS에서 2u 키캡을 만들어 STEP·3MF 크기와 세 스템 위치·작업 제목을 확인합니다. 세 workflow는 모두 실행 차수 1에서
+통과했습니다(먼저 끝난 게이트가 부른 두 번의 승격 실행은 나머지 게이트를 기다리며 게시 없이 끝났습니다). 공개 자산 7개를 인증 없이 다시
+내려받아 wheel·`SHA256SUMS`·영수증의 해시와 바이트 수가 일치하고, 근거 JSON의 보고서 해시가 내려받은 세 보고서와 같으며, 근거·영수증·보고서의
+소스 커밋이 tag 커밋과 같고 보고서가 모두 통과 상태임을 확인했습니다. 실물 출력, 실제 스위치와의 맞춤, 실제 프린터는 검증하지 않았습니다.
+이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
+
+### 이전 릴리스 v0.24.0
+
+[v0.24.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.24.0)은 2026-11-17 **08:13:15 UTC**에 [`c800064`](https://github.com/uulab-official/3d-printer-agent/commit/c800064da75d1dee368597defb46507184de738f)에서
+게시됐습니다. wheel **311,861바이트**, SHA-256 `a45aa89b004ba0a9bc7a865f009162dc70558775e8809e487064b0ad8f99fcbb`.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44043739144)(Python 772·컨트롤러 216·Chromium 100), [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44043739272)(세 OS 각 355개),
+[Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44043739125)가 같은 커밋에서 통과했습니다.
 
 ### 이전 릴리스 v0.23.0
 

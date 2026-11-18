@@ -134,6 +134,14 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-18 v0.25.0 공개 릴리스
+
+[v0.25.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.25.0)을 2026-11-18 00:07:15 UTC에 `bf7c186`에서 게시했습니다(PR #21, 체리 MX 호환 키캡 템플릿).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44202886373) Python **784개**·컨트롤러 **217개**·Chromium **102개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44202886379)
+세 OS 각 **372개**(키캡 생성·형상 점검·스템 위치와 제목 포함), [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44202886330)가 모두 실행 차수 1로 통과했습니다. 공개 자산 7개를 인증 없이 내려받아
+wheel(317,618바이트, `30e4585867878fc5…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며
+보고서가 모두 통과 상태임을 확인했습니다. 실물 출력, 스위치 맞춤, 실제 프린터는 확인하지 않았습니다.
+
 ## 2026-11-17 v0.24.0 공개 릴리스
 
 [v0.24.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.24.0)을 2026-11-17 08:13:15 UTC에 `c800064`에서 게시했습니다(PR #20, 캘리퍼 실측 기록).
