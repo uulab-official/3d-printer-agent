@@ -51,6 +51,8 @@ jobs:
 
       - name: Install native runtime libraries
         run: |
+          # A stalled mirror download must fail and retry instead of using up the job timeout.
+          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "60";\nAcquire::https::Timeout "60";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-retries
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y libwebkit2gtk-4.1-0 libgl1 libxkbcommon0 libdbus-1-3
 

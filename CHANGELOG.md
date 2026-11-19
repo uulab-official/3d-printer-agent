@@ -5,6 +5,7 @@
 - Slicer-setting history in **출력 시도 이력**. Each attempt with a successful slice keeps a bounded set of the settings its verified slice plan recorded: printer, nozzle, plate, layer heights, walls/shells, infill, speeds, filament profile and type, flow ratio, max volumetric speed, and nozzle and bed temperatures. G-code, bed outlines and paths are left out. An attempt is compared with the nearest earlier attempt that has a successful slice, so an unsliced attempt in between is skipped. The comparison lists each setting that differs (`slice_changes: {compared_with, changes}`). An attempt without an earlier slice shows a short summary (material, nozzle, layer height, nozzle temperature) instead.
 - Failed slices record no settings. Both Studio-project and manual-bundle slices use the same `expected_settings` keys. Earlier jobs with a recorded slice plan show their settings without migration.
 - Verified with fixture and UI-state tests and a Chromium case on desktop and mobile. That case runs the real edit flow and supplies the recorded slice settings, because the browser CI has no Bambu Studio. No physical print is involved.
+- The native qualification workflow uses the same apt retry and 60-second stall limit as CI. A PR run had stalled in its runtime-library download until the 15-minute job limit.
 
 ## 0.27.0 — 2026-11-19
 
