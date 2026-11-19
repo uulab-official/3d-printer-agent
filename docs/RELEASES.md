@@ -1,30 +1,36 @@
 # 검증된 패키지의 릴리스 배포
 
-**[v0.26.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.26.0)**가
-2026-11-19 **04:58:33 UTC**에 게시됐습니다. 소스와 tag는
-[`21ac9e1bf5086cf9e2a98f9c36fec81fe7efe3e2`](https://github.com/uulab-official/3d-printer-agent/commit/21ac9e1bf5086cf9e2a98f9c36fec81fe7efe3e2)이며,
+**[v0.27.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.27.0)**가
+2026-11-19 **08:19:19 UTC**에 게시됐습니다. 소스와 tag는
+[`837432390941c3b93e8c42cbd7b29cff9b79aa04`](https://github.com/uulab-official/3d-printer-agent/commit/837432390941c3b93e8c42cbd7b29cff9b79aa04)이며,
 아래 세 검증을 통과한 원본 wheel과 검증 보고서 등 **7개 자산**을 포함합니다.
-[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44461867343)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
+[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44486486561)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
 릴리스 파일은 Actions의 단기 보관 산출물과 구분합니다.
 
-배포 wheel은 `3d_printer_agent_local-0.26.0-py3-none-any.whl`, **320,898바이트**이며
-SHA-256은 `7f1624dc52fc27f4f0941caa08ff5cda12b28c22d99536f68d4ddc2e20ee7952`입니다.
+배포 wheel은 `3d_printer_agent_local-0.27.0-py3-none-any.whl`, **322,919바이트**이며
+SHA-256은 `23e1f6e64400d986771d62e2be2129b6d53daadd1c5cb7b3b84e15c6c3be367b`입니다.
 이 값은 릴리스 내부 wheel의 해시이며 Actions가 묶은 외부 ZIP의 해시와 다릅니다.
 
 | 같은 main 소스의 검증 | 관측 결과 |
 |---|---|
-| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44460842266) | Python **789개**, 컨트롤러 **218개**, 실제 Chromium **104개**(데스크톱·모바일 각 52개) 통과 |
-| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44460842294) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **373개** 통과 |
-| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/44460842221) | Linux Studio `02.09.01.70`의 기존 합성 슬라이싱 경로 통과 |
+| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44484865695) | Python **791개**, 컨트롤러 **219개**, 실제 Chromium **104개**(데스크톱·모바일 각 52개) 통과 |
+| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44484865785) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **373개** 통과 |
+| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/44484865569) | Linux Studio `02.09.01.70`의 기존 합성 슬라이싱 경로 통과 |
 
-v0.26.0은 프린터가 보고한 완료·실패를 그 출력을 보낸 작업에 연결합니다(PR #22). 같은 프린터로 보내 시작 보고를 받은 작업이고 프린터가 이 앱의
-작업 이름으로 보고할 때만 상태·진행률·레이어·오류 코드·HMS 코드를 `printer_report`로 남기며, 사용자의 출력 결과와 따로 보관합니다. 실패 보고는
-“다음에 바꿔 볼 것” 맨 위에 보고된 코드와 Bambu Lab HMS 검색 링크로 나오고, 앱은 코드의 뜻을 해석하지 않습니다. CI의 Chromium 설치 단계에
-apt 재시도와 60초 무응답 제한도 더했습니다(PR 실행 두 번이 미러 정체로 취소된 뒤). 세 workflow는 main에서 모두 실행 차수 1로 통과했습니다
-(먼저 끝난 게이트가 부른 두 번의 승격 실행은 나머지 게이트를 기다리며 게시 없이 끝났습니다). 공개 자산 7개를 인증 없이 다시 내려받아
-wheel·`SHA256SUMS`·영수증의 해시와 바이트 수가 일치하고, 근거 JSON의 보고서 해시가 내려받은 세 보고서와 같으며, 근거·영수증·보고서의 소스
-커밋이 tag 커밋과 같고 보고서가 모두 통과 상태임을 확인했습니다. 합성 프린터로만 검증했고 실제 프린터·펌웨어와 실물 출력은 검증하지 않았습니다.
-이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
+v0.27.0은 수정해서 다시 만든 모델에 출력 시도 이력을 보여 줍니다(PR #23). 저장된 수정 기록의 부모 연결을 따라가며 시도마다 직접 기록한
+결과와 원인, 프린터가 보고한 완료·실패와 코드, 이전 시도에서 바꾼 치수를 처음 것부터 보여 줍니다. 새 `GET /api/jobs/{id}/attempts`는 읽기
+전용이고 최대 12개까지 따라가며, 이전 기록이 없거나 읽을 수 없거나 연결이 반복되면 멈추고 이유를 알립니다. 메모는 다시 보여 주지 않고
+원인을 추정하지 않습니다. 세 workflow는 main에서 모두 실행 차수 1로 통과했습니다(먼저 끝난 게이트가 부른 두 번의 승격 실행은 나머지
+게이트를 기다리며 게시 없이 끝났습니다). 공개 자산 7개를 인증 없이 다시 내려받아 wheel·`SHA256SUMS`·영수증의 해시와 바이트 수가
+일치하고, 근거 JSON의 보고서 해시가 내려받은 세 보고서와 같으며, 근거·영수증·보고서의 소스 커밋이 tag 커밋과 같고 보고서가 모두 통과
+상태임을 확인했습니다. 실물 출력은 검증하지 않았습니다. 이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
+
+### 이전 릴리스 v0.26.0
+
+[v0.26.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.26.0)은 2026-11-19 **04:58:33 UTC**에 [`21ac9e1`](https://github.com/uulab-official/3d-printer-agent/commit/21ac9e1bf5086cf9e2a98f9c36fec81fe7efe3e2)에서
+게시됐습니다. wheel **320,898바이트**, SHA-256 `7f1624dc52fc27f4f0941caa08ff5cda12b28c22d99536f68d4ddc2e20ee7952`.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44460842266)(Python 789·컨트롤러 218·Chromium 104), [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44460842294)(세 OS 각 373개),
+[Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44460842221)가 같은 커밋에서 통과했습니다.
 
 ### 이전 릴리스 v0.25.0
 

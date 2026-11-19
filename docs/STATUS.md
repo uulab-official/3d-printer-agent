@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.27 shows a print attempt history for a model made by editing an earlier one. Each earlier attempt lists its recorded outcome and reasons, the printer's own report and codes, and the reviewed changes between attempts. The history comes from stored edit links, is read-only and never infers a cause ([recovery](RECOVERY.md)).
+Version 0.27 shows a print attempt history for a model made by editing an earlier one. Each earlier attempt lists its recorded outcome and reasons, the printer's own report and codes, and the reviewed changes between attempts. The history comes from stored edit links, is read-only and never infers a cause ([recovery](RECOVERY.md)). Published as [v0.27.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.27.0) on 2026-11-19 from `8374323`.
 
 Version 0.26 links a printer's own finish/failure report to the job it was sent from (matching job name and a recorded start on the same printer), keeps the reported error and HMS codes apart from the person's outcome, and puts them first in the recovery steps with Bambu Lab's HMS search; verified against the synthetic printer only ([LAN send](PRINT_SEND.md)). Published as [v0.26.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.26.0) on 2026-11-19 from `21ac9e1`.
 
