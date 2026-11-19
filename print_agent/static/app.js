@@ -1605,6 +1605,7 @@
     syncOutcomeReasons(job.user_outcome?.reasons || []);
     fillMeasurements(job.user_outcome);
     loadRecovery(job);
+    loadAttempts(job);
     state.modelCleanSignature = modelDraftSignature();
     hideNotice("outcome-feedback");
     $("slice-result").replaceChildren();
@@ -2709,6 +2710,60 @@
     area.hidden = !items.length;
   }
 
+  async function loadAttempts(job) {
+    // Only a model edited from an earlier one has a history worth showing.
+    const area = $("outcome-attempts");
+    if (!job?.id || !job.model_edit?.selection?.parent) { area.hidden = true; area.replaceChildren(); return; }
+    const request = state.attemptsRequest = (state.attemptsRequest || 0) + 1;
+    try {
+      const history = await api(`/api/jobs/${encodeURIComponent(job.id)}/attempts`);
+      if (request !== state.attemptsRequest || state.job?.id !== job.id) return;
+      renderAttempts(history, job.id);
+    } catch (error) {
+      if (request === state.attemptsRequest) { area.hidden = false; area.replaceChildren(node("p", "field-help", error.message)); }
+    }
+  }
+
+  function attemptFacts(attempt) {
+    const attemptResults = { success: "성공", failure: "실패", not_tested: "출력 안 함" };
+    const facts = [];
+    const outcome = attempt.user_outcome;
+    if (outcome?.result) {
+      const reasons = (outcome.reasons || []).map((code) => state.failureReasons?.[code] || code);
+      facts.push(`직접 기록: ${attemptResults[outcome.result] || outcome.result}${reasons.length ? ` (${reasons.join(", ")})` : ""}`);
+    }
+    const report = attempt.printer_report;
+    if (report?.state) facts.push(`프린터 보고: ${report.state === "FAILED" ? "실패" : report.state === "FINISH" ? "완료" : report.state}${report.codes?.length ? ` · ${report.codes.join(", ")}` : ""}`);
+    if (!facts.length) facts.push(attempt.sent_to_printer ? "프린터로 보냄 · 결과 기록 없음" : attempt.sliced ? "슬라이스함 · 결과 기록 없음" : "결과 기록 없음");
+    return facts.join(" · ");
+  }
+
+  function renderAttempts(history, currentId) {
+    const area = $("outcome-attempts");
+    const attempts = Array.isArray(history?.attempts) ? [...history.attempts].reverse() : [];
+    if (attempts.length < 2) { area.hidden = true; area.replaceChildren(); return; }
+    const attemptStops = { missing: "더 이전 모델 기록은 이 PC에 없습니다.", unreadable: "더 이전 모델 기록을 읽을 수 없습니다(원본 파일은 보존).",
+      limit: "최근 시도까지만 보여줍니다.", cycle: "기록 연결이 반복되어 여기서 멈췄습니다." };
+    const list = node("ol", "");
+    attempts.forEach((attempt, index) => {
+      const item = node("li", "");
+      item.dataset.attempt = attempt.job_id;
+      if (attempt.job_id === currentId) item.setAttribute("aria-current", "true");
+      item.append(node("strong", "", `${index + 1}번째 · ${dateTime(attempt.created_at)}`), node("span", "attempt-facts", attemptFacts(attempt)));
+      const changes = attempt.changes_from_parent?.changes || [];
+      if (changes.length) {
+        const text = changes.map((change) => `${fieldNames[change.field] || change.field} ${change.before} → ${change.after}`).join(", ");
+        item.append(node("span", "attempt-changes", `이전 시도에서 바꾼 점: ${text}`));
+      }
+      list.append(item);
+    });
+    const parts = [node("h3", "", "출력 시도 이력"), list];
+    if (attemptStops[history.stopped]) parts.push(node("p", "field-help", attemptStops[history.stopped]));
+    parts.push(node("p", "field-help", "각 시도에 기록된 결과와 검토해 적용한 치수 변경만 보여줍니다. 원인을 추정하지 않습니다."));
+    area.replaceChildren(...parts);
+    area.hidden = false;
+  }
+
   function proposeRecoveryEdit(text) {
     // Reuse the reviewed edit flow: the person still checks and applies the change.
     const input = $("model-edit-text");
@@ -2790,6 +2845,7 @@
         state.job = job;
         renderMeasurementReview(job.user_outcome?.measurement_review);
         loadRecovery(job);
+        loadAttempts(job);
         showNotice("outcome-feedback", "직접 보고한 출력 결과를 기록했습니다. CAD 검증 상태와 별도로 보관합니다.", "success");
         renderJourney();
       });
@@ -4072,6 +4128,7 @@
     state.job = { ...state.job, printer_report: report };
     renderOutcomePrinterHint();
     loadRecovery(state.job);
+    loadAttempts(state.job);
   }
 
   function startPrintFollow(result) {

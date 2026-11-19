@@ -828,6 +828,12 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .outcome-reason input { width: 15px; height: 15px; margin: 0; }
 .outcome-recovery { margin-top: 12px; display: grid; gap: 10px; }
 .outcome-recovery h3 { margin: 0; font-size: 0.95rem; }
+.outcome-attempts { margin-top: 12px; display: grid; gap: 8px; }
+.outcome-attempts h3 { margin: 0; font-size: 0.95rem; }
+.outcome-attempts ol { margin: 0; padding-left: 1.3rem; display: grid; gap: 8px; }
+.outcome-attempts li { display: grid; gap: 2px; }
+.outcome-attempts li[aria-current="true"] strong::after { content: " · 지금 보는 모델"; color: var(--blue); font-weight: 600; }
+.outcome-attempts .attempt-facts, .outcome-attempts .attempt-changes { color: var(--muted); font-size: 0.86rem; }
 .recovery-item { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; }
 .recovery-item ul { margin: 0; padding-left: 18px; font-size: 0.86rem; }
 .recovery-item a { color: var(--blue); font-size: 0.86rem; justify-self: start; }
