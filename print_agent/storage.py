@@ -39,6 +39,31 @@ _INTEGRITY_MESSAGE = '저장한 파일의 크기 또는 SHA-256이 원래 기록
 _SCHEMA = 'CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, title TEXT NOT NULL, template TEXT, status TEXT NOT NULL, user_outcome TEXT)'
 _LOGGER = logging.getLogger(__name__)
 _ABSENT_HASH = object()
+MAX_ATTEMPTS = 12
+
+
+def _attempt_entry(job):
+    """One attempt as recorded: outcome, printer report and the reviewed changes from its parent."""
+    outcome = job.get('user_outcome') if isinstance(job.get('user_outcome'), dict) else None
+    report = job.get('printer_report') if isinstance(job.get('printer_report'), dict) else None
+    edit = job.get('model_edit') if isinstance(job.get('model_edit'), dict) else None
+    latest = job.get('latest_slice') if isinstance(job.get('latest_slice'), dict) else {}
+    execution = latest.get('execution') if isinstance(latest.get('execution'), dict) else {}
+    sent = any(event.get('type') == 'printer_send' and isinstance(event.get('report'), dict)
+               and event['report'].get('status') == 'started' for event in job['events'])
+    return {
+        'job_id': job['id'], 'created_at': job['created_at'], 'title': job['title'], 'template': job['template'],
+        'status': job['status'],
+        'sliced': execution.get('status') == 'sliced',
+        'sent_to_printer': sent,
+        'user_outcome': None if outcome is None else {
+            key: outcome[key] for key in ('result', 'reasons', 'recorded_at', 'source') if key in outcome},
+        'printer_report': None if report is None else {
+            'state': report.get('state'), 'source': report.get('source'), 'observed_at': report.get('observed_at'),
+            'codes': [item.get('code') for item in report.get('codes') or [] if isinstance(item, dict)]},
+        'changes_from_parent': None if edit is None else {
+            'request_text': (edit.get('selection') or {}).get('request_text'), 'changes': edit.get('changes') or []},
+    }
 
 
 class ArtifactIntegrityError(ValueError):
@@ -788,6 +813,42 @@ class JobStore:
             job['events'].append({'at': now_iso(), 'type': 'user_reported_outcome', 'message': result, 'report': report})
             self._write(job)
             return self._public(job)
+
+    def attempt_history(self, job_id, limit=MAX_ATTEMPTS):
+        """This job and the earlier models it was edited from, newest first.
+
+        Each entry keeps what was recorded on that job: the person's outcome, the
+        printer's own report and the reviewed changes that made it from its parent.
+        Nothing is inferred and no record is changed. The walk stops at a missing or
+        unreadable parent, a repeated id or ``limit`` entries, and says so.
+        """
+        with self.lock:
+            entries, seen, current, stopped = [], set(), job_id, None
+            while current is not None:
+                if len(entries) >= limit:
+                    stopped = 'limit'
+                    break
+                if current in seen:
+                    stopped = 'cycle'
+                    break
+                seen.add(current)
+                try:
+                    job = self._read(current)
+                except KeyError:
+                    if not entries:
+                        raise
+                    stopped = 'missing'
+                    break
+                except JobRecordError:
+                    if not entries:
+                        raise
+                    stopped = 'unreadable'
+                    break
+                entries.append(_attempt_entry(job))
+                edit = job.get('model_edit') or {}
+                parent = (edit.get('selection') or {}).get('parent')
+                current = parent.get('job_id') if isinstance(parent, dict) else None
+            return {'schema_version': 1, 'job_id': job_id, 'attempts': entries, 'stopped': stopped}
 
     def sliced_for_printing(self, job_id):
         """The verified bytes of this job's current successful slice, for sending to a printer."""

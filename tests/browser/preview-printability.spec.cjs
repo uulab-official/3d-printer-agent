@@ -403,6 +403,13 @@ test('a reported failure with reasons offers next steps and a reviewed model fix
   const fixed = await (await regenerated).json();
   expect(fixed.result.parameters.fit_clearance).toBe(0.5);
   expect(fixed.model_edit.changes).toEqual([{ field: 'fit_clearance', before: 0.3, after: 0.5 }]);
+  // The re-made model shows the failed attempt it came from and what changed.
+  const attempts = page.locator('#outcome-attempts');
+  await expect(attempts).toContainText('출력 시도 이력');
+  await expect(attempts.locator('li')).toHaveCount(2);
+  await expect(attempts.locator(`[data-attempt="${job.id}"]`)).toContainText('직접 기록: 실패');
+  await expect(attempts.locator(`[data-attempt="${fixed.id}"]`)).toHaveAttribute('aria-current', 'true');
+  await expect(attempts.locator(`[data-attempt="${fixed.id}"]`)).toContainText('0.3 → 0.5');
 });
 
 test('a printer-reported failure comes first in recovery with its codes and the HMS search link', async ({ page }) => {

@@ -617,6 +617,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         return recovery_plan((job.get('result') or {}).get('parameters'), reasons if isinstance(reasons, list) else [],
                              printer_report=job.get('printer_report'))
 
+    @app.get('/api/jobs/{job_id}/attempts')
+    def job_attempts(job_id: str):
+        """This model and the earlier models it was edited from, with what each attempt recorded."""
+        return store.attempt_history(job_id)
+
     @app.post('/api/profiles/review')
     def profile_review(payload: ProfilePayload):
         return evaluate_profile(payload.profile,payload.setup)

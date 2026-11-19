@@ -84,6 +84,11 @@ class PrinterReportFlowTests(send.SendFlowTests):
         plan = self.client.get(f'/api/jobs/{job_id}/recovery').json()
         self.assertEqual(plan['items'][0]['reason'], 'printer_reported')
         self.assertEqual(plan['items'][0]['lookup_url'], HMS_SEARCH_URL)
+        attempt = self.client.get(f'/api/jobs/{job_id}/attempts').json()['attempts'][0]
+        self.assertTrue(attempt['sent_to_printer'] and attempt['sliced'])
+        self.assertEqual((attempt['printer_report']['state'], attempt['printer_report']['codes']),
+                         ('FAILED', ['0300-400C', '0700-8000-0002-0001']))
+        self.assertIsNone(attempt['user_outcome'])
 
     def test_reports_for_other_jobs_or_unsent_jobs_are_not_linked(self):
         sent = self.started_job()

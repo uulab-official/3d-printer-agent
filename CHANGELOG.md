@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.0 — 2026-11-19
+
+- Print attempt history: a model made by editing an earlier one (for example through a recovery step's reviewed fix) shows **출력 시도 이력** in the outcome card. It lists the chain of earlier models, oldest first, with what each recorded. That covers the person's outcome and failure reasons, and the printer's own finish/failure report and codes. When neither exists, it says whether the model was sliced or sent. Each entry shows the reviewed parameter changes that made it from the one before. It is built from the stored `model_edit` parent links by the new read-only `GET /api/jobs/{id}/attempts`.
+- The walk is newest first and holds at most 12 entries. It stops and says so when a parent record is missing or unreadable (the original file is preserved), when a link repeats, or at the limit. Notes are not repeated, nothing is inferred, and no record changes.
+- The history appears only for edited models, refreshes when an outcome is saved or a printer report is linked, and is verified with fixture, UI-state and real Chromium tests (desktop and mobile). No physical print is involved.
+
 ## 0.26.0 — 2026-11-19
 
 - A printer's own finish/failure report is linked to the job it was sent from. While a started print is followed, each status read carries the job id. When the printer reports FINISH or FAILED under this app's job name (`printer-agent` + the first 8 characters of the job id) for a job that was started on the same printer, the job keeps a `printer_report`: state, progress, layer, observed time, serial, and the reported `print_error` and HMS codes in Bambu Lab's dash search form. Only one event is recorded per distinct report. The report stays separate from the person's outcome and never selects it. Reports under another job name, or for a job never started on that printer, are not linked. An unknown job id is refused before any network use.
