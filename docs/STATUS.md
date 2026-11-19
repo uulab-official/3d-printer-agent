@@ -1,12 +1,12 @@
 # Development status
 
-Date: 2026-11-18 (Asia/Seoul).
+Date: 2026-11-19 (Asia/Seoul).
 
 Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.26 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
 
-Version 0.26 links a printer's own finish/failure report to the job it was sent from (matching job name and a recorded start on the same printer), keeps the reported error and HMS codes apart from the person's outcome, and puts them first in the recovery steps with Bambu Lab's HMS search; verified against the synthetic printer only ([LAN send](PRINT_SEND.md)).
+Version 0.26 links a printer's own finish/failure report to the job it was sent from (matching job name and a recorded start on the same printer), keeps the reported error and HMS codes apart from the person's outcome, and puts them first in the recovery steps with Bambu Lab's HMS search; verified against the synthetic printer only ([LAN send](PRINT_SEND.md)). Published as [v0.26.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.26.0) on 2026-11-19 from `21ac9e1`.
 
 Version 0.25 adds a seventh template, a Cherry MX-compatible keycap (1–7u, engraved legend, stabilizer stems), with requests, edits, recovery steps and installed-package qualification ([keycap guide](KEYCAP.md)). Five generated keycaps sliced locally with Bambu Studio 02.09.01.70 on synthetic settings without supports; switch fit and physical prints are not verified. Published as [v0.25.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.25.0) on 2026-11-18 from `bf7c186`.
 
