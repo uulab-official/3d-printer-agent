@@ -472,6 +472,16 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
                 problems.append(f'프린터 노즐({reported_nozzle:g} mm)과 슬라이스한 노즐({", ".join(sorted(sliced_nozzles))} mm)이 다릅니다.')
         elif reported_nozzle is None:
             warnings.append('프린터가 노즐 지름을 보고하지 않아 슬라이스 설정과 비교하지 못했습니다.')
+        if status['connection']['state'] == 'reporting':
+            model_problem, model_warning = printer_send.model_check(summary['printer_model_id'],
+                                                                    (status.get('identity') or {}).get('product_name'))
+            if model_problem:
+                problems.append(model_problem)
+            if model_warning:
+                warnings.append(model_warning)
+            wear = printer_send.nozzle_wear_warning(summary['filaments'], (printing.get('nozzle') or {}).get('type'))
+            if wear:
+                warnings.append(wear)
         if printing.get('hms'):
             warnings.append(f'프린터에 알림(HMS) {len(printing["hms"])}건이 있습니다. 프린터 화면을 먼저 확인하세요.')
         mapping = None
@@ -488,6 +498,9 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         public = {key: review[key] for key in ('job_id', 'job_title', 'host', 'serial', 'certificate_sha256', 'file_bytes',
                                                'filename', 'subtask', 'mapping', 'summary')}
         public.update(ready=not problems, problems=problems, warnings=warnings, printer=printing or None,
+                      printer_model={'sliced_code': summary['printer_model_id'],
+                                     'sliced_name': printer_lan.MODEL_NAMES.get(summary['printer_model_id'] or ''),
+                                     'reported_product': (status.get('identity') or {}).get('product_name')},
                       material_slots=slots, connection=status['connection'],
                       requirements='프린터에서 LAN 전용 모드와 개발자 모드를 켜야 보낼 수 있습니다.')
         if not problems:

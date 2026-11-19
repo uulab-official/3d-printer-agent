@@ -156,7 +156,7 @@ class Simulator:
                         elif command == 'get_version':
                             publish(conn, f'device/{serial}/report', {'info': {'command': 'get_version', 'module': [
                                 {'name': 'ota', 'sw_ver': '01.08.00.00', 'hw_ver': '', 'sn': serial},
-                                {'name': 'mc', 'sw_ver': '00.00.29.00', 'hw_ver': 'MC07', 'product_name': 'Synthetic Bambu-like printer'}]}})
+                                {'name': 'mc', 'sw_ver': '00.00.29.00', 'hw_ver': 'MC07', 'product_name': getattr(self.args, 'product_name', None) or 'Synthetic Bambu-like printer'}]}})
                     elif kind == 14:
                         return
         except (OSError, ssl.SSLError, ConnectionError, ValueError, StopIteration):
@@ -299,6 +299,7 @@ def main(argv=None):
     parser.add_argument('--silent', action='store_true', help='accept and subscribe but never report')
     parser.add_argument('--announce', action='store_true', help='send SSDP NOTIFY to host:2021 every second')
     parser.add_argument('--ftps-port', type=int, default=None, help='also accept implicit-FTPS uploads on this port (990 on real printers)')
+    parser.add_argument('--product-name', default=None, help='product name reported by get_version (default: a synthetic name)')
     parser.add_argument('--reject-print', action='store_true', help='answer a start command with a synthetic FAILED report')
     Simulator(parser.parse_args(argv)).serve()
 

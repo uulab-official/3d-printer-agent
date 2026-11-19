@@ -119,7 +119,75 @@ def inspect_sliced(content: bytes) -> dict:
                     'color': color.upper() if re.fullmatch(r'#[0-9A-Fa-f]{6}', color) else None, 'used_g': used})
     if not summary['filaments']:
         summary['filaments'] = [{'id': 1, 'type': None, 'color': None, 'used_g': None}]
+    temperatures = _project_nozzle_temperatures(archive, names)
+    for filament in summary['filaments']:
+        index = filament['id'] - 1
+        filament['nozzle_c'] = temperatures[index] if 0 <= index < len(temperatures) else None
     return summary
+
+
+def _project_nozzle_temperatures(archive, names) -> list:
+    """Per-filament nozzle temperatures the slicer wrote into the file; unknown values stay None."""
+    name = 'Metadata/project_settings.config'
+    if name not in names or archive.getinfo(name).file_size > 4 * 1024 * 1024:
+        return []
+    try:
+        values = json.loads(archive.read(name)).get('nozzle_temperature')
+    except (ValueError, AttributeError, UnicodeError):
+        return []
+    if not isinstance(values, list):
+        return []
+    result = []
+    for value in values[:16]:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = None
+        result.append(number if number is not None and 0 < number < 500 else None)
+    return result
+
+
+def model_check(sliced_code: str | None, product_name: str | None) -> tuple[str | None, str | None]:
+    """Compare the slice's printer model with the product name the printer reports.
+
+    Returns ``(problem, warning)``. A send is refused only when the reported name is
+    exactly another known model; any name this app cannot place stays a warning.
+    """
+    from .printer_lan import MODEL_NAMES
+    if not sliced_code:
+        return None, '슬라이스 파일에 프린터 기종 정보가 없어 프린터와 비교하지 못했습니다.'
+    expected = MODEL_NAMES.get(sliced_code)
+    if expected is None:
+        return None, f'슬라이스한 기종 코드({sliced_code})를 이 앱이 알지 못해 프린터와 비교하지 못했습니다.'
+    if not product_name:
+        return None, f'프린터가 제품 이름을 보고하지 않아 기종을 비교하지 못했습니다. 이 파일은 {expected}용입니다.'
+    reported = ' '.join(re.sub(r'^\s*bambu\s*lab\s*', '', product_name, flags=re.I).split()).casefold()
+    known = {name.casefold(): name for name in MODEL_NAMES.values()}
+    if reported == expected.casefold():
+        return None, None
+    if reported in known:
+        return (f'이 파일은 {expected}용으로 슬라이스했지만 프린터는 {known[reported]}입니다. '
+                '출력판 크기와 시작 동작이 달라 보내지 않습니다. 이 프린터 기종의 설정으로 다시 슬라이스하세요.'), None
+    return None, f'프린터가 보고한 제품 이름({product_name})으로는 기종을 확인하지 못했습니다. 이 파일은 {expected}용입니다.'
+
+
+ABRASIVE_SUFFIXES = ('-CF', '-GF')
+SOFT_NOZZLES = {'stainless_steel': '스테인리스강', 'brass': '황동'}
+
+
+def nozzle_wear_warning(filaments: list, nozzle_type: str | None) -> str | None:
+    """Fibre-filled filaments (``-CF``/``-GF`` types) wear soft nozzles; warn, never refuse."""
+    abrasive = sorted({str(item.get('type')) for item in filaments or []
+                       if isinstance(item, dict) and isinstance(item.get('type'), str)
+                       and item['type'].strip().upper().endswith(ABRASIVE_SUFFIXES)})
+    if not abrasive:
+        return None
+    if nozzle_type in SOFT_NOZZLES:
+        return (f'{", ".join(abrasive)}는 섬유가 든 마모성 필라멘트인데 프린터는 {SOFT_NOZZLES[nozzle_type]} 노즐을 보고했습니다. '
+                '노즐이 빨리 닳을 수 있으니 경화강 노즐로 바꾼 뒤 출력하는 것을 권장합니다.')
+    if not nozzle_type:
+        return f'{", ".join(abrasive)}는 마모성 필라멘트인데 프린터가 노즐 재질을 보고하지 않았습니다. 경화강 노즐인지 확인하세요.'
+    return None
 
 
 def ams_index(slot: dict) -> int | None:
@@ -158,6 +226,10 @@ def plan_mapping(summary: dict, slots: list, choice: list | None) -> dict:
                      'tray': value, 'material': slot.get('material'), 'color': slot.get('color')})
         if filament.get('type') and slot.get('material') and filament['type'].upper() != slot['material'].upper():
             warnings.append(f'필라멘트 {filament["id"]}은 {filament["type"]}로 슬라이스했지만 고른 칸은 {slot["material"]}입니다.')
+        low, high, temperature = slot.get('nozzle_min_c'), slot.get('nozzle_max_c'), filament.get('nozzle_c')
+        if temperature is not None and low is not None and high is not None and low <= high and not low <= temperature <= high:
+            warnings.append(f'필라멘트 {filament["id"]}의 슬라이스 노즐 온도 {temperature:g}°C가 고른 칸이 보고한 권장 범위 '
+                            f'{low:g}~{high:g}°C를 벗어납니다. 칸의 재료나 슬라이스 설정을 확인하세요.')
     return {'use_ams': True, 'ams_mapping': list(choice), 'slots': rows, 'warnings': warnings}
 
 
