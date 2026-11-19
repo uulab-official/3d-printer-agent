@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-19 v0.28.0 공개 릴리스
+
+[v0.28.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.28.0)을 2026-11-19 12:42:11 UTC에 `1c15c7b`에서 게시했습니다(PR #24, 시도 사이의 슬라이서 설정 비교).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44523839462) Python **793개**·컨트롤러 **219개**·Chromium **106개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44523839402)
+세 OS 각 **373개**가 실행 차수 1로 통과했습니다. [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44523839971)는 차수 1에서 Ubuntu 패키지 저장소가 503을 반환해 런타임
+라이브러리 설치가 실패했고, 코드 변경 없이 다시 실행한 차수 2에서 통과했습니다. 공개 자산 7개를 인증 없이 내려받아
+wheel(324,467바이트, `2af94928d2b8bbe6…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며
+보고서가 모두 통과 상태임을 확인했습니다. 실제 Studio 슬라이스 비교와 실물 출력은 확인하지 않았습니다.
+
 ## 2026-11-19 v0.27.0 공개 릴리스
 
 [v0.27.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.27.0)을 2026-11-19 08:19:19 UTC에 `8374323`에서 게시했습니다(PR #23, 수정한 모델의 출력 시도 이력).

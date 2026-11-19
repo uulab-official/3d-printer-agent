@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.28 adds slicer settings to the attempt history. Each successful slice keeps the key settings from its verified plan, and each attempt lists the settings that changed since the nearest earlier slice ([recovery](RECOVERY.md)).
+Version 0.28 adds slicer settings to the attempt history. Each successful slice keeps the key settings from its verified plan, and each attempt lists the settings that changed since the nearest earlier slice ([recovery](RECOVERY.md)). Published as [v0.28.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.28.0) on 2026-11-19 from `1c15c7b`.
 
 Version 0.27 shows a print attempt history for a model made by editing an earlier one. Each earlier attempt lists its recorded outcome and reasons, the printer's own report and codes, and the reviewed changes between attempts. The history comes from stored edit links, is read-only and never infers a cause ([recovery](RECOVERY.md)). Published as [v0.27.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.27.0) on 2026-11-19 from `8374323`.
 
