@@ -256,6 +256,7 @@ class JobStore:
                     or (job['result'] is not None and not isinstance(job['result'], dict))
                     or (job['latest_slice'] is not None and not isinstance(job['latest_slice'], dict))
                     or (job['user_outcome'] is not None and not isinstance(job['user_outcome'], dict))
+                    or (job.get('printer_report') is not None and not isinstance(job['printer_report'], dict))
                     or (job['bundle_url'] is not None and not isinstance(job['bundle_url'], str))):
                 raise ValueError('Invalid record structure')
             if job['status'] == 'geometry_validated':
@@ -818,6 +819,30 @@ class JobStore:
             job['events'].append({'at': now_iso(), 'type': kind, 'message': message, 'report': record})
             self._write(job)
             return self._public(job)
+
+    def record_printer_report(self, job_id, serial, printing, observed_at):
+        """Keep the printer's own finish/failure report on the job it was sent from.
+
+        Linked only when this job was started on the same printer and the printer reports
+        this app's job name for it. It stays separate from the person's outcome.
+        """
+        from .printer_reports import same_report, terminal_record
+        if not isinstance(printing, dict):
+            return {'recorded': False, 'detail': '프린터 보고가 없습니다.'}
+        record, why = terminal_record(job_id, serial, printing, observed_at)
+        with self.lock:
+            job = self._read(job_id)
+            sent = any(event.get('type') == 'printer_send' and (event.get('report') or {}).get('status') == 'started'
+                       and ((event.get('report') or {}).get('target') or {}).get('serial') == serial for event in job['events'])
+            if record is None or not sent:
+                return {'recorded': False, 'detail': why or '이 모델을 이 프린터로 보낸 기록이 없어 기록하지 않았습니다.'}
+            _json_bytes(record)
+            if same_report(job.get('printer_report'), record):
+                return {'recorded': True, 'detail': '이미 기록한 보고입니다.', 'report': job['printer_report']}
+            job['printer_report'] = record
+            job['events'].append({'at': now_iso(), 'type': 'printer_report', 'message': record['state'], 'report': record})
+            self._write(job)
+            return {'recorded': True, 'detail': '프린터의 보고를 이 작업에 기록했습니다.', 'report': copy.deepcopy(record)}
 
     def begin_slice(self, job_id):
         with self.lock:

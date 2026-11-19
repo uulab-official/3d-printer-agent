@@ -1448,6 +1448,13 @@
   function renderOutcomePrinterHint() {
     // A printer's finish/fail report is a hint for the user's own record, never the record itself.
     const hint = $("outcome-printer-hint");
+    const kept = state.job?.printer_report;
+    if (kept && ["FINISH", "FAILED"].includes(kept.state)) {
+      const codes = (kept.codes || []).map((item) => item.code).join(", ");
+      hint.textContent = `프린터 ${kept.serial || ""}가 ${dateTime(kept.observed_at)}에 이 작업의 ${kept.state === "FINISH" ? "출력 완료" : "출력 실패"}를 보고해 기록해 두었습니다${codes ? ` (코드 ${codes})` : ""}. 프린터 보고는 실물 확인이 아닙니다. 출력물을 직접 확인한 뒤 아래 결과를 골라 주세요.`;
+      hint.hidden = false;
+      return;
+    }
     const status = state.printerStatus;
     const reported = status?.connection?.state === "reporting" ? status.print?.state : null;
     if (!state.job || !["FINISH", "FAILED"].includes(reported)) { hint.hidden = true; return; }
@@ -2660,7 +2667,7 @@
   async function loadRecovery(job) {
     const area = $("outcome-recovery");
     const reasons = job?.user_outcome?.result === "failure" ? job.user_outcome.reasons || [] : [];
-    if (!job || !reasons.length) { area.hidden = true; area.replaceChildren(); return; }
+    if (!job || (!reasons.length && job.printer_report?.state !== "FAILED")) { area.hidden = true; area.replaceChildren(); return; }
     const request = state.recoveryRequest = (state.recoveryRequest || 0) + 1;
     try {
       const plan = await api(`/api/jobs/${encodeURIComponent(job.id)}/recovery`);
@@ -2681,6 +2688,14 @@
       const list = node("ul", "");
       for (const action of item.actions || []) list.append(node("li", "", action));
       block.append(list);
+      if (item.lookup_url) {
+        // Bambu Lab's own HMS search; the code meaning is never inferred here.
+        const link = node("a", "", "Bambu Lab HMS 코드 검색 열기 ↗");
+        link.href = item.lookup_url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        block.append(link);
+      }
       if (item.model_edit?.text) {
         const changes = (item.model_edit.changes || []).map((change) => `${fieldNames[change.field] || change.field} ${change.before} → ${change.after}`).join(", ");
         const button = node("button", "button button-secondary", `모델 수정 검토: ${changes}`);
@@ -4021,6 +4036,7 @@
       return;
     }
     const body = { ...target, include_version: false };
+    if (follow.jobId) body.job_id = follow.jobId;
     if (state.printerPins[`${target.host}|${target.serial}`]) body.pinned_certificate_sha256 = state.printerPins[`${target.host}|${target.serial}`];
     if (follow.timer) { clearTimeout(follow.timer); follow.timer = null; }
     try {
@@ -4031,6 +4047,7 @@
       } else {
         follow.lastState = result.print?.state;
         renderPrintFollow(result.print, result.observed_at);
+        if (result.job_link?.recorded && result.job_link.report) linkPrinterReport(follow.jobId, result.job_link.report);
         const state_ = result.print?.state;
         const sameJob = !follow.jobName || result.print?.job_name === follow.jobName;
         // A finished, failed or idle printer is no longer running this job, whatever name it reports.
@@ -4047,6 +4064,14 @@
       $("print-follow-status").textContent = `${error.message} 다음 주기에 다시 시도합니다.`;
     }
     if (follow.active) follow.timer = setTimeout(pollPrintFollow, PRINT_FOLLOW_SECONDS * 1000);
+  }
+
+  function linkPrinterReport(jobId, report) {
+    // The server kept the printer's report on the job; show it without touching unsaved outcome drafts.
+    if (!jobId || state.job?.id !== jobId) return;
+    state.job = { ...state.job, printer_report: report };
+    renderOutcomePrinterHint();
+    loadRecovery(state.job);
   }
 
   function startPrintFollow(result) {
@@ -4101,7 +4126,7 @@
     controlFeedback.setAttribute("role", "status");
     area.append(node("h3", "", "출력 진행"), track, text, status, controls, confirm, controlFeedback, refresh, stop);
     $("print-send-result").append(area);
-    state.printFollow = { active: true, timer: null, startedAt: Date.now(), host: target.host, serial: target.serial, jobName: result.subtask || result.printer?.job_name || null };
+    state.printFollow = { active: true, timer: null, startedAt: Date.now(), host: target.host, serial: target.serial, jobName: result.subtask || result.printer?.job_name || null, jobId: state.job?.id || null };
     state.printFollow.lastState = result.printer?.state || null;
     if (result.printer) renderPrintFollow(result.printer, result.finished_at || new Date().toISOString());
     state.printFollow.timer = setTimeout(pollPrintFollow, PRINT_FOLLOW_SECONDS * 1000);

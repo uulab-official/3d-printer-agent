@@ -405,6 +405,29 @@ test('a reported failure with reasons offers next steps and a reviewed model fix
   expect(fixed.model_edit.changes).toEqual([{ field: 'fit_clearance', before: 0.3, after: 0.5 }]);
 });
 
+test('a printer-reported failure comes first in recovery with its codes and the HMS search link', async ({ page }) => {
+  // The server-side link is tested against the synthetic printer in Python; this checks the real page rendering.
+  const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const job = await (await generated).json();
+  await page.route(`**/api/jobs/${job.id}/recovery`, async route => {
+    const real = await (await route.fetch()).json();
+    real.items.unshift({ reason: 'printer_reported', label: '프린터가 보고한 실패', model_edit: null, codes: ['0300-400C'],
+      lookup_url: 'https://wiki.bambulab.com/en/hms/home', actions: ['보고된 코드: 0300-400C.', '이 앱은 코드의 뜻을 해석하지 않습니다.'] });
+    await route.fulfill({ json: real });
+  });
+  await page.locator('#outcome-result').selectOption('failure');
+  await page.locator('[data-outcome-reason="warping"]').check();
+  await page.locator('#save-outcome').click();
+  const reported = page.locator('#outcome-recovery .recovery-item').first();
+  await expect(reported).toHaveAttribute('data-reason', 'printer_reported');
+  await expect(reported).toContainText('0300-400C');
+  const link = reported.getByRole('link', { name: /HMS 코드 검색/ });
+  await expect(link).toHaveAttribute('href', 'https://wiki.bambulab.com/en/hms/home');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(page.locator('#outcome-recovery [data-reason="warping"]')).toContainText('브림');
+});
+
 test('a wall hook from a request prints without supports and edits by its own words', async ({ page }) => {
   await page.locator('#request-text').fill('헤드폰 걸이 만들어줘');
   await page.locator('#plan-button').click();

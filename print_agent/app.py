@@ -31,6 +31,7 @@ from .model_edits import model_edit_record, normalize_parameters, plan_model_edi
 from .offers import compare_offers
 from .stores import store_guide
 from . import updates
+from . import printer_reports
 from .recovery import REASONS as FAILURE_REASONS, recovery_plan
 from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
@@ -266,6 +267,7 @@ class PrinterStatusPayload(StrictPayload):
     access_code: str = Field(max_length=64)
     pinned_certificate_sha256: str | None = Field(default=None, max_length=64)
     include_version: bool = True
+    job_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
 
 
 class PrintReviewPayload(PrinterStatusPayload):
@@ -432,9 +434,18 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
 
     @app.post('/api/printers/status')
     def printer_status(payload: PrinterStatusPayload):
-        return printer_lan.read_status(payload.host, payload.serial, payload.access_code,
-                                       pinned_sha256=payload.pinned_certificate_sha256,
-                                       include_version=payload.include_version)
+        """One read. With a job id, a finish/failure report for that sent job is kept on the job."""
+        if payload.job_id is not None:
+            store.get(payload.job_id)  # an unknown job is refused before any network use
+        status = printer_lan.read_status(payload.host, payload.serial, payload.access_code,
+                                         pinned_sha256=payload.pinned_certificate_sha256,
+                                         include_version=payload.include_version)
+        printing = status.get('print') or {}
+        if (payload.job_id is not None and status['connection']['state'] == 'reporting'
+                and printing.get('state') in printer_reports.TERMINAL_STATES):
+            status['job_link'] = store.record_printer_report(payload.job_id, status['target']['serial'], printing,
+                                                             status['observed_at'])
+        return status
 
     print_reviews = printer_send.ReviewStore()
     app.state.print_reviews = print_reviews
@@ -599,11 +610,12 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
 
     @app.get('/api/jobs/{job_id}/recovery')
     def job_recovery(job_id: str):
-        """Next steps for the reasons recorded with this job's reported failure."""
+        """Next steps for the reasons recorded with this job's reported failure, and the printer's own codes."""
         job = store.get(job_id)
         outcome = job.get('user_outcome') or {}
         reasons = outcome.get('reasons') if outcome.get('result') == 'failure' else []
-        return recovery_plan((job.get('result') or {}).get('parameters'), reasons if isinstance(reasons, list) else [])
+        return recovery_plan((job.get('result') or {}).get('parameters'), reasons if isinstance(reasons, list) else [],
+                             printer_report=job.get('printer_report'))
 
     @app.post('/api/profiles/review')
     def profile_review(payload: ProfilePayload):

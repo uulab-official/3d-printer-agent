@@ -2,9 +2,11 @@
 
 Date: 2026-11-18 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.25 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.26 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.26 links a printer's own finish/failure report to the job it was sent from (matching job name and a recorded start on the same printer), keeps the reported error and HMS codes apart from the person's outcome, and puts them first in the recovery steps with Bambu Lab's HMS search; verified against the synthetic printer only ([LAN send](PRINT_SEND.md)).
 
 Version 0.25 adds a seventh template, a Cherry MX-compatible keycap (1–7u, engraved legend, stabilizer stems), with requests, edits, recovery steps and installed-package qualification ([keycap guide](KEYCAP.md)). Five generated keycaps sliced locally with Bambu Studio 02.09.01.70 on synthetic settings without supports; switch fit and physical prints are not verified. Published as [v0.25.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.25.0) on 2026-11-18 from `bf7c186`.
 
@@ -244,7 +246,7 @@ Source authenticity checks, Studio default/include/variant resolution, MakerWorl
 
 Development priorities set on 2026-11-16. Each item lands as its own verified release; a later stage is never claimed from evidence of an earlier one.
 
-1. **Real Bambu printer integration:** v0.9 implements read-only identification, connection state and reported print status. Next: live qualification on one physical printer/firmware, an optional saved printer list without stored access codes, and linking a reported job state to a stored CAD/slice job (still separate from measured outcomes).
+1. **Real Bambu printer integration:** v0.9 implements read-only identification, connection state and reported print status. Next: live qualification on one physical printer/firmware. (A saved printer list without access codes arrived in v0.17; linking a reported finish/failure to the stored job in v0.26.)
 2. **Natural-language CAD beyond the fixed templates** (v0.10 adds the phone stand as the fourth): typed, validated new geometry families and edits; no LLM-generated code execution.
 3. **Filament automation:** check profile compatibility across printer, nozzle and material (including AMS-reported slots as unverified input), then resolve full preset inheritance and show unknown/conflicting values.
 4. **Print failure recovery:** classify user-reported and printer-reported (HMS/error code) failures, keep setting-change history, and prepare a re-print with only the affected settings rechecked.
