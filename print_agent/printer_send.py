@@ -119,7 +119,32 @@ def inspect_sliced(content: bytes) -> dict:
                     'color': color.upper() if re.fullmatch(r'#[0-9A-Fa-f]{6}', color) else None, 'used_g': used})
     if not summary['filaments']:
         summary['filaments'] = [{'id': 1, 'type': None, 'color': None, 'used_g': None}]
+    temperatures = _project_nozzle_temperatures(archive, names)
+    for filament in summary['filaments']:
+        index = filament['id'] - 1
+        filament['nozzle_c'] = temperatures[index] if 0 <= index < len(temperatures) else None
     return summary
+
+
+def _project_nozzle_temperatures(archive, names) -> list:
+    """Per-filament nozzle temperatures the slicer wrote into the file; unknown values stay None."""
+    name = 'Metadata/project_settings.config'
+    if name not in names or archive.getinfo(name).file_size > 4 * 1024 * 1024:
+        return []
+    try:
+        values = json.loads(archive.read(name)).get('nozzle_temperature')
+    except (ValueError, AttributeError, UnicodeError):
+        return []
+    if not isinstance(values, list):
+        return []
+    result = []
+    for value in values[:16]:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = None
+        result.append(number if number is not None and 0 < number < 500 else None)
+    return result
 
 
 def model_check(sliced_code: str | None, product_name: str | None) -> tuple[str | None, str | None]:
@@ -201,6 +226,10 @@ def plan_mapping(summary: dict, slots: list, choice: list | None) -> dict:
                      'tray': value, 'material': slot.get('material'), 'color': slot.get('color')})
         if filament.get('type') and slot.get('material') and filament['type'].upper() != slot['material'].upper():
             warnings.append(f'필라멘트 {filament["id"]}은 {filament["type"]}로 슬라이스했지만 고른 칸은 {slot["material"]}입니다.')
+        low, high, temperature = slot.get('nozzle_min_c'), slot.get('nozzle_max_c'), filament.get('nozzle_c')
+        if temperature is not None and low is not None and high is not None and low <= high and not low <= temperature <= high:
+            warnings.append(f'필라멘트 {filament["id"]}의 슬라이스 노즐 온도 {temperature:g}°C가 고른 칸이 보고한 권장 범위 '
+                            f'{low:g}~{high:g}°C를 벗어납니다. 칸의 재료나 슬라이스 설정을 확인하세요.')
     return {'use_ams': True, 'ams_mapping': list(choice), 'slots': rows, 'warnings': warnings}
 
 

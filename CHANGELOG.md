@@ -5,6 +5,7 @@
 - The print-send review compares the printer model the file was sliced for (`printer_model_id` in `slice_info.config`) with the product name the printer reports through `get_version`. Each send review gets a token only when nothing blocks it. A file sliced for another known Bambu model is refused before upload, because plate size and start G-code differ and the head can crash. Refusal requires an exact match on the name after an optional "Bambu Lab" prefix (X1 Carbon, X1, X1E, P1P, P1S, A1 mini, A1 or H2D).
 - When the file has no model, the code is unknown, the printer reports no name, or the name cannot be placed, the review only warns that it could not compare. The review response and summary show both sides (`printer_model`).
 - Fibre-filled filaments (slice filament types ending in `-CF` or `-GF`) on a printer that reports a stainless-steel or brass nozzle get a warning recommending a hardened-steel nozzle. A missing nozzle material also gets a warning to check it. Neither blocks the send.
+- The send review reads per-filament nozzle temperatures from the slice's `Metadata/project_settings.config`. It warns when a temperature falls outside the recommended range that the chosen AMS slot reports (`nozzle_temp_min`/`max`). Unknown values are not compared, and the send is never blocked. Reading was checked on two earlier local Bambu Studio 02.09.01.70 slices (200 °C and 220 °C).
 - Verified against the synthetic LAN printer, which gains `--product-name`. The product-name format of real printers has not been checked on hardware.
 
 ## 0.28.0 — 2026-11-19

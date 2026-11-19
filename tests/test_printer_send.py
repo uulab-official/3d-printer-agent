@@ -28,7 +28,7 @@ SERIAL = '01S00SYNTH000001'
 
 
 def sliced(filaments=(('1', 'PLA', '#FFFFFF', '2.03'),), plates=(1,), md5_ok=True, gcode=b'; synthetic\nG1 X1 Y1 E1\n',
-           nozzle='0.4'):
+           nozzle='0.4', temperatures=None):
     stream = io.BytesIO()
     def entry(name):
         return zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))  # same bytes on every call
@@ -41,6 +41,8 @@ def sliced(filaments=(('1', 'PLA', '#FFFFFF', '2.03'),), plates=(1,), md5_ok=Tru
                          '<config><plate><metadata key="index" value="1"/><metadata key="printer_model_id" value="C12"/>'
                          f'<metadata key="nozzle_diameters" value="{nozzle}"/><metadata key="prediction" value="837"/>'
                          f'<metadata key="weight" value="2.69"/>{items}</plate></config>')
+        if temperatures is not None:
+            archive.writestr(entry('Metadata/project_settings.config'), json.dumps({'nozzle_temperature': temperatures}))
     return stream.getvalue()
 
 
@@ -121,6 +123,20 @@ class MappingTests(unittest.TestCase):
                 problem, warning = check(code, name)
                 self.assertIsNone(problem)
                 self.assertIn(words, warning)
+
+    def test_slice_temperature_outside_the_chosen_trays_reported_range_is_a_warning(self):
+        summary = printer_send.inspect_sliced(sliced(filaments=(('1', 'PLA', '#FFFFFF', '2'), ('2', 'PLA', '#000000', '1')),
+                                                     temperatures=['250', 'nan?']))
+        self.assertEqual([item['nozzle_c'] for item in summary['filaments']], [250.0, None])
+        slots = [{'unit': 0, 'slot': 0, 'material': 'PLA', 'nozzle_min_c': 190.0, 'nozzle_max_c': 230.0},
+                 {'unit': 0, 'slot': 1, 'material': 'PLA', 'nozzle_min_c': None, 'nozzle_max_c': 230.0}]
+        warnings = printer_send.plan_mapping(summary, slots, [0, 1])['warnings']
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('250°C', warnings[0])
+        self.assertIn('190~230°C', warnings[0])
+        summary['filaments'][0]['nozzle_c'] = 220.0
+        self.assertEqual(printer_send.plan_mapping(summary, slots, [0, 1])['warnings'], [])
+        self.assertIsNone(printer_send.inspect_sliced(sliced())['filaments'][0]['nozzle_c'])  # no project settings
 
     def test_fibre_filled_filament_on_a_soft_nozzle_is_a_warning(self):
         warn = printer_send.nozzle_wear_warning
