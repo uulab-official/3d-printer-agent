@@ -40,6 +40,38 @@ _SCHEMA = 'CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, created_at TEXT
 _LOGGER = logging.getLogger(__name__)
 _ABSENT_HASH = object()
 MAX_ATTEMPTS = 12
+# Slicer settings worth comparing between attempts; G-code, bed outlines and file paths are left out.
+ATTEMPT_SLICE_KEYS = (
+    'printer_model', 'nozzle_diameter', 'curr_bed_type', 'layer_height', 'initial_layer_print_height', 'wall_loops',
+    'top_shell_layers', 'bottom_shell_layers', 'sparse_infill_density', 'outer_wall_speed', 'inner_wall_speed',
+    'sparse_infill_speed', 'initial_layer_speed', 'filament_settings_id', 'filament_type', 'filament_flow_ratio',
+    'filament_max_volumetric_speed', 'nozzle_temperature', 'nozzle_temperature_initial_layer',
+    'hot_plate_temp', 'hot_plate_temp_initial_layer', 'textured_plate_temp', 'textured_plate_temp_initial_layer',
+    'cool_plate_temp', 'cool_plate_temp_initial_layer', 'eng_plate_temp', 'eng_plate_temp_initial_layer',
+)
+
+
+def _slice_settings(execution, plan):
+    """The compared settings of a successful slice, as its verified plan recorded them."""
+    if execution.get('status') != 'sliced' or not isinstance(plan, dict) or not isinstance(plan.get('expected_settings'), dict):
+        return None
+    settings = plan['expected_settings']
+    kept = {}
+    for key in ATTEMPT_SLICE_KEYS:
+        value = settings.get(key)
+        values = value if isinstance(value, list) else [value]
+        if value is not None and len(values) <= 16 and all(isinstance(item, (str, int, float)) and not isinstance(item, bool)
+                                                            and len(str(item)) <= 64 for item in values):
+            kept[key] = value
+    return kept or None
+
+
+def slice_changes(newer, older):
+    """Compared settings that differ between two successful slices; keys only one side recorded are listed too."""
+    if not isinstance(newer, dict) or not isinstance(older, dict):
+        return None
+    return [{'key': key, 'before': older.get(key), 'after': newer.get(key)} for key in ATTEMPT_SLICE_KEYS
+            if (key in newer or key in older) and newer.get(key) != older.get(key)]
 
 
 def _attempt_entry(job):
@@ -55,6 +87,7 @@ def _attempt_entry(job):
         'job_id': job['id'], 'created_at': job['created_at'], 'title': job['title'], 'template': job['template'],
         'status': job['status'],
         'sliced': execution.get('status') == 'sliced',
+        'slice_settings': _slice_settings(execution, latest.get('plan')),
         'sent_to_printer': sent,
         'user_outcome': None if outcome is None else {
             key: outcome[key] for key in ('result', 'reasons', 'recorded_at', 'source') if key in outcome},
@@ -848,6 +881,11 @@ class JobStore:
                 edit = job.get('model_edit') or {}
                 parent = (edit.get('selection') or {}).get('parent')
                 current = parent.get('job_id') if isinstance(parent, dict) else None
+            for index, entry in enumerate(entries):
+                # Compared with the nearest earlier attempt that has a successful slice.
+                older = next((item for item in entries[index + 1:] if item['slice_settings']), None)
+                entry['slice_changes'] = None if older is None or not entry['slice_settings'] else {
+                    'compared_with': older['job_id'], 'changes': slice_changes(entry['slice_settings'], older['slice_settings'])}
             return {'schema_version': 1, 'job_id': job_id, 'attempts': entries, 'stopped': stopped}
 
     def sliced_for_printing(self, job_id):

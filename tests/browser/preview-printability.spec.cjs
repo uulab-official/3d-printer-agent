@@ -412,6 +412,40 @@ test('a reported failure with reasons offers next steps and a reviewed model fix
   await expect(attempts.locator(`[data-attempt="${fixed.id}"]`)).toContainText('0.3 → 0.5');
 });
 
+test('attempt history shows each slice and the slicer settings changed since the nearest earlier slice', async ({ page }) => {
+  await page.locator('[data-template="cable_comb"]').click();
+  const confirm = page.locator('#model-replace-confirm');
+  if (await confirm.isVisible()) await page.locator('#model-replace-confirm button').first().click();
+  const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const job = await (await generated).json();
+  await page.locator('#outcome-result').selectOption('failure');
+  await page.locator('[data-outcome-reason="too_tight"]').check();
+  await page.locator('#save-outcome').click();
+  await page.locator('[data-recovery-edit]').click();
+  await page.locator('#model-edit-apply').click();
+  // Slices need Bambu Studio; this case supplies the recorded slice settings to check how they read.
+  await page.route('**/api/jobs/*/attempts', async route => {
+    const id = route.request().url().split('/').at(-2);
+    await route.fulfill({ json: { schema_version: 1, job_id: id, stopped: null, attempts: [
+      { job_id: id, created_at: '2026-11-19T02:00:00Z', user_outcome: null, printer_report: null, sliced: true, sent_to_printer: false,
+        changes_from_parent: { changes: [{ field: 'fit_clearance', before: 0.3, after: 0.5 }] },
+        slice_settings: { filament_type: ['PLA'], layer_height: '0.16', nozzle_temperature: ['215'] },
+        slice_changes: { compared_with: job.id, changes: [{ key: 'layer_height', before: '0.2', after: '0.16' }, { key: 'nozzle_temperature', before: ['220'], after: ['215'] }] } },
+      { job_id: job.id, created_at: '2026-11-19T01:00:00Z', user_outcome: { result: 'failure', reasons: ['too_tight'] }, printer_report: { state: 'FAILED', codes: ['0300-400C'] },
+        sliced: true, sent_to_printer: true, changes_from_parent: null, slice_changes: null,
+        slice_settings: { filament_type: ['PLA'], nozzle_diameter: ['0.4'], layer_height: '0.2', nozzle_temperature: ['220'] } }] } });
+  });
+  await page.locator('#generate-button').click();
+  const attempts = page.locator('#outcome-attempts');
+  await expect(attempts.locator('li')).toHaveCount(2);
+  await expect(attempts.locator(`[data-attempt="${job.id}"]`)).toContainText('슬라이스 설정: 재료 PLA · 노즐 0.4 · 레이어 높이 0.2 · 노즐 온도 220');
+  await expect(attempts.locator(`[data-attempt="${job.id}"]`)).toContainText('프린터 보고: 실패 · 0300-400C');
+  await expect(attempts.locator('li').nth(1)).toContainText('슬라이스 설정 변경(1번째 시도 대비): 레이어 높이 0.2 → 0.16, 노즐 온도 220 → 215');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
 test('a printer-reported failure comes first in recovery with its codes and the HMS search link', async ({ page }) => {
   // The server-side link is tested against the synthetic printer in Python; this checks the real page rendering.
   const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
