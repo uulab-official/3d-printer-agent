@@ -146,6 +146,25 @@ def model_check(sliced_code: str | None, product_name: str | None) -> tuple[str 
     return None, f'프린터가 보고한 제품 이름({product_name})으로는 기종을 확인하지 못했습니다. 이 파일은 {expected}용입니다.'
 
 
+ABRASIVE_SUFFIXES = ('-CF', '-GF')
+SOFT_NOZZLES = {'stainless_steel': '스테인리스강', 'brass': '황동'}
+
+
+def nozzle_wear_warning(filaments: list, nozzle_type: str | None) -> str | None:
+    """Fibre-filled filaments (``-CF``/``-GF`` types) wear soft nozzles; warn, never refuse."""
+    abrasive = sorted({str(item.get('type')) for item in filaments or []
+                       if isinstance(item, dict) and isinstance(item.get('type'), str)
+                       and item['type'].strip().upper().endswith(ABRASIVE_SUFFIXES)})
+    if not abrasive:
+        return None
+    if nozzle_type in SOFT_NOZZLES:
+        return (f'{", ".join(abrasive)}는 섬유가 든 마모성 필라멘트인데 프린터는 {SOFT_NOZZLES[nozzle_type]} 노즐을 보고했습니다. '
+                '노즐이 빨리 닳을 수 있으니 경화강 노즐로 바꾼 뒤 출력하는 것을 권장합니다.')
+    if not nozzle_type:
+        return f'{", ".join(abrasive)}는 마모성 필라멘트인데 프린터가 노즐 재질을 보고하지 않았습니다. 경화강 노즐인지 확인하세요.'
+    return None
+
+
 def ams_index(slot: dict) -> int | None:
     """Global AMS tray number used by the print command (unit * 4 + slot)."""
     if not isinstance(slot, dict) or slot.get('unit') == 'external':

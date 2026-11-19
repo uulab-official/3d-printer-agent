@@ -122,6 +122,15 @@ class MappingTests(unittest.TestCase):
                 self.assertIsNone(problem)
                 self.assertIn(words, warning)
 
+    def test_fibre_filled_filament_on_a_soft_nozzle_is_a_warning(self):
+        warn = printer_send.nozzle_wear_warning
+        self.assertIn('스테인리스강', warn([{'type': 'PLA-CF'}, {'type': 'PLA'}], 'stainless_steel'))
+        self.assertIn('PA6-GF, PETG-CF', warn([{'type': 'PETG-CF'}, {'type': 'pa6-gf'.upper()}], 'brass'))
+        self.assertIn('보고하지 않았습니다', warn([{'type': 'PAHT-CF'}], None))
+        self.assertIsNone(warn([{'type': 'PAHT-CF'}], 'hardened_steel'))
+        self.assertIsNone(warn([{'type': 'PLA'}, {'type': None}, {'type': 'CFX'}], 'stainless_steel'))
+        self.assertIsNone(warn([], 'stainless_steel'))
+
 
 class CommandTests(unittest.TestCase):
     def test_only_the_project_file_command_is_built(self):
@@ -230,6 +239,15 @@ class SendFlowTests(unittest.TestCase):
         review = self.review(job_id, mqtt, slots=[0]).json()
         self.assertTrue(review['ready'], review)
         self.assertFalse(any('기종' in warning for warning in review['warnings']), review['warnings'])
+
+    def test_a_fibre_filled_slice_on_the_reported_stainless_nozzle_is_warned_but_sendable(self):
+        simulator, mqtt, _ = fake_printer()  # reports a stainless_steel nozzle
+        simulator.args.product_name = 'Bambu Lab P1S'
+        job_id = self.sliced_job(sliced(filaments=(('1', 'PETG-CF', '#202020', '3.10'),)))
+        printer_lan._LAST_STATUS.clear()
+        review = self.review(job_id, mqtt, slots=[0]).json()
+        self.assertTrue(review['ready'], review)
+        self.assertTrue(any('PETG-CF' in warning and '스테인리스강' in warning for warning in review['warnings']), review['warnings'])
 
     def test_busy_printer_and_wrong_nozzle_are_not_offered_a_token(self):
         simulator, mqtt, _ = fake_printer(state='RUNNING')

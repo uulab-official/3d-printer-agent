@@ -479,6 +479,9 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
                 problems.append(model_problem)
             if model_warning:
                 warnings.append(model_warning)
+            wear = printer_send.nozzle_wear_warning(summary['filaments'], (printing.get('nozzle') or {}).get('type'))
+            if wear:
+                warnings.append(wear)
         if printing.get('hms'):
             warnings.append(f'프린터에 알림(HMS) {len(printing["hms"])}건이 있습니다. 프린터 화면을 먼저 확인하세요.')
         mapping = None
