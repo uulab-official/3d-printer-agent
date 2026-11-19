@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.0 — 2026-11-19
+
+- A printer's own finish/failure report is linked to the job it was sent from. While a started print is followed, each status read carries the job id. When the printer reports FINISH or FAILED under this app's job name (`printer-agent` + the first 8 characters of the job id) for a job that was started on the same printer, the job keeps a `printer_report`: state, progress, layer, observed time, serial, and the reported `print_error` and HMS codes in Bambu Lab's dash search form. Only one event is recorded per distinct report. The report stays separate from the person's outcome and never selects it. Reports under another job name, or for a job never started on that printer, are not linked. An unknown job id is refused before any network use.
+- Recovery for a printer-reported failure: the first step lists the codes as reported, with a link to Bambu Lab's HMS search. It appears even before the person picks reasons. The app does not interpret code meanings. The outcome card shows the kept report as a hint without touching an unsaved outcome draft.
+- Verified against the synthetic LAN printer only; no real printer or firmware has been qualified for this.
+
 ## 0.25.0 — 2026-11-17
 
 - Seventh template: a Cherry MX-compatible **keycap** (docs/KEYCAP.md). The new `key_units` field (1, 1.25, 1.5, 1.75, 2, 2.25, 2.75, 6.25 or 7u) sets the width (units × 19.05 − 1.05 mm) and the 18 mm depth. Other features: an optional engraved legend of up to six letters (blank keys allowed), a cylindrical dish, a 5.6 mm stem with a 4.0 × 1.17 mm cross plus `fit_clearance`, and stabilizer stems for 2u and wider. The keycap is printed with its open bottom on the bed. The printability review names the bridged inner ceiling and reports the cross size and stem ring as the stem fit.

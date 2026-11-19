@@ -830,6 +830,7 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .outcome-recovery h3 { margin: 0; font-size: 0.95rem; }
 .recovery-item { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; }
 .recovery-item ul { margin: 0; padding-left: 18px; font-size: 0.86rem; }
+.recovery-item a { color: var(--blue); font-size: 0.86rem; justify-self: start; }
 
 .update-check { display: grid; gap: 6px; margin-top: 10px; justify-items: start; }
 .update-check a { margin-right: 10px; }

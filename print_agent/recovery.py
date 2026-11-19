@@ -9,6 +9,7 @@ through the existing edit flow, never changed automatically.
 from __future__ import annotations
 
 from .model_edits import plan_model_edit
+from .printer_reports import recovery_item
 
 REASONS = {
     'first_layer': '첫 레이어가 안 붙음',
@@ -90,9 +91,13 @@ def validate_reasons(result: str, reasons) -> list[str]:
     return list(dict.fromkeys(reasons))
 
 
-def recovery_plan(parameters: dict | None, reasons: list[str]) -> dict:
-    """Next steps for each reported reason, with a reviewable model edit when one applies."""
-    items = []
+def recovery_plan(parameters: dict | None, reasons: list[str], printer_report: dict | None = None) -> dict:
+    """Next steps for each reported reason, with a reviewable model edit when one applies.
+
+    A failure the printer itself reported for this job comes first, with its codes as reported.
+    """
+    reported = recovery_item(printer_report)
+    items = [reported] if reported else []
     for reason in reasons:
         if reason not in REASONS:
             continue
