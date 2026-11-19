@@ -1871,10 +1871,13 @@ const printVolumeReport = (overrides={}) => ({
     c.api=async(path,body)=>{sent.push([path,body]);
       if(path==='/api/printers/print/review') return {ready:true,review_token:'tok-1234567890abcdef',expires_in_seconds:180,job_title:'Tag',filename:'pa-1.gcode.3mf',file_bytes:2048,
         summary:{filaments:[{id:1,type:'PLA',color:'#FFFFFF',used_g:2}],nozzle_diameters:'0.4',prediction_seconds:600,weight_g:2},printer:{state_label:'대기 중',nozzle:{diameter_mm:0.4}},
-        mapping:{use_ams:false,ams_mapping:[-1],slots:[{filament:1,location:'외부 스풀'}]},material_slots:[{unit:0,slot:0,material:'PLA'}],problems:[],warnings:[]};
+        mapping:{use_ams:false,ams_mapping:[-1],slots:[{filament:1,location:'외부 스풀'}]},material_slots:[{unit:0,slot:0,material:'PLA'}],problems:[],warnings:[],printer_model:{sliced_code:'C12',sliced_name:'P1S',reported_product:'Bambu Lab P1S'}};
       return {status:'started',detail:'ok',stages:{printer_ready:true,uploaded:true,command_sent:true,printer_reported_start:true}};};
     await c.reviewPrintSend();
     assert.equal(sent[0][1].job_id,'j1');assert.equal(sent[0][1].access_code,'abcd1234');assert.equal(sent[0][1].slots,null);
+    c.renderPrintSendSummary({...c.state.printSend.review,problems:['이 파일은 P1S용으로 슬라이스했지만 프린터는 A1입니다.']});
+    assert.match(c.$('print-send-summary').textContent,/슬라이스 P1S · 프린터 보고 Bambu Lab P1S/);
+    assert.match(c.$('print-send-summary').textContent,/보낼 수 없는 이유.*P1S용/s);
     assert.equal(c.$('print-send-confirm').disabled,false);
     assert.equal(c.$('print-send-start').disabled,true);
     c.$('print-send-confirm').checked=true;c.updatePrintSendControls();

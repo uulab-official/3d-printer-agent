@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.29.0 — 2026-11-19
+
+- The print-send review compares the printer model the file was sliced for (`printer_model_id` in `slice_info.config`) with the product name the printer reports through `get_version`. Each send review gets a token only when nothing blocks it. A file sliced for another known Bambu model is refused before upload, because plate size and start G-code differ and the head can crash. Refusal requires an exact match on the name after an optional "Bambu Lab" prefix (X1 Carbon, X1, X1E, P1P, P1S, A1 mini, A1 or H2D).
+- When the file has no model, the code is unknown, the printer reports no name, or the name cannot be placed, the review only warns that it could not compare. The review response and summary show both sides (`printer_model`).
+- Verified against the synthetic LAN printer, which gains `--product-name`. The product-name format of real printers has not been checked on hardware.
+
 ## 0.28.0 — 2026-11-19
 
 - Slicer-setting history in **출력 시도 이력**. Each attempt with a successful slice keeps a bounded set of the settings its verified slice plan recorded: printer, nozzle, plate, layer heights, walls/shells, infill, speeds, filament profile and type, flow ratio, max volumetric speed, and nozzle and bed temperatures. G-code, bed outlines and paths are left out. An attempt is compared with the nearest earlier attempt that has a successful slice, so an unsliced attempt in between is skipped. The comparison lists each setting that differs (`slice_changes: {compared_with, changes}`). An attempt without an earlier slice shows a short summary (material, nozzle, layer height, nozzle temperature) instead.

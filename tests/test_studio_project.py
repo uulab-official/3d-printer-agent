@@ -223,7 +223,7 @@ class StudioProjectTests(unittest.TestCase):
         self.assertEqual(receipt['settings_sha256'], effective['settings_sha256'])
         self.assertEqual(receipt['source_sha256'], snapshot['source']['sha256'])
         self.assertEqual(receipt['changes'], review['changes'])
-        self.assertEqual(receipt['modifier'], '3D Printer Agent 0.28.0')
+        self.assertEqual(receipt['modifier'], '3D Printer Agent 0.29.0')
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
             self.assertEqual(archive.read('Metadata/project_settings.config'), effective['settings_text'].encode())
             actual = json.loads(archive.read('Metadata/project_settings.config'))

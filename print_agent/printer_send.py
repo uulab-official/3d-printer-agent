@@ -122,6 +122,30 @@ def inspect_sliced(content: bytes) -> dict:
     return summary
 
 
+def model_check(sliced_code: str | None, product_name: str | None) -> tuple[str | None, str | None]:
+    """Compare the slice's printer model with the product name the printer reports.
+
+    Returns ``(problem, warning)``. A send is refused only when the reported name is
+    exactly another known model; any name this app cannot place stays a warning.
+    """
+    from .printer_lan import MODEL_NAMES
+    if not sliced_code:
+        return None, '슬라이스 파일에 프린터 기종 정보가 없어 프린터와 비교하지 못했습니다.'
+    expected = MODEL_NAMES.get(sliced_code)
+    if expected is None:
+        return None, f'슬라이스한 기종 코드({sliced_code})를 이 앱이 알지 못해 프린터와 비교하지 못했습니다.'
+    if not product_name:
+        return None, f'프린터가 제품 이름을 보고하지 않아 기종을 비교하지 못했습니다. 이 파일은 {expected}용입니다.'
+    reported = ' '.join(re.sub(r'^\s*bambu\s*lab\s*', '', product_name, flags=re.I).split()).casefold()
+    known = {name.casefold(): name for name in MODEL_NAMES.values()}
+    if reported == expected.casefold():
+        return None, None
+    if reported in known:
+        return (f'이 파일은 {expected}용으로 슬라이스했지만 프린터는 {known[reported]}입니다. '
+                '출력판 크기와 시작 동작이 달라 보내지 않습니다. 이 프린터 기종의 설정으로 다시 슬라이스하세요.'), None
+    return None, f'프린터가 보고한 제품 이름({product_name})으로는 기종을 확인하지 못했습니다. 이 파일은 {expected}용입니다.'
+
+
 def ams_index(slot: dict) -> int | None:
     """Global AMS tray number used by the print command (unit * 4 + slot)."""
     if not isinstance(slot, dict) or slot.get('unit') == 'external':

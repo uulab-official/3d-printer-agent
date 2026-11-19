@@ -58,7 +58,7 @@ def fake_printer(state='IDLE', nozzle=0.4, reject=False):
     mqtt, ftps = free_port(), free_port()
     namespace = argparse.Namespace(host='127.0.0.1', port=mqtt, serial=SERIAL, access_code=CODE, model='C12', cert='printer',
                                    state=state, duration=600.0, nozzle=nozzle, hms=False, silent=False, announce=False,
-                                   ftps_port=ftps, reject_print=reject)
+                                   ftps_port=ftps, reject_print=reject, product_name=None)
     simulator = module.Simulator(namespace)
     threading.Thread(target=simulator.serve, daemon=True).start()
     for port in (mqtt, ftps):
@@ -106,6 +106,24 @@ class MappingTests(unittest.TestCase):
             with self.subTest(choice=choice), self.assertRaisesRegex(printer_send.SendError, message):
                 printer_send.plan_mapping(self.summary(count), self.SLOTS, choice)
 
+    def test_printer_model_is_refused_only_for_another_known_model(self):
+        check = printer_send.model_check
+        self.assertEqual(check('C12', 'Bambu Lab P1S'), (None, None))
+        self.assertEqual(check('N1', '  bambu lab   A1 MINI '), (None, None))
+        problem, warning = check('C12', 'Bambu Lab A1')
+        self.assertIsNone(warning)
+        self.assertIn('P1S용', problem)
+        self.assertIn('A1입니다', problem)
+        self.assertIn('X1 Carbon용', check('BL-P001', 'Bambu Lab X1')[0])  # X1 is a different known model
+        for code, name, words in ((None, 'Bambu Lab P1S', '기종 정보가 없어'), ('ZZ9', 'Bambu Lab P1S', 'ZZ9'),
+                                  ('C12', None, '제품 이름을 보고하지'), ('C12', 'Synthetic Bambu-like printer', '확인하지 못했습니다')):
+            with self.subTest(code=code, name=name):
+                problem, warning = check(code, name)
+                self.assertIsNone(problem)
+                self.assertIn(words, warning)
+
+
+class CommandTests(unittest.TestCase):
     def test_only_the_project_file_command_is_built(self):
         body = json.loads(printer_send.print_command('pa-1.gcode.3mf', 'a' * 32, 'printer-agent 1', {'use_ams': False, 'ams_mapping': [-1]}, 1))
         self.assertEqual(list(body), ['print'])
@@ -196,6 +214,22 @@ class SendFlowTests(unittest.TestCase):
         self.assertEqual(again.status_code, 422)
         self.assertIn('만료', again.json()['detail'])
         self.assertEqual(len(simulator.print_commands), 1)
+
+    def test_a_slice_for_another_printer_model_is_not_offered_a_token(self):
+        simulator, mqtt, _ = fake_printer()
+        job_id = self.sliced_job()  # sliced for P1S (C12)
+        simulator.args.product_name = 'Bambu Lab A1'
+        printer_lan._LAST_STATUS.clear()
+        review = self.review(job_id, mqtt, slots=[0]).json()
+        self.assertFalse(review['ready'])
+        self.assertNotIn('review_token', review)
+        self.assertTrue(any('P1S용' in problem and 'A1입니다' in problem for problem in review['problems']), review['problems'])
+        self.assertEqual(review['printer_model'], {'sliced_code': 'C12', 'sliced_name': 'P1S', 'reported_product': 'Bambu Lab A1'})
+        simulator.args.product_name = 'Bambu Lab P1S'
+        printer_lan._LAST_STATUS.clear()
+        review = self.review(job_id, mqtt, slots=[0]).json()
+        self.assertTrue(review['ready'], review)
+        self.assertFalse(any('기종' in warning for warning in review['warnings']), review['warnings'])
 
     def test_busy_printer_and_wrong_nozzle_are_not_offered_a_token(self):
         simulator, mqtt, _ = fake_printer(state='RUNNING')

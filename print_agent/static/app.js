@@ -4321,6 +4321,7 @@
     const rows = [
       ["모델", review.job_title || "현재 모델"],
       ["확인 당시 프린터", printer.state_label || "보고되지 않음"],
+      ["기종", `슬라이스 ${review.printer_model?.sliced_name || review.printer_model?.sliced_code || "미기록"} · 프린터 보고 ${review.printer_model?.reported_product || "없음"}`],
       ["노즐", Number.isFinite(printer.nozzle?.diameter_mm) ? `${printer.nozzle.diameter_mm} mm (슬라이스 ${summary.nozzle_diameters || "미기록"} mm)` : `슬라이스 ${summary.nozzle_diameters || "미기록"} mm`],
       ["예상 시간", Number.isFinite(summary.prediction_seconds) ? `${numberFormat.format(summary.prediction_seconds / 60)}분` : "기록 없음"],
       ["예상 재료", Number.isFinite(summary.weight_g) ? `${numberFormat.format(summary.weight_g)} g` : "기록 없음"],
