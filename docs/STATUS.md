@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.29 refuses to send a file sliced for another known Bambu model. It also warns when fibre-filled (-CF/-GF) filament would run through a reported stainless-steel or brass nozzle, and when a sliced nozzle temperature is outside the chosen AMS slot's reported range. The model in the slice is compared with the product name the printer reports, and any name the app cannot place only warns. This is verified against the synthetic printer; real product-name formats are unverified ([LAN send](PRINT_SEND.md)).
+Version 0.29 refuses to send a file sliced for another known Bambu model. It also warns when fibre-filled (-CF/-GF) filament would run through a reported stainless-steel or brass nozzle, and when a sliced nozzle temperature is outside the chosen AMS slot's reported range. The model in the slice is compared with the product name the printer reports, and any name the app cannot place only warns. This is verified against the synthetic printer; real product-name formats are unverified ([LAN send](PRINT_SEND.md)). Published as [v0.29.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.29.0) on 2026-11-19 from `6164466`.
 
 Version 0.28 adds slicer settings to the attempt history. Each successful slice keeps the key settings from its verified plan, and each attempt lists the settings that changed since the nearest earlier slice ([recovery](RECOVERY.md)). Published as [v0.28.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.28.0) on 2026-11-19 from `1c15c7b`.
 
