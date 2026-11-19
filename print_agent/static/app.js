@@ -2738,6 +2738,32 @@
     return facts.join(" · ");
   }
 
+  function attemptSliceText(attempt, attempts) {
+    // What the verified slice plan recorded; compared with the nearest earlier successful slice.
+    const labels = { printer_model: "프린터", nozzle_diameter: "노즐", curr_bed_type: "출력판", layer_height: "레이어 높이",
+      initial_layer_print_height: "첫 레이어 높이", wall_loops: "벽 루프", top_shell_layers: "윗면 층", bottom_shell_layers: "바닥 층",
+      sparse_infill_density: "채움 밀도", outer_wall_speed: "바깥 벽 속도", inner_wall_speed: "안쪽 벽 속도", sparse_infill_speed: "채움 속도",
+      initial_layer_speed: "첫 레이어 속도", filament_settings_id: "필라멘트 프로필", filament_type: "재료", filament_flow_ratio: "유량 비율",
+      filament_max_volumetric_speed: "최대 체적 속도", nozzle_temperature: "노즐 온도", nozzle_temperature_initial_layer: "첫 레이어 노즐 온도",
+      hot_plate_temp: "베드 온도(고온판)", hot_plate_temp_initial_layer: "첫 레이어 베드 온도(고온판)", textured_plate_temp: "베드 온도(텍스처판)",
+      textured_plate_temp_initial_layer: "첫 레이어 베드 온도(텍스처판)", cool_plate_temp: "베드 온도(쿨판)", cool_plate_temp_initial_layer: "첫 레이어 베드 온도(쿨판)",
+      eng_plate_temp: "베드 온도(엔지니어링판)", eng_plate_temp_initial_layer: "첫 레이어 베드 온도(엔지니어링판)" };
+    const show = (value) => value === undefined || value === null ? "없음" : Array.isArray(value) ? value.join(" / ") : String(value);
+    const settings = attempt.slice_settings;
+    if (!settings) return "";
+    const comparison = attempt.slice_changes;
+    if (comparison) {
+      const number = attempts.findIndex((item) => item.job_id === comparison.compared_with) + 1;
+      const where = number > 0 ? `${number}번째 시도` : "이전 시도";
+      const changes = comparison.changes || [];
+      if (!changes.length) return `슬라이스 설정: ${where}와 같음`;
+      return `슬라이스 설정 변경(${where} 대비): ${changes.map((change) => `${labels[change.key] || change.key} ${show(change.before)} → ${show(change.after)}`).join(", ")}`;
+    }
+    const summary = ["filament_type", "nozzle_diameter", "layer_height", "nozzle_temperature"].filter((key) => key in settings)
+      .map((key) => `${labels[key]} ${show(settings[key])}`);
+    return summary.length ? `슬라이스 설정: ${summary.join(" · ")}` : "";
+  }
+
   function renderAttempts(history, currentId) {
     const area = $("outcome-attempts");
     const attempts = Array.isArray(history?.attempts) ? [...history.attempts].reverse() : [];
@@ -2750,6 +2776,8 @@
       item.dataset.attempt = attempt.job_id;
       if (attempt.job_id === currentId) item.setAttribute("aria-current", "true");
       item.append(node("strong", "", `${index + 1}번째 · ${dateTime(attempt.created_at)}`), node("span", "attempt-facts", attemptFacts(attempt)));
+      const sliceText = attemptSliceText(attempt, attempts);
+      if (sliceText) item.append(node("span", "attempt-changes", sliceText));
       const changes = attempt.changes_from_parent?.changes || [];
       if (changes.length) {
         const text = changes.map((change) => `${fieldNames[change.field] || change.field} ${change.before} → ${change.after}`).join(", ");
@@ -2759,7 +2787,7 @@
     });
     const parts = [node("h3", "", "출력 시도 이력"), list];
     if (attemptStops[history.stopped]) parts.push(node("p", "field-help", attemptStops[history.stopped]));
-    parts.push(node("p", "field-help", "각 시도에 기록된 결과와 검토해 적용한 치수 변경만 보여줍니다. 원인을 추정하지 않습니다."));
+    parts.push(node("p", "field-help", "각 시도에 기록된 결과, 검증된 슬라이스 계획의 설정, 검토해 적용한 치수 변경만 보여줍니다. 원인을 추정하지 않습니다."));
     area.replaceChildren(...parts);
     area.hidden = false;
   }
