@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.31 adds an eighth template, a round cup: an open cylinder with an optional floor drain hole, for pen holders, utensil holders and planters. It comes with requests, edits, recovery steps, two starting projects and installed-package qualification ([cup guide](CUP.md)). Three cups sliced locally with Bambu Studio 02.09.01.70 on synthetic settings without supports. Watertightness and physical prints are not verified.
+Version 0.31 adds an eighth template, a round cup: an open cylinder with an optional floor drain hole, for pen holders, utensil holders and planters. It comes with requests, edits, recovery steps, two starting projects and installed-package qualification ([cup guide](CUP.md)). Three cups sliced locally with Bambu Studio 02.09.01.70 on synthetic settings without supports. Watertightness and physical prints are not verified. Published as [v0.31.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.31.0) on 2026-11-20 from `703e69e`.
 
 Version 0.30 gives every template a starting project. It adds a name keychain and Esc and Enter keycaps under two new purposes, 12 projects in all. Name-tag and keycap recipes state their outer size: exact for keycaps, a font-dependent upper bound for the keychain. Cards and placement comparisons use that size ([project discovery](PROJECT_DISCOVERY.md)). CI now caches the browser and apt downloads. Published as [v0.30.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.30.0) on 2026-11-20 from `ebdc45e`.
 

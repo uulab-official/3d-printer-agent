@@ -134,6 +134,17 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-20 v0.31.0 공개 릴리스
+
+[v0.31.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.31.0)을 2026-11-20 06:52:36 UTC에 `703e69e`에서 게시했습니다(PR #28, 원통 수납컵 템플릿).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44689753988) Python **809개**·컨트롤러 **220개**·Chromium **110개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44689754006)
+세 OS 각 **389개**(화분 생성·배수 구멍·내부 공간·제목 포함), [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44689753969)가 모두 실행 차수 1로 통과했습니다.
+[승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44690630533) 차수 1은 태그를 만든 직후 다시 읽은 GitHub API가 아직 새 태그를 돌려주지 않아
+“Version tag differs before publication”으로 멈추고 검증된 초안을 보존했습니다(태그는 처음부터 `703e69e`를 가리켰습니다). main이 바뀌지 않은 상태에서
+같은 실행을 다시 실행한 차수 2가 초안·자산·태그·게이트를 재검증하고 게시했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(330,111바이트,
+`724d2a1fbc0cda28…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을
+확인했습니다. 방수·식품 안전과 실물 출력은 확인하지 않았습니다.
+
 ## 2026-11-20 v0.30.0 공개 릴리스
 
 [v0.30.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.30.0)을 2026-11-20 06:01:39 UTC에 `ebdc45e`에서 게시했습니다(PR #27, 이름 키링·키캡 시작안과 CI 다운로드 캐시).

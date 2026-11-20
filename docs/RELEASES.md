@@ -1,29 +1,35 @@
 # 검증된 패키지의 릴리스 배포
 
-**[v0.30.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.30.0)**가
-2026-11-20 **06:01:39 UTC**에 게시됐습니다. 소스와 tag는
-[`ebdc45e255943064cfe136d539482ef4463ce43b`](https://github.com/uulab-official/3d-printer-agent/commit/ebdc45e255943064cfe136d539482ef4463ce43b)이며,
+**[v0.31.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.31.0)**가
+2026-11-20 **06:52:36 UTC**에 게시됐습니다. 소스와 tag는
+[`703e69ebf223922da5e85b10220e39f1feda62c2`](https://github.com/uulab-official/3d-printer-agent/commit/703e69ebf223922da5e85b10220e39f1feda62c2)이며,
 아래 세 검증을 통과한 원본 wheel과 검증 보고서 등 **7개 자산**을 포함합니다.
-[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44684816862)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
+[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44690630533)(실행 차수 2)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
 릴리스 파일은 Actions의 단기 보관 산출물과 구분합니다.
 
-배포 wheel은 `3d_printer_agent_local-0.30.0-py3-none-any.whl`, **327,471바이트**이며
-SHA-256은 `42f105acdb0e403e5ab201b1a7368eb6250b723197fe558a218bd3821f64cacb`입니다.
+배포 wheel은 `3d_printer_agent_local-0.31.0-py3-none-any.whl`, **330,111바이트**이며
+SHA-256은 `724d2a1fbc0cda2856bf96755e6d7c77aa3810f194d7ed55b00ac6c9cc753e61`입니다.
 이 값은 릴리스 내부 wheel의 해시이며 Actions가 묶은 외부 ZIP의 해시와 다릅니다.
 
 | 같은 main 소스의 검증 | 관측 결과 |
 |---|---|
-| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44683833313) | Python **800개**, 컨트롤러 **220개**, 실제 Chromium **108개**(데스크톱·모바일 각 54개) 통과 |
-| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44683833172) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **373개** 통과 |
-| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/44683833197) | Linux Studio `02.09.01.70`의 기존 합성 슬라이싱 경로 통과 |
+| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44689753988) | Python **809개**, 컨트롤러 **220개**, 실제 Chromium **110개**(데스크톱·모바일 각 55개) 통과 |
+| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44689754006) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **389개** 통과 |
+| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/44689753969) | Linux Studio `02.09.01.70`의 기존 합성 슬라이싱 경로 통과 |
 
-v0.30.0은 모든 템플릿에 시작안을 둡니다(PR #27). 이름 키링(새 용도 “이름·선물”), Esc·엔터 키캡(새 용도 “키보드”)을 더해 시작안 12개·용도 7개가
-됐습니다. 이름 키링과 키캡은 가로·세로·높이 값이 아니라 글자와 키 크기로 외곽이 정해지므로 레시피에 바깥 치수(`size_mm`)를 따로 두고 카드와 공간 비교에
-씁니다. 키캡은 정확한 값, 이름 키링은 글꼴에 따른 최대값입니다. 기존 시작안 9개의 레시피와 해시는 그대로입니다. CI는 Playwright 브라우저와 내려받은 apt
-패키지를 고정한 `actions/cache` v6.1.0으로 재사용합니다. 세 workflow는 main에서 모두 실행 차수 1로 통과했습니다(먼저 끝난 게이트가 부른 두 번의 승격
-실행은 나머지 게이트를 기다리며 게시 없이 끝났습니다). 공개 자산 7개를 인증 없이 다시 내려받아 wheel·`SHA256SUMS`·영수증의 해시와 바이트 수가 일치하고,
-근거 JSON의 보고서 해시가 내려받은 세 보고서와 같으며, 근거·영수증·보고서의 소스 커밋이 tag 커밋과 같고 보고서가 모두 통과 상태임을 확인했습니다.
-이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
+v0.31.0은 여덟 번째 템플릿인 원통 수납컵(연필꽂이·수저통·화분, 선택 배수 구멍)을 더합니다(PR #28). 요청·수정 문장·실패 뒤 조치·시작안 두 개(새 용도
+“화분·식물”)·설치 패키지 검증을 함께 넣었고, 로컬 Bambu Studio 02.09.01.70(합성 설정)에서 컵 세 개가 서포트 없이 슬라이스됐습니다. 승격 실행의 첫 차수는
+태그를 만든 직후 GitHub API가 아직 새 태그를 돌려주지 않아 검증된 초안을 보존한 채 멈췄고, main이 그대로인 상태에서 다시 실행한 두 번째 차수가 모든 것을
+재검증한 뒤 게시했습니다. 공개 자산 7개를 인증 없이 다시 내려받아 wheel·`SHA256SUMS`·영수증의 해시와 바이트 수가 일치하고, 근거 JSON의 보고서 해시가
+내려받은 세 보고서와 같으며, 근거·영수증·보고서의 소스 커밋이 tag 커밋과 같고 보고서가 모두 통과 상태임을 확인했습니다. 이후 문서 갱신은 릴리스 tag와
+파일을 바꾸지 않습니다.
+
+### 이전 릴리스 v0.30.0
+
+[v0.30.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.30.0)은 2026-11-20 **06:01:39 UTC**에 [`ebdc45e`](https://github.com/uulab-official/3d-printer-agent/commit/ebdc45e255943064cfe136d539482ef4463ce43b)에서
+게시됐습니다. wheel **327,471바이트**, SHA-256 `42f105acdb0e403e5ab201b1a7368eb6250b723197fe558a218bd3821f64cacb`.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44683833313)(Python 800·컨트롤러 220·Chromium 108), [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44683833172)(세 OS 각 373개),
+[Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44683833197)가 같은 커밋에서 통과했습니다.
 
 ### 이전 릴리스 v0.29.1
 
