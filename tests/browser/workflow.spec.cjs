@@ -743,7 +743,7 @@ async function findProjects(page) {
 }
 
 test('local project discovery reaches customized real CAD and preserves its recipe through downloads and history', async ({ page }, testInfo) => {
-  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(9);
+  await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(12);
   await page.locator('#discovery-purpose [data-purpose="organization"]').click();
   for (const [axis, value] of Object.entries({ width: '150', depth: '90', height: '30' })) {
     await page.locator(`#space-${axis}`).fill(value);
@@ -886,7 +886,7 @@ test('discovery preserves unfinished drafts and recovers from empty, stale and f
   await expect(page.locator('#discovery-cards [data-project-id="three-cable-rest"]')).toBeVisible();
   await expect(page.locator('#discovery-cards [data-project-id]')).toHaveCount(1);
 
-  // Delay a real successful HTTP response; its six results must not replace newer inputs.
+  // Delay a real successful HTTP response; its full results must not replace newer inputs.
   await page.locator('#discovery-purpose [data-purpose="all"]').click();
   for (const axis of ['width', 'depth', 'height']) await page.locator(`#space-${axis}`).fill('');
   let releaseResponse, signalFetched;
@@ -894,7 +894,7 @@ test('discovery preserves unfinished drafts and recovers from empty, stale and f
   const fetched = new Promise(resolve => { signalFetched = resolve; });
   const delayedRoute = async route => {
     const actual = await route.fetch();
-    expect((await actual.json()).matches).toHaveLength(9);
+    expect((await actual.json()).matches).toHaveLength(12);
     signalFetched();
     await held;
     await route.fulfill({ response: actual });

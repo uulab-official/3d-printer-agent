@@ -40,11 +40,11 @@ class DiscoveryAPITests(unittest.TestCase):
             data = self.client.get('/api/bootstrap').json()
             self.assertEqual(len(data['templates']), 7)
             self.assertEqual(data['discovery']['schema_version'], 1)
-            self.assertEqual(len(data['discovery']['projects']), 9)
+            self.assertEqual(len(data['discovery']['projects']), 12)
             response = self.post('/api/discovery', {})
             self.assertEqual(response.status_code, 200, response.text)
             result = response.json()
-            self.assertEqual(result['total_in_purpose'], 9)
+            self.assertEqual(result['total_in_purpose'], 12)
             self.assertEqual(result['excluded_count'], 0)
             self.assertEqual([item['project']['id'] for item in result['matches']],
                              [item['id'] for item in data['discovery']['projects']])

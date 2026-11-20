@@ -34,6 +34,16 @@ RECIPES = [
     ('key-hook', 'hanging', 'wall_hook', 20, 35, 50, {'wall': 4, 'bottom': 4, 'hole_diameter': 4, 'lip_height': 10}),
     ('headphone-hook', 'hanging', 'wall_hook', 30, 50, 60, {'wall': 4, 'bottom': 4, 'hole_diameter': 4, 'lip_height': 12}),
 ]
+# Name tags and keycaps are not sized by width/depth/height; the recipe states the outer size.
+SIZED_RECIPES = [
+    ('name-keychain', 'gifts', 'name_tag', {'width': 62, 'depth': 16, 'height': 4, 'basis': 'upper_bound'},
+     {'wall': 3, 'text': 'MINSU', 'text_size': 12, 'text_depth': 2, 'hole_diameter': 4}),
+    ('esc-keycap', 'keyboard', 'keycap', {'width': 18, 'depth': 18, 'height': 8, 'basis': 'exact'},
+     {'height': 8, 'wall': 1.3, 'fit_clearance': 0.15, 'text': 'ESC', 'text_size': 3.5, 'text_depth': 0.8, 'key_units': 1}),
+    ('enter-keycap', 'keyboard', 'keycap', {'width': 41.8125, 'depth': 18, 'height': 8, 'basis': 'exact'},
+     {'height': 8, 'wall': 1.3, 'fit_clearance': 0.15, 'text': 'Enter', 'text_size': 4, 'text_depth': 0.8, 'key_units': 2.25}),
+]
+ALL_IDS = [r[0] for r in RECIPES] + [r[0] for r in SIZED_RECIPES]
 
 
 class DiscoveryTests(unittest.TestCase):
@@ -47,8 +57,8 @@ class DiscoveryTests(unittest.TestCase):
         catalog = project_catalog()
         self.assertEqual(catalog['schema_version'], 1)
         self.assertEqual([p['id'] for p in catalog['purposes']],
-                         ['all', 'organization', 'cables', 'display', 'hanging'])
-        self.assertEqual(len(catalog['projects']), 9)
+                         ['all', 'organization', 'cables', 'display', 'hanging', 'gifts', 'keyboard'])
+        self.assertEqual(len(catalog['projects']), 12)
         for card, (project_id, purpose, template, width, depth, height, extras) in zip(catalog['projects'], RECIPES):
             with self.subTest(project=project_id):
                 self.assertEqual((card['id'], card['purpose'], card['template']),
@@ -65,6 +75,37 @@ class DiscoveryTests(unittest.TestCase):
                 self.assertEqual(card['source']['path'], 'print_agent/geometry.py')
                 self.assertEqual(card['source']['creator'], 'uulab-official')
                 self.assertEqual(card['source']['license'], 'MIT')
+
+    def test_sized_recipes_state_their_outer_size_and_earlier_recipes_keep_their_shape(self):
+        catalog = project_catalog()
+        cards = {card['id']: card for card in catalog['projects']}
+        for project_id, purpose, template, size, values in SIZED_RECIPES:
+            with self.subTest(project=project_id):
+                card = cards[project_id]
+                self.assertEqual((card['purpose'], card['template'], card['size_mm']), (purpose, template, size))
+                expected = GeometryRequest(template=template, width=120, depth=80, **{'height': 35, 'bottom': 2, **values})
+                self.assertEqual(card['parameters'], expected.model_dump(mode='json'))
+        for project_id in [r[0] for r in RECIPES]:
+            self.assertNotIn('size_mm', cards[project_id])
+        result = self.matches(purpose='keyboard', available_space={'width': 30, 'depth': 30})
+        self.assertEqual([m['project']['id'] for m in result['matches']], ['esc-keycap'])
+        self.assertEqual(result['matches'][0]['space_fit']['dimensions_mm'], {'width': 18, 'depth': 18, 'height': 8})
+        self.assertEqual([m['project']['id'] for m in self.matches(purpose='gifts', available_space={'width': 15, 'depth': 15})['matches']], [])
+
+    def test_sized_recipes_generate_cad_within_their_stated_size(self):
+        cards = {card['id']: card for card in project_catalog()['projects']}
+        with tempfile.TemporaryDirectory() as directory:
+            for project_id, _, _, size, _ in SIZED_RECIPES:
+                with self.subTest(project=project_id):
+                    result = generate_model(GeometryRequest(**cards[project_id]['parameters']), Path(directory) / project_id)
+                    self.assertEqual(result['geometry_status'], 'validated')
+                    dims = result['dimensions_mm']
+                    for axis, key in zip('xyz', ('width', 'depth', 'height')):
+                        if size['basis'] == 'exact':
+                            self.assertAlmostEqual(dims[axis], size[key], places=3)
+                        else:
+                            self.assertLessEqual(dims[axis], size[key] + 1e-3)
+                            self.assertGreater(dims[axis], size[key] * 0.6)  # a bound, not a guess
 
     def test_digests_cover_exact_canonical_recipe_without_digest_field(self):
         for card in project_catalog()['projects']:
@@ -91,11 +132,11 @@ class DiscoveryTests(unittest.TestCase):
     def test_no_space_returns_all_in_order_without_claiming_a_fit(self):
         result = self.matches()
         self.assertEqual(result['schema_version'], 1)
-        self.assertEqual(result['total_in_purpose'], 9)
+        self.assertEqual(result['total_in_purpose'], 12)
         self.assertEqual(result['excluded_count'], 0)
         self.assertEqual(result['query'], {'purpose': 'all', 'available_space':
                                         {'width': None, 'depth': None, 'height': None}})
-        self.assertEqual([m['project']['id'] for m in result['matches']], [r[0] for r in RECIPES])
+        self.assertEqual([m['project']['id'] for m in result['matches']], ALL_IDS)
         first = result['matches'][0]
         self.assertEqual(first['space_fit'], {'status': 'not_checked', 'orientation': None,
                                             'checked_axes': [], 'dimensions_mm':
@@ -141,7 +182,8 @@ class DiscoveryTests(unittest.TestCase):
     def test_height_only_excludes_tall_models_and_cannot_be_rotated(self):
         result = self.matches(available_space={'height': 12})
         self.assertEqual([m['project']['id'] for m in result['matches']],
-                         ['three-cable-rest', 'five-cable-rest', 'round-insert-frame'])
+                         ['three-cable-rest', 'five-cable-rest', 'round-insert-frame',
+                          'name-keychain', 'esc-keycap', 'enter-keycap'])
         for match in result['matches']:
             self.assertEqual(match['space_fit']['status'], 'fits')
             self.assertEqual(match['space_fit']['checked_axes'], ['height'])
@@ -152,8 +194,8 @@ class DiscoveryTests(unittest.TestCase):
     def test_zero_matches_is_a_successful_comparison(self):
         result = self.matches(available_space={'width': 1})
         self.assertEqual(result['matches'], [])
-        self.assertEqual(result['total_in_purpose'], 9)
-        self.assertEqual(result['excluded_count'], 9)
+        self.assertEqual(result['total_in_purpose'], 12)
+        self.assertEqual(result['excluded_count'], 12)
         self.assertTrue(result['limits'])
 
     def test_space_rejects_coercion_nonfinite_zero_and_unknown_fields(self):

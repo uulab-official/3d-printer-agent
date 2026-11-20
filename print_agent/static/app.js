@@ -426,9 +426,9 @@
       const shape = node("span", "project-shape");
       const divisions = project.template === "cable_comb" ? project.parameters.slots : (project.parameters.dividers || 0);
       for (let i = 0; i < Math.min(divisions || 0, 5); i += 1) shape.append(node("i"));
+      if (project.template === "name_tag" || project.template === "keycap") shape.textContent = project.parameters?.text || "";
       art.append(shape);
-      const size = project.parameters || {};
-      button.append(art, node("strong", "project-title", project.title), node("span", "project-description", project.description), node("span", "project-size", `${size.width} × ${size.depth} × ${size.height} mm`));
+      button.append(art, node("strong", "project-title", project.title), node("span", "project-description", project.description), node("span", "project-size", projectSizeText(project)));
       if (!state.discoveryStale && match.space_fit?.status === "fits_rotated") button.append(node("span", "project-fit", "가로·세로를 90° 돌려 놓는 크기"));
       else if (!state.discoveryStale && match.space_fit?.status === "fits") button.append(node("span", "project-fit", "입력한 축의 공간 크기와 비교됨"));
       button.append(node("span", "project-more", "측정 안내 보기 ↗"));
@@ -445,6 +445,13 @@
     state.discoveryBrowsed = id;
     cancelProjectApplication();
     renderDiscovery();
+  }
+
+  function projectSizeText(project) {
+    // Name tags and keycaps are not sized by width × depth × height; their recipe states the outer size.
+    const size = project.size_mm || project.parameters || {};
+    const text = `${numberFormat.format(size.width)} × ${numberFormat.format(size.depth)} × ${numberFormat.format(size.height)} mm`;
+    return project.size_mm?.basis === "upper_bound" ? `최대 ${text} · 글꼴에 따라 가로가 달라짐` : text;
   }
 
   function renderProjectDetail() {
