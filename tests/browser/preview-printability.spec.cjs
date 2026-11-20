@@ -517,6 +517,32 @@ test('a keycap from a request: key size, blank legend, the cross stem fit and a 
   expect(blank.dimensions_mm.x).toBeCloseTo(27.525, 3);
 });
 
+test('a planter from a request: diameter, drain hole, no depth field and a diameter edit', async ({ page }) => {
+  await page.locator('#request-text').fill('화분 지름 10cm 높이 9cm 파란색');
+  await page.locator('#plan-button').click();
+  await expect(page.locator('#parameter-width')).toHaveValue('100');
+  await expect(page.locator('#parameter-drain_hole')).toHaveValue('8');
+  await expect(page.locator('[data-field="width"] label')).toContainText('지름');
+  await expect(page.locator('#parameter-depth')).toHaveCount(0);
+  const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
+  await page.locator('#generate-button').click();
+  const job = await (await generated).json();
+  expect(job.result.template).toBe('cup');
+  expect([job.result.dimensions_mm.x, job.result.dimensions_mm.y, job.result.dimensions_mm.z]).toEqual([100, 100, 90]);
+  expect(job.result.parameters.color).toBe('blue');
+  const items = Object.fromEntries(job.result.printability.items.map(item => [item.id, item]));
+  expect(items.overhang.status).toBe('pass');
+  await expect(page.locator('#result-heading')).toContainText('원통 수납컵 · 지름 100 × 높이 90 mm · 배수 구멍');
+  await page.locator('#model-edit-text').fill('지름 10mm 늘려줘');
+  await page.locator('#model-edit-propose').click();
+  await expect(page.locator('#model-edit-changes')).toContainText('110');
+  await page.locator('#model-edit-apply').click();
+  await expect(page.locator('#parameter-width')).toHaveValue('110');
+  await page.locator('#parameter-drain_hole').fill('0');
+  const closed = await generate(page, {});
+  expect([closed.parameters.width, closed.parameters.drain_hole]).toEqual([110, 0]);
+});
+
 test('caliper measurements are recorded with the outcome and compared with the CAD size', async ({ page }) => {
   const generated = page.waitForResponse(r => r.url().endsWith('/api/models') && r.request().method() === 'POST');
   await page.locator('#generate-button').click();

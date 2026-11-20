@@ -42,6 +42,10 @@ SIZED_RECIPES = [
      {'height': 8, 'wall': 1.3, 'fit_clearance': 0.15, 'text': 'ESC', 'text_size': 3.5, 'text_depth': 0.8, 'key_units': 1}),
     ('enter-keycap', 'keyboard', 'keycap', {'width': 41.8125, 'depth': 18, 'height': 8, 'basis': 'exact'},
      {'height': 8, 'wall': 1.3, 'fit_clearance': 0.15, 'text': 'Enter', 'text_size': 4, 'text_depth': 0.8, 'key_units': 2.25}),
+    ('pencil-cup', 'organization', 'cup', {'width': 70, 'depth': 70, 'height': 100, 'basis': 'exact'},
+     {'width': 70, 'height': 100, 'wall': 2, 'drain_hole': 0}),
+    ('mini-planter', 'plants', 'cup', {'width': 90, 'depth': 90, 'height': 80, 'basis': 'exact'},
+     {'width': 90, 'height': 80, 'wall': 2, 'bottom': 3, 'drain_hole': 8}),
 ]
 ALL_IDS = [r[0] for r in RECIPES] + [r[0] for r in SIZED_RECIPES]
 
@@ -57,8 +61,8 @@ class DiscoveryTests(unittest.TestCase):
         catalog = project_catalog()
         self.assertEqual(catalog['schema_version'], 1)
         self.assertEqual([p['id'] for p in catalog['purposes']],
-                         ['all', 'organization', 'cables', 'display', 'hanging', 'gifts', 'keyboard'])
-        self.assertEqual(len(catalog['projects']), 12)
+                         ['all', 'organization', 'cables', 'display', 'hanging', 'gifts', 'keyboard', 'plants'])
+        self.assertEqual(len(catalog['projects']), 14)
         for card, (project_id, purpose, template, width, depth, height, extras) in zip(catalog['projects'], RECIPES):
             with self.subTest(project=project_id):
                 self.assertEqual((card['id'], card['purpose'], card['template']),
@@ -83,7 +87,7 @@ class DiscoveryTests(unittest.TestCase):
             with self.subTest(project=project_id):
                 card = cards[project_id]
                 self.assertEqual((card['purpose'], card['template'], card['size_mm']), (purpose, template, size))
-                expected = GeometryRequest(template=template, width=120, depth=80, **{'height': 35, 'bottom': 2, **values})
+                expected = GeometryRequest(template=template, **{'width': 120, 'depth': 80, 'height': 35, 'bottom': 2, **values})
                 self.assertEqual(card['parameters'], expected.model_dump(mode='json'))
         for project_id in [r[0] for r in RECIPES]:
             self.assertNotIn('size_mm', cards[project_id])
@@ -132,7 +136,7 @@ class DiscoveryTests(unittest.TestCase):
     def test_no_space_returns_all_in_order_without_claiming_a_fit(self):
         result = self.matches()
         self.assertEqual(result['schema_version'], 1)
-        self.assertEqual(result['total_in_purpose'], 12)
+        self.assertEqual(result['total_in_purpose'], 14)
         self.assertEqual(result['excluded_count'], 0)
         self.assertEqual(result['query'], {'purpose': 'all', 'available_space':
                                         {'width': None, 'depth': None, 'height': None}})
@@ -154,7 +158,7 @@ class DiscoveryTests(unittest.TestCase):
     def test_exact_boundary_prefers_original_orientation(self):
         result = self.matches(purpose='organization', available_space={'width': 90, 'depth': 60, 'height': 18})
         self.assertEqual(len(result['matches']), 1)
-        self.assertEqual(result['excluded_count'], 3)
+        self.assertEqual(result['excluded_count'], 4)
         fit = result['matches'][0]['space_fit']
         self.assertEqual((fit['status'], fit['orientation']), ('fits', 'original'))
         self.assertEqual(fit['checked_axes'], ['width', 'depth', 'height'])
@@ -189,13 +193,13 @@ class DiscoveryTests(unittest.TestCase):
             self.assertEqual(match['space_fit']['checked_axes'], ['height'])
         result = self.matches(purpose='organization', available_space={'width': 1000, 'depth': 1000, 'height': 17.99})
         self.assertEqual(result['matches'], [])
-        self.assertEqual(result['excluded_count'], 4)
+        self.assertEqual(result['excluded_count'], 5)
 
     def test_zero_matches_is_a_successful_comparison(self):
         result = self.matches(available_space={'width': 1})
         self.assertEqual(result['matches'], [])
-        self.assertEqual(result['total_in_purpose'], 12)
-        self.assertEqual(result['excluded_count'], 12)
+        self.assertEqual(result['total_in_purpose'], 14)
+        self.assertEqual(result['excluded_count'], 14)
         self.assertTrue(result['limits'])
 
     def test_space_rejects_coercion_nonfinite_zero_and_unknown_fields(self):

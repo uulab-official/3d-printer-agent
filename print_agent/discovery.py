@@ -13,7 +13,7 @@ from .schemas import GeometryRequest
 
 
 Dimension = Annotated[float, Field(strict=True, gt=0, le=10000, allow_inf_nan=False)]
-Purpose = Literal['all', 'organization', 'cables', 'display', 'hanging', 'gifts', 'keyboard']
+Purpose = Literal['all', 'organization', 'cables', 'display', 'hanging', 'gifts', 'keyboard', 'plants']
 
 
 class AvailableSpace(BaseModel):
@@ -112,7 +112,10 @@ def project_catalog() -> dict:
         'name-keychain': {'width': 62, 'depth': 16, 'height': 4, 'basis': 'upper_bound'},
         'esc-keycap': {'width': 18, 'depth': 18, 'height': 8, 'basis': 'exact'},
         'enter-keycap': {'width': 41.8125, 'depth': 18, 'height': 8, 'basis': 'exact'},
+        'pencil-cup': {'width': 70, 'depth': 70, 'height': 100, 'basis': 'exact'},
+        'mini-planter': {'width': 90, 'depth': 90, 'height': 80, 'basis': 'exact'},
     }
+    cup_limits = ['위가 열린 원통 컵입니다. 뚜껑·손잡이가 없고, FDM 출력물은 틈으로 물이 샐 수 있습니다.']
     definitions += [
         ('name-keychain', '이름 키링', 'gifts', 'name_tag',
          '이름이나 짧은 글자를 볼록하게 올린 열쇠고리입니다.',
@@ -132,6 +135,17 @@ def project_catalog() -> dict:
          ['키보드의 엔터 키 크기(2.25u)와 스태빌라이저 종류를 확인하세요.'], keycap_limits,
          dict(width=120, depth=80, height=8, wall=1.3, bottom=2, fit_clearance=0.15, text='Enter', text_size=4,
               text_depth=0.8, key_units=2.25)),
+        ('pencil-cup', '원통 연필꽂이', 'organization', 'cup',
+         '책상 위에 펜과 연필을 세워 두는 원통 컵입니다.',
+         '지름과 높이만 맞추면 되는 가장 간단한 원통 시작안입니다.',
+         ['꽂을 펜의 길이와 책상 위에 놓을 자리의 크기를 측정하세요.'], cup_limits,
+         dict(width=70, depth=80, height=100, wall=2, bottom=2, drain_hole=0)),
+        ('mini-planter', '작은 화분', 'plants', 'cup',
+         '바닥 가운데에 배수 구멍이 있는 작은 원통 화분입니다.',
+         '배수 구멍 크기와 바닥 두께를 조정해 보는 시작안입니다.',
+         ['넣을 모종 포트의 지름·높이와 받침 접시 크기를 측정하세요.'],
+         cup_limits + ['배수 구멍으로 물이 빠지므로 받침 접시를 따로 쓰세요. 흙·물에 대한 재료 적합성은 확인하지 않았습니다.'],
+         dict(width=90, depth=80, height=80, wall=2, bottom=3, drain_hole=8)),
     ]
     projects = []
     for project_id, title, purpose, template, description, reason, measurements, limits, values in definitions:
@@ -156,7 +170,8 @@ def project_catalog() -> dict:
                          {'id': 'display', 'title': '사진·장식'},
                          {'id': 'hanging', 'title': '벽에 걸기'},
                          {'id': 'gifts', 'title': '이름·선물'},
-                         {'id': 'keyboard', 'title': '키보드'}],
+                         {'id': 'keyboard', 'title': '키보드'},
+                         {'id': 'plants', 'title': '화분·식물'}],
             'projects': projects}
 
 
