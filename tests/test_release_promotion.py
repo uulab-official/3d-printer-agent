@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 import zipfile
@@ -147,6 +148,9 @@ class FakeAPI:
             identifier = int(path.rsplit('/', 1)[1])
             return deepcopy(next(run for run in self.runs if run['id'] == identifier))
         if path.startswith(prefix + '/git/ref/tags/'):
+            if self.tag is not None and getattr(self, 'lagging_tag_reads', 0):
+                self.lagging_tag_reads -= 1  # created, but not yet visible to reads
+                return None
             return None if self.tag is None else {'object': {'type': 'commit', 'sha': self.tag}}
         if method == 'POST' and path == prefix + '/git/refs':
             assert self.tag is None
@@ -481,6 +485,21 @@ class PromotionTests(unittest.TestCase):
         tag_writes = [item for item in self.api.writes if item[0] == 'POST' and item[1].endswith('/git/refs')]
         self.assertEqual(tag_writes, [('POST', f'/repos/{REPOSITORY}/git/refs', {'ref': 'refs/tags/v0.3.0', 'sha': SHA})])
         self.assertEqual(self.api.writes[-1][0], 'PATCH')
+
+    def test_a_new_tag_that_reads_back_late_is_published_after_a_bounded_wait(self):
+        # 2026-11-20: v0.31.0 stopped because the new tag read back as absent right after creation.
+        with patch.object(promotion, 'TAG_READ_DELAY_SECONDS', 0):
+            self.api.lagging_tag_reads = 2
+            self.promote()
+        self.assertEqual(self.api.writes[-1][0], 'PATCH')
+        self.assertEqual(self.api.tag, SHA)
+
+    def test_a_tag_that_never_appears_keeps_the_draft(self):
+        with patch.object(promotion, 'TAG_READ_DELAY_SECONDS', 0):
+            self.api.lagging_tag_reads = promotion.TAG_READ_ATTEMPTS + 5
+            with self.assertRaisesRegex(promotion.PromotionError, 'Version tag differs'):
+                self.promote()
+        self.assertNotEqual(self.api.writes[-1][0], 'PATCH')
 
     def test_mismatched_draft_existing_asset_or_upload_readback_is_not_published(self):
         self.api.fail_upload_after = 1
