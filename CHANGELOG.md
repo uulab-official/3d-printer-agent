@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.30.0 — 2026-11-20
+
+- Three new starting projects, so every template has one:
+  - **이름 키링** ("MINSU"), under the new purpose **이름·선물**
+  - **Esc 키캡** (1u), under the new purpose **키보드**
+  - **엔터 키캡** (2.25u, with stabilizer stems), also under **키보드**
+
+  The catalog now has 12 starting projects and 7 purposes. The cards have their own illustrations.
+- Name tags and keycaps are not sized by width × depth × height. Their recipes therefore state the outer size (`size_mm`), and both the card and the placement comparison use it:
+  - keycaps: `exact`, from the key units
+  - name keychain: `upper_bound` (62 × 16 × 4 mm), because the letter width depends on the computer's font. The card says so.
+
+  Tests generate each new recipe and check the CAD against these sizes. The nine earlier recipes and their hashes are unchanged.
+- The discovery heading no longer hard-codes "nine" starts.
+- CI reuses the Playwright browser and downloaded apt packages through `actions/cache` (v6.1.0, pinned). On 2026-11-20 main CI had been cancelled twice while a slow Ubuntu mirror served the 61 MB CJK font.
+
 ## 0.29.1 — 2026-11-19
 
 - Real-browser coverage for **프린터로 보내기**, which until now was only checked as controller state. A new Chromium case, run on both desktop and mobile, generates real CAD and drives the send card through these steps:

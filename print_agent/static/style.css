@@ -592,6 +592,14 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .project-art-wall_hook .project-shape { width: 30px; height: 66px; border: 0; border-radius: 3px; background: #a99cc8; box-shadow: 4px 5px 0 #8a7cad; transform: perspective(220px) rotateX(12deg) rotateZ(-6deg); }
 .project-art-wall_hook .project-shape::before { content: ""; position: absolute; left: 11px; top: 14px; width: 8px; height: 8px; border-radius: 50%; background: #f4f1fa; box-shadow: 0 22px 0 #f4f1fa; }
 .project-art-wall_hook .project-shape::after { content: ""; position: absolute; left: 24px; bottom: 0; width: 34px; height: 18px; border: 7px solid #8a7cad; border-top: 0; border-left: 0; border-radius: 0 0 10px 0; }
+/* Name keychain: a flat plate with raised letters and a ring hole on the left. */
+.project-art-name_tag { background: #fdf3f1; }
+.project-art-name_tag .project-shape { width: 112px; height: 34px; border: 0; border-radius: 9px; align-items: center; padding-left: 22px; color: #fff; font-weight: 800; font-size: 15px; letter-spacing: 0.5px; background: #e39a8c; box-shadow: 4px 5px 0 #c47a6c; transform: perspective(220px) rotateX(26deg) rotateZ(-10deg); }
+.project-art-name_tag .project-shape::before { content: ""; position: absolute; left: 8px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: #fdf3f1; }
+/* Keycap: a square cap with a dished top and its legend. */
+.project-art-keycap { background: #eef3f8; }
+.project-art-keycap .project-shape { width: 54px; height: 54px; border: 7px solid #5d6f86; border-radius: 9px; align-items: center; justify-content: center; color: #f4f7fb; font-weight: 700; font-size: 11px; background: #7d90a8; box-shadow: 4px 5px 0 #4b5b70; transform: perspective(220px) rotateX(30deg) rotateZ(-12deg); }
+.project-art-keycap .project-shape:not(:empty) { min-width: 54px; width: auto; padding: 0 9px; }
 .project-detail { margin-top: 17px; border: 1px solid #cfdbed; background: #fff; padding: 21px; border-radius: 13px; }
 .project-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .project-detail-heading h3 { margin-top: 7px; }

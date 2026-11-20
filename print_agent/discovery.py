@@ -13,7 +13,7 @@ from .schemas import GeometryRequest
 
 
 Dimension = Annotated[float, Field(strict=True, gt=0, le=10000, allow_inf_nan=False)]
-Purpose = Literal['all', 'organization', 'cables', 'display', 'hanging']
+Purpose = Literal['all', 'organization', 'cables', 'display', 'hanging', 'gifts', 'keyboard']
 
 
 class AvailableSpace(BaseModel):
@@ -102,6 +102,37 @@ def project_catalog() -> dict:
          ['헤드밴드의 폭·두께와 걸 위치 주변 공간을 측정하세요.'], hook_limits,
          dict(width=30, depth=50, height=60, wall=4, bottom=4, hole_diameter=4, lip_height=12)),
     ]
+    tag_limits = ['글자 가로 길이는 이 PC의 글꼴(macOS·Windows Arial Bold, Linux DejaVu Sans Bold)에 따라 달라집니다. 표시 치수는 최대값입니다.',
+                  '얇은 판과 고리 구멍 둘레는 세게 당기면 부러질 수 있습니다. 하중을 보장하지 않습니다.']
+    keycap_limits = ['Cherry MX 호환 십자 스템 기준입니다. 실제 스위치·키보드 맞춤과 스태빌라이저 호환은 검증하지 않았습니다.',
+                     '열린 바닥을 출력판에 두고 출력합니다. 십자 여유는 프린터마다 조정이 필요할 수 있습니다.']
+    # Templates whose outer size is not width × depth × height carry it separately:
+    # ``exact`` from fixed key units, ``upper_bound`` where the font sets the width.
+    sized = {
+        'name-keychain': {'width': 62, 'depth': 16, 'height': 4, 'basis': 'upper_bound'},
+        'esc-keycap': {'width': 18, 'depth': 18, 'height': 8, 'basis': 'exact'},
+        'enter-keycap': {'width': 41.8125, 'depth': 18, 'height': 8, 'basis': 'exact'},
+    }
+    definitions += [
+        ('name-keychain', '이름 키링', 'gifts', 'name_tag',
+         '이름이나 짧은 글자를 볼록하게 올린 열쇠고리입니다.',
+         '글자와 고리 구멍 크기를 바꿔 선물용으로 맞추기 좋은 시작안입니다.',
+         ['넣을 글자(최대 20자)와 고리에 끼울 링의 굵기를 확인하세요.'], tag_limits,
+         dict(width=120, depth=80, height=35, wall=3, bottom=2, text='MINSU', text_size=12, text_depth=2,
+              hole_diameter=4)),
+        ('esc-keycap', 'Esc 키캡', 'keyboard', 'keycap',
+         '“ESC” 글자를 새긴 1u 키캡입니다.',
+         '자주 누르는 키 하나를 색이나 글자로 바꿔 보는 작은 시작안입니다.',
+         ['키보드 스위치가 Cherry MX 호환 십자 스템인지 확인하세요.'], keycap_limits,
+         dict(width=120, depth=80, height=8, wall=1.3, bottom=2, fit_clearance=0.15, text='ESC', text_size=3.5,
+              text_depth=0.8, key_units=1)),
+        ('enter-keycap', '엔터 키캡', 'keyboard', 'keycap',
+         '“Enter” 글자를 새긴 2.25u 키캡이며 양쪽에 스태빌라이저 스템이 있습니다.',
+         '넓은 키에서 스태빌라이저 위치까지 함께 확인하는 시작안입니다.',
+         ['키보드의 엔터 키 크기(2.25u)와 스태빌라이저 종류를 확인하세요.'], keycap_limits,
+         dict(width=120, depth=80, height=8, wall=1.3, bottom=2, fit_clearance=0.15, text='Enter', text_size=4,
+              text_depth=0.8, key_units=2.25)),
+    ]
     projects = []
     for project_id, title, purpose, template, description, reason, measurements, limits, values in definitions:
         recipe = {
@@ -113,6 +144,8 @@ def project_catalog() -> dict:
                        'repository': 'https://github.com/uulab-official/3d-printer-agent',
                        'path': 'print_agent/geometry.py', 'creator': 'uulab-official', 'license': 'MIT'},
         }
+        if project_id in sized:
+            recipe['size_mm'] = dict(sized[project_id])
         canonical = json.dumps(recipe, ensure_ascii=False, sort_keys=True,
                                separators=(',', ':'), allow_nan=False).encode('utf-8')
         projects.append({**recipe, 'recipe_sha256': hashlib.sha256(canonical).hexdigest()})
@@ -121,7 +154,9 @@ def project_catalog() -> dict:
                          {'id': 'organization', 'title': '책상·서랍 정리'},
                          {'id': 'cables', 'title': '케이블 정리'},
                          {'id': 'display', 'title': '사진·장식'},
-                         {'id': 'hanging', 'title': '벽에 걸기'}],
+                         {'id': 'hanging', 'title': '벽에 걸기'},
+                         {'id': 'gifts', 'title': '이름·선물'},
+                         {'id': 'keyboard', 'title': '키보드'}],
             'projects': projects}
 
 
@@ -133,7 +168,8 @@ def recommend_projects(request: DiscoveryRequest) -> dict:
                   if request.purpose == 'all' or project['purpose'] == request.purpose]
     matches = []
     for project in candidates:
-        dimensions = {axis: project['parameters'][axis] for axis in ('width', 'depth', 'height')}
+        outer = project.get('size_mm') or project['parameters']
+        dimensions = {axis: outer[axis] for axis in ('width', 'depth', 'height')}
         status, orientation = 'not_checked', None
         if checked_axes:
             if all(dimensions[axis] <= space[axis] for axis in checked_axes):

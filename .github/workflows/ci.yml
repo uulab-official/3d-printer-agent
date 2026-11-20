@@ -48,12 +48,29 @@ jobs:
       - name: Install browser test dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
 
+      # Slow Ubuntu mirrors (once 158 kB/s for the 61 MB CJK font) used up the job limit.
+      # Reuse the browser and the downloaded .deb files; apt still checks versions and
+      # downloads anything that changed, so a stale cache only costs a download.
+      - name: Restore browser and system package downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/apt-archives
+          key: browser-deps-ubuntu-24.04-${{ hashFiles('package-lock.json') }}-v1
+
       - name: Install Chromium and system dependencies
         run: |
           # A stalled mirror download must fail and retry instead of using up the job timeout.
           printf 'Acquire::Retries "3";\nAcquire::http::Timeout "60";\nAcquire::https::Timeout "60";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-retries
+          printf 'APT::Keep-Downloaded-Packages "true";\n' | sudo tee /etc/apt/apt.conf.d/81-ci-keep-downloads
+          sudo rm -f /etc/apt/apt.conf.d/docker-clean
+          if ls ~/apt-archives/*.deb >/dev/null 2>&1; then sudo cp ~/apt-archives/*.deb /var/cache/apt/archives/; fi
           npx playwright install --with-deps chromium
           sudo apt-get install --no-install-recommends -y libgl1 fonts-noto-cjk
+          mkdir -p ~/apt-archives
+          cp /var/cache/apt/archives/*.deb ~/apt-archives/ 2>/dev/null || true
+          echo "Reusable package downloads: $(ls ~/apt-archives | wc -l) files, $(du -sh ~/apt-archives | cut -f1)"
 
       - name: Run CAD, configuration, and API tests
         run: python -m unittest discover -v
