@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-20 v0.30.0 공개 릴리스
+
+[v0.30.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.30.0)을 2026-11-20 06:01:39 UTC에 `ebdc45e`에서 게시했습니다(PR #27, 이름 키링·키캡 시작안과 CI 다운로드 캐시).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44683833313) Python **800개**·컨트롤러 **220개**·Chromium **108개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44683833172)
+세 OS 각 **373개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44683833197)가 모두 실행 차수 1로 통과했습니다. 이름 키링 시작안이 Linux 글꼴(DejaVu Sans Bold)로도
+최대 치수 안에 드는 것을 CI의 실제 CAD 생성으로 확인했습니다. main CI가 브라우저·패키지 캐시(89 MB 패키지 포함)를 처음 저장했고, 이후 실행부터 재사용합니다.
+공개 자산 7개를 인증 없이 내려받아 wheel(327,471바이트, `42f105acdb0e403e…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이
+내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 실물 출력과 실제 스위치 맞춤은 확인하지 않았습니다.
+
 ## 2026-11-20 v0.29.1 공개 릴리스
 
 [v0.29.1](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.29.1)을 2026-11-20 01:14:07 UTC에 `f9bacff`에서 게시했습니다(PR #26, 프린터로 보내기 화면의 실제 브라우저 테스트).

@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.30 gives every template a starting project. It adds a name keychain and Esc and Enter keycaps under two new purposes, 12 projects in all. Name-tag and keycap recipes state their outer size: exact for keycaps, a font-dependent upper bound for the keychain. Cards and placement comparisons use that size ([project discovery](PROJECT_DISCOVERY.md)). CI now caches the browser and apt downloads.
+Version 0.30 gives every template a starting project. It adds a name keychain and Esc and Enter keycaps under two new purposes, 12 projects in all. Name-tag and keycap recipes state their outer size: exact for keycaps, a font-dependent upper bound for the keychain. Cards and placement comparisons use that size ([project discovery](PROJECT_DISCOVERY.md)). CI now caches the browser and apt downloads. Published as [v0.30.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.30.0) on 2026-11-20 from `ebdc45e`.
 
 Version 0.29.1 adds a real-browser (Chromium, desktop and mobile) case for the print-send card. It uses real CAD and synthetic slice and printer responses, and changes no application behaviour. Published as [v0.29.1](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.29.1) on 2026-11-20 from `f9bacff`.
 
