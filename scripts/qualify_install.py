@@ -18,6 +18,7 @@ from pathlib import Path
 import platform
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -467,6 +468,27 @@ def qualify(args, report):
                            'mesh_vertices': len(vertices), 'artifacts': manifest['artifacts'],
                            'source': job.get('design_source')})
         report['models'] = models
+
+        # An imported STL keeps its original bytes, ranks placements and downloads a placed
+        # 3MF: a stem under a wide cap overhangs as stored and rests flat upside down.
+        from print_agent import model_import
+        mesh_stem = cq.Workplane('XY').box(10, 10, 30, centered=(True, True, False))
+        mesh_cap = cq.Workplane('XY').box(60, 40, 5, centered=(True, True, False)).translate((0, 0, 30))
+        mesh_points, mesh_faces = mesh_stem.union(mesh_cap).val().tessellate(0.01, 0.1)
+        mesh_points = [point.toTuple() for point in mesh_points]
+        mesh_stl = b'\0' * 80 + struct.pack('<I', len(mesh_faces)) + b''.join(
+            struct.pack('<12fH', 0, 0, 0, *mesh_points[a], *mesh_points[b], *mesh_points[c], 0) for a, b, c in mesh_faces)
+        mesh_import = get_json(server, '/api/imports', method='POST', token=token, expected=201,
+                            payload={'filename': 'overhanging-cap.stl', 'content_base64': base64.b64encode(mesh_stl).decode()})
+        mesh_source_status, mesh_source_bytes, _ = request(server.base, mesh_import['source_url'])
+        mesh_placed_status, mesh_placed, _ = request(server.base, f"/api/imports/{mesh_import['import_id']}/oriented?orientation={mesh_import['recommended_id']}")
+        mesh_best, mesh_stored = mesh_import['orientations'][mesh_import['recommended_id']], mesh_import['orientations'][mesh_import['original_id']]
+        mesh_again = model_import.analyse('placed.3mf', mesh_placed) if mesh_placed_status == 200 else None
+        check('import_model_ranked_and_placed', mesh_source_status == 200 and mesh_source_bytes == mesh_stl and mesh_placed_status == 200
+              and mesh_best['label'] == '위아래 뒤집기' and mesh_best['overhang_mm2'] < 1 and mesh_stored['overhang_mm2'] > 2000
+              and mesh_again is not None and mesh_again['facts']['closed']
+              and mesh_again['orientations'][mesh_again['original_id']]['overhang_mm2'] < 1,
+              json.dumps({'best': mesh_best['label'], 'stored': mesh_stored['overhang_mm2']}, ensure_ascii=False))
 
         # Sending to a printer: an installed server must refuse a job without a verified
         # slice, an unknown review and a missing bed confirmation, never echoing the code.

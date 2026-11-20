@@ -105,6 +105,44 @@ def _mesh_review(mesh, floor_z, footprint_area):
     return contact, overhang
 
 
+def bed_contact_item(contact, footprint):
+    """Flat downward area on the bed compared with the bounding footprint (mm²)."""
+    ratio = contact / footprint if footprint else 0
+    value = f'{contact / 100:.1f} cm² ({ratio:.0%})'
+    if ratio >= 0.5:
+        return _item('bed_contact', '바닥 접촉면', 'pass', value, '평평한 아랫면이 넓게 베드에 닿습니다.')
+    if ratio >= 0.15:
+        return _item('bed_contact', '바닥 접촉면', 'warn', value, '베드에 닿는 면이 좁아 출력 중 떨어질 수 있습니다.',
+                     '브림(brim)을 켜거나 바닥 면적을 넓히세요.')
+    return _item('bed_contact', '바닥 접촉면', 'fail', value, '평평하게 베드에 닿는 면이 거의 없습니다.',
+                 '모델을 눕히거나 평평한 바닥을 추가하세요.')
+
+
+def stability_item(xlen, ylen, zlen):
+    short_side = min(xlen, ylen)
+    slenderness = zlen / short_side if short_side else math.inf
+    if slenderness > 3:
+        return _item('stability', '세운 비율', 'warn', f'높이/짧은 변 {slenderness:.1f}',
+                     '가늘고 높아 출력 중 흔들리거나 넘어질 수 있습니다.', '높이를 줄이거나 짧은 변을 넓히세요.', 'height')
+    return _item('stability', '세운 비율', 'pass', f'높이/짧은 변 {slenderness:.1f}', '넘어질 위험이 낮은 비율입니다.')
+
+
+def overhang_item(overhang):
+    """Area (mm²) facing down more steeply than the limit and not resting on the bed."""
+    if overhang > 1.0:
+        return _item('overhang', f'{OVERHANG_LIMIT_DEG:.0f}° 넘는 돌출부', 'warn', f'{overhang / 100:.2f} cm²',
+                     '아래가 비어 있는 면이 있어 처지거나 지지대가 필요할 수 있습니다.', '슬라이서에서 지지대를 확인하세요.')
+    return _item('overhang', f'{OVERHANG_LIMIT_DEG:.0f}° 넘는 돌출부', 'pass', '없음', '지지대 없이 쌓을 수 있는 형상입니다.')
+
+
+def material_item(volume_mm3):
+    volume_cm3 = volume_mm3 / 1000
+    estimate = _item('material', '재료 사용 상한', 'pass', f'약 {volume_cm3 * PLA_DENSITY_G_CM3:.0f} g',
+                     f'속을 100% 채운 PLA({PLA_DENSITY_G_CM3} g/cm³) 기준 상한입니다. 실제 사용량은 슬라이서 결과를 보세요.')
+    estimate['grams'] = round(volume_cm3 * PLA_DENSITY_G_CM3, 1)
+    return estimate
+
+
 def assess_printability(shape, parameters, mesh):
     return review_mesh(parameters, mesh, shape.Volume())
 
@@ -120,43 +158,16 @@ def review_mesh(parameters, mesh, volume_mm3, nozzle_mm=REFERENCE_NOZZLE_MM):
     line = line_width(nozzle_mm)
     footprint = xlen * ylen
     contact, overhang = _mesh_review(mesh, mins[2], footprint)
-    ratio = contact / footprint if footprint else 0
-    items = [_wall_item(parameters, line)]
-
-    if ratio >= 0.5:
-        items.append(_item('bed_contact', '바닥 접촉면', 'pass', f'{contact / 100:.1f} cm² ({ratio:.0%})',
-                           '평평한 아랫면이 넓게 베드에 닿습니다.'))
-    elif ratio >= 0.15:
-        items.append(_item('bed_contact', '바닥 접촉면', 'warn', f'{contact / 100:.1f} cm² ({ratio:.0%})',
-                           '베드에 닿는 면이 좁아 출력 중 떨어질 수 있습니다.',
-                           '브림(brim)을 켜거나 바닥 면적을 넓히세요.'))
-    else:
-        items.append(_item('bed_contact', '바닥 접촉면', 'fail', f'{contact / 100:.1f} cm² ({ratio:.0%})',
-                           '평평하게 베드에 닿는 면이 거의 없습니다.',
-                           '모델을 눕히거나 평평한 바닥을 추가하세요.'))
-
-    short_side = min(xlen, ylen)
-    slenderness = zlen / short_side if short_side else math.inf
-    if slenderness > 3:
-        items.append(_item('stability', '세운 비율', 'warn', f'높이/짧은 변 {slenderness:.1f}',
-                           '가늘고 높아 출력 중 흔들리거나 넘어질 수 있습니다.',
-                           '높이를 줄이거나 짧은 변을 넓히세요.', 'height'))
-    else:
-        items.append(_item('stability', '세운 비율', 'pass', f'높이/짧은 변 {slenderness:.1f}',
-                           '넘어질 위험이 낮은 비율입니다.'))
+    items = [_wall_item(parameters, line), bed_contact_item(contact, footprint)]
+    items.append(stability_item(xlen, ylen, zlen))
 
     if overhang > 1.0 and parameters['template'] == 'keycap':
         # The only downward faces are the ceiling over the open cavity and the tops of the cross holes.
         items.append(_item('overhang', f'{OVERHANG_LIMIT_DEG:.0f}° 넘는 돌출부', 'warn', f'{overhang / 100:.2f} cm²',
                            '키캡 안쪽 천장과 십자 구멍 위쪽이 아래를 향한 면입니다. 옆벽 사이를 잇는 브릿지로 쌓이는 부분입니다.',
                            '보통 서포트 없이 출력되지만, 슬라이서 미리보기에서 브릿지가 처지지 않는지 확인하세요.'))
-    elif overhang > 1.0:
-        items.append(_item('overhang', f'{OVERHANG_LIMIT_DEG:.0f}° 넘는 돌출부', 'warn', f'{overhang / 100:.2f} cm²',
-                           '아래가 비어 있는 면이 있어 처지거나 지지대가 필요할 수 있습니다.',
-                           '슬라이서에서 지지대를 확인하세요.'))
     else:
-        items.append(_item('overhang', f'{OVERHANG_LIMIT_DEG:.0f}° 넘는 돌출부', 'pass', '없음',
-                           '지지대 없이 쌓을 수 있는 형상입니다.'))
+        items.append(overhang_item(overhang))
 
     # Only templates with a fitted insert or cable use the clearance parameter.
     clearance = parameters.get('fit_clearance') if parameters['template'] in ('cable_comb', 'magnet_frame', 'phone_stand') else None
@@ -184,11 +195,7 @@ def review_mesh(parameters, mesh, volume_mm3, nozzle_mm=REFERENCE_NOZZLE_MM):
             items.append(_item('fit_clearance', '끼움 여유', 'pass', f'{clearance:.2f} mm',
                                '일반적인 시작 범위의 여유입니다. 실제 맞춤은 시험 출력으로 확인하세요.'))
 
-    volume_cm3 = volume_mm3 / 1000
-    estimate = _item('material', '재료 사용 상한', 'pass', f'약 {volume_cm3 * PLA_DENSITY_G_CM3:.0f} g',
-                     f'속을 100% 채운 PLA({PLA_DENSITY_G_CM3} g/cm³) 기준 상한입니다. 실제 사용량은 슬라이서 결과를 보세요.')
-    estimate['grams'] = round(volume_cm3 * PLA_DENSITY_G_CM3, 1)
-    items.append(estimate)
+    items.append(material_item(volume_mm3))
 
     worst = max((item['status'] for item in items), key=_STATUS_RANK.get)
     return {

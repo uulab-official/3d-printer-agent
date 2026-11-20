@@ -23,6 +23,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z M3 8v9l9 5 9-5V8 M12 13v9"/></svg>
         모델 만들기
       </button>
+      <button class="nav-item" data-view="imports">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12 M7 10l5 5 5-5 M4 17v3h16v-3"/></svg>
+        가진 모델 점검
+      </button>
       <button class="nav-item" data-view="profiles">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg>
         재료 설정
@@ -460,6 +464,44 @@
         <div id="offers-feedback" class="notice" role="status" hidden></div>
         <section id="offers-result" class="card" aria-labelledby="offers-result-heading" hidden><div class="card-heading"><div><span class="step-label">입력한 조건 기준</span><h2 id="offers-result-heading">비교 결과</h2></div><span class="badge badge-neutral">직접 입력한 가격</span></div><div id="offer-comparison"></div><p id="offer-model-note" class="notice notice-info" hidden></p><p id="offer-notice" class="field-help"></p></section>
         <div class="plain-note"><strong>가격 다음에는 재료와 사용 조건을 확인하세요.</strong><p>동일 제품·색상·중량인지 살펴보세요. 세금, 쿠폰, 회원 조건, 재고와 장비 호환성은 이 계산에 포함하지 않습니다.</p></div>
+      </section>
+
+      <section id="view-imports" class="view" aria-labelledby="imports-heading" hidden>
+        <div class="page-heading"><div><p class="eyebrow">IMPORTED MODEL CHECK</p><h1 id="imports-heading">가진 모델 파일 점검</h1><p class="page-description">MakerWorld·Printables 등에서 받은 STL·3MF를 불러와 오버행과 바닥 접촉을 보고, 서포트가 덜 필요한 출력 방향을 찾습니다. 원본은 바꾸지 않습니다.</p></div></div>
+        <section class="card" aria-labelledby="import-file-heading">
+          <div class="card-heading"><div><span class="step-label">01 · 파일</span><h2 id="import-file-heading">모델 파일 불러오기</h2></div><span id="import-badge" class="badge badge-neutral">파일 선택 전</span></div>
+          <form id="import-form" class="import-form">
+            <label for="import-file">STL 또는 3MF (32 MiB 이하)<input id="import-file" type="file" accept=".stl,.3mf"></label>
+            <button id="import-submit" class="button button-primary" type="submit" disabled>불러와서 점검</button>
+          </form>
+          <div id="import-feedback" class="notice" role="status" hidden></div>
+          <details id="import-recent" class="import-recent"><summary>최근 불러온 모델</summary><ul id="import-recent-list" class="import-recent-list"></ul></details>
+        </section>
+        <div id="import-result" class="import-result" hidden>
+          <section class="card preview-card" aria-labelledby="import-preview-heading">
+            <div class="card-heading"><div><span class="step-label">02 · 미리보기</span><h2 id="import-preview-heading">고른 출력 방향</h2></div><span id="import-status" class="badge badge-neutral"></span></div>
+            <div id="import-stage" class="preview-stage">
+              <canvas id="import-canvas" tabindex="0" aria-label="불러온 3D 모델. 방향키로 회전하고 더하기와 빼기 키로 확대하거나 축소합니다." hidden></canvas>
+              <div id="import-empty" class="preview-empty"><span class="empty-mark" aria-hidden="true">+</span><h3>모델을 불러오면 여기에 보입니다</h3></div>
+              <div id="import-tools" class="preview-tools" hidden>
+                <button id="import-zoom-out" class="icon-button" type="button" aria-label="모델 축소">−</button>
+                <button id="import-zoom-in" class="icon-button" type="button" aria-label="모델 확대">+</button>
+                <span class="tool-separator" aria-hidden="true"></span>
+                <button id="import-reset-view" class="icon-button" type="button" aria-label="기본 시점으로">↺</button>
+              </div>
+            </div>
+            <div class="preview-footer"><span id="import-caption"></span><span>드래그로 회전 · 붉은 면은 45° 넘는 돌출부</span></div>
+          </section>
+          <section class="card" aria-labelledby="import-orient-heading">
+            <div class="card-heading"><div><span class="step-label">03 · 출력 방향</span><h2 id="import-orient-heading">어느 면을 바닥에 둘까요</h2></div></div>
+            <p class="field-help">서포트가 필요한 면(45° 넘는 돌출부)이 적고 바닥에 닿는 면이 넓은 순서입니다. 고르면 미리보기와 점검이 바뀝니다.</p>
+            <div id="import-orientations" class="import-orientations" role="radiogroup" aria-labelledby="import-orient-heading"></div>
+            <div id="import-review" class="import-review"></div>
+            <div class="import-actions"><a id="import-download" class="button button-primary" href="#" download>이 방향으로 3MF 내려받기</a><a id="import-source" class="button button-secondary" href="#" download>원본 내려받기</a></div>
+            <p id="import-facts" class="field-help"></p>
+            <p id="import-scope" class="field-help"></p>
+          </section>
+        </div>
       </section>
 
       <section id="view-printers" class="view" aria-labelledby="printers-heading" hidden>

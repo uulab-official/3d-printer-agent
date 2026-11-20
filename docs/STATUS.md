@@ -2,9 +2,11 @@
 
 Date: 2026-11-20 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.31 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.32 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.32 checks model files people already have ([model import](MODEL_IMPORT.md)). An STL or 3MF, including Bambu Studio component files, is kept unchanged and verified on every read. Its mesh is measured, placements are ranked by unsupported area and bed contact, and the chosen placement downloads as a new 3MF. Imported models cannot yet be sliced or sent from the app.
 
 Version 0.31 adds an eighth template, a round cup: an open cylinder with an optional floor drain hole, for pen holders, utensil holders and planters. It comes with requests, edits, recovery steps, two starting projects and installed-package qualification ([cup guide](CUP.md)). Three cups sliced locally with Bambu Studio 02.09.01.70 on synthetic settings without supports. Watertightness and physical prints are not verified. Published as [v0.31.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.31.0) on 2026-11-20 from `703e69e`.
 

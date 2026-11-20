@@ -3,7 +3,7 @@
 
   const $ = (id) => document.getElementById(id);
   const state = { offersResult: null, historyFilter: "all", downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
-  const pageNames = { models: "모델 만들기", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
+  const pageNames = { models: "모델 만들기", imports: "가진 모델 점검", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
     depth: { label: "세로", min: 10, max: 500, step: 0.1 },
@@ -317,6 +317,7 @@
     if (name === "offers") { renderOffersModelHint(); if (state.offersResult && !$("offers-result").hidden) renderOffers(state.offersResult); }
     if (name === "profiles") renderSetupPrinterFill();
     if (name === "models") viewer.requestDraw();
+    if (name === "imports") { importViewer.requestDraw(); loadRecentImports(); }
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
@@ -4902,8 +4903,11 @@
   $("history-more").addEventListener("click", () => loadHistory(true));
 
   class MeshViewer {
-    constructor(canvas) {
+    constructor(canvas, ids = {}) {
       this.canvas = canvas;
+      // Element ids of the surrounding stage; the import check reuses the viewer with its own.
+      this.ids = { stage: "preview-stage", empty: "preview-empty", tools: "preview-tools", previousToggle: "preview-previous-toggle",
+        previousLabel: "preview-previous-label", viewButtons: "[data-preview-view]", ...ids };
       this.context = canvas.getContext("2d", { willReadFrequently: true });
       this.mesh = null;
       this.yaw = 0.62;
@@ -4916,7 +4920,7 @@
       this.lastMesh = null;
       this.pending = false;
       this.drag = null;
-      new ResizeObserver(() => this.requestDraw()).observe($("preview-stage"));
+      new ResizeObserver(() => this.requestDraw()).observe(this.element("stage"));
       canvas.addEventListener("pointerdown", (event) => {
         if (event.button !== 0) return;
         this.drag = { x: event.clientX, y: event.clientY };
@@ -4968,9 +4972,9 @@
 
     setMesh(mesh, title, template = null) {
       if (!mesh?.vertices?.length || !mesh.faces?.length || !this.context) {
-        $("preview-empty").hidden = false;
+        this.element("empty").hidden = false;
         this.canvas.hidden = true;
-        $("preview-tools").hidden = true;
+        this.element("tools").hidden = true;
         return;
       }
       // Keep the model shown just before as a labelled outline for comparison.
@@ -4992,11 +4996,11 @@
       this.maxs = maxs;
       this.frame();
       this.featureEdges = MeshViewer.featureEdges(mesh);
-      MeshViewer.renderPreviousControl(this.previous, bounds);
+      this.renderPreviousControl(this.previous, bounds);
       this.canvas.hidden = false;
       this.canvas.setAttribute("aria-label", `${title || "생성한 모델"}. 방향키로 회전, 더하기와 빼기로 확대, 0으로 기본 시점.`);
-      $("preview-empty").hidden = true;
-      $("preview-tools").hidden = false;
+      this.element("empty").hidden = true;
+      this.element("tools").hidden = false;
       this.reset();
     }
 
@@ -5025,18 +5029,18 @@
       this.radius = Math.hypot(...this.extents) / 2 || 1;
     }
 
-    static renderPreviousControl(previous, currentBounds) {
-      $("preview-previous-toggle").hidden = !previous;
+    renderPreviousControl(previous, currentBounds) {
+      this.element("previousToggle").hidden = !previous;
       if (!previous) return;
       const size = ([mins, maxs]) => mins.map((value, axis) => numberFormat.format(Math.round((maxs[axis] - value) * 10) / 10)).join(" × ");
       const before = size(previous.bounds);
-      $("preview-previous-label").textContent = currentBounds && before === size(currentBounds) ? "이전 모델 · 같은 크기" : `이전 ${before} mm`;
+      this.element("previousLabel").textContent = currentBounds && before === size(currentBounds) ? "이전 모델 · 같은 크기" : `이전 ${before} mm`;
     }
 
     forgetPrevious() {
       this.lastMesh = null;
       this.previous = null;
-      MeshViewer.renderPreviousControl(null);
+      this.renderPreviousControl(null);
     }
 
     clear() {
@@ -5046,8 +5050,8 @@
       this.canvas.hidden = true;
       this.canvas.classList.remove("dragging");
       if (this.context) this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      $("preview-empty").hidden = false;
-      $("preview-tools").hidden = true;
+      this.element("empty").hidden = false;
+      this.element("tools").hidden = true;
     }
 
     reset() { this.setView("iso"); }
@@ -5086,9 +5090,14 @@
       this.requestDraw();
     }
 
+    element(key) {
+      // A missing optional element (e.g. no "previous model" toggle) is ignored.
+      return (this.ids[key] && $(this.ids[key])) || { hidden: true, textContent: "", style: {} };
+    }
+
     markView(name) {
       this.view = name;
-      document.querySelectorAll("[data-preview-view]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.previewView === name)));
+      document.querySelectorAll(this.ids.viewButtons).forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.previewView === name)));
     }
 
     setOption(name, value) { this[name] = value; if (name === "showPrevious" && this.mesh) this.frame(); this.requestDraw(); }
@@ -5291,6 +5300,145 @@
   $("zoom-out").addEventListener("click", () => viewer.changeZoom(1 / 1.15));
   $("reset-view").addEventListener("click", () => viewer.reset());
 
+  // ---------------------------------------------------------------------------
+  // Imported model check: originals stay unchanged; a placement is a rotation and move only.
+
+  const importViewer = new MeshViewer($("import-canvas"), { stage: "import-stage", empty: "import-empty", tools: "import-tools",
+    previousToggle: null, previousLabel: null, viewButtons: "[data-import-view]" });
+  $("import-zoom-in").addEventListener("click", () => importViewer.changeZoom(1.15));
+  $("import-zoom-out").addEventListener("click", () => importViewer.changeZoom(1 / 1.15));
+  $("import-reset-view").addEventListener("click", () => importViewer.reset());
+  const IMPORT_MAX_BYTES = 32 * 1024 * 1024;
+  const importStatus = { ok: ["점검 통과", "success"], review: ["확인할 점 있음", "warning"], needs_change: ["바꿔야 할 점 있음", "error"] };
+
+  function updateImportControls() {
+    const file = $("import-file").files?.[0];
+    $("import-submit").disabled = !state.token || !file || Boolean(state.importPending);
+  }
+
+  function placedPreview(preview, rotation) {
+    // Rotate the sampled preview like the server does, then sit it on the bed, centred.
+    const turned = preview.vertices.map(([x, y, z]) => rotation.map((row) => row[0] * x + row[1] * y + row[2] * z));
+    const mins = [0, 1, 2].map((axis) => Math.min(...turned.map((point) => point[axis])));
+    const maxs = [0, 1, 2].map((axis) => Math.max(...turned.map((point) => point[axis])));
+    const shift = [(mins[0] + maxs[0]) / 2, (mins[1] + maxs[1]) / 2, mins[2]];
+    return { vertices: turned.map((point) => point.map((value, axis) => value - shift[axis])), faces: preview.faces };
+  }
+
+  function importOrientationText(item) {
+    const size = item.size_mm;
+    return `돌출부 ${(item.overhang_mm2 / 100).toFixed(1)} cm² · 바닥 접촉 ${(item.contact_mm2 / 100).toFixed(1)} cm² · ${numberFormat.format(size.x)} × ${numberFormat.format(size.y)} × ${numberFormat.format(size.z)} mm`;
+  }
+
+  function renderImportReview(review) {
+    const tone = { pass: "success", warn: "warning", fail: "error" };
+    const word = { pass: "통과", warn: "확인", fail: "바꿔야 함" };
+    $("import-review").replaceChildren(...(review?.items || []).map((item) => {
+      const row = node("div", "import-review-item");
+      row.dataset.importReview = item.id;
+      row.append(node("span", `badge badge-${tone[item.status] || "neutral"}`, word[item.status] || item.status),
+        node("strong", "", `${item.label} · ${item.value}`), node("small", "", item.advice ? `${item.detail} ${item.advice}` : item.detail));
+      return row;
+    }));
+  }
+
+  function selectImportOrientation(id) {
+    const result = state.importResult;
+    const item = result?.orientations?.find((entry) => entry.id === id);
+    if (!item) return;
+    state.importSelected = id;
+    for (const button of document.querySelectorAll("[data-import-orientation]")) button.setAttribute("aria-checked", String(Number(button.dataset.importOrientation) === id));
+    const [label, tone] = importStatus[item.review.status] || ["점검 결과", "neutral"];
+    setBadge("import-status", label, tone);
+    renderImportReview(item.review);
+    // No template: switching placements is not a "previous model" to outline.
+    importViewer.setMesh(placedPreview(result.preview, item.rotation), result.filename, null);
+    $("import-caption").textContent = `${item.label}${item.recommended ? " (추천)" : ""}${result.preview.sampled ? " · 미리보기는 삼각형 일부만 표시" : ""}`;
+    $("import-download").href = `/api/imports/${encodeURIComponent(result.import_id)}/oriented?orientation=${id}`;
+  }
+
+  function renderImport(result) {
+    state.importResult = result;
+    $("import-result").hidden = false;
+    const facts = result.facts;
+    $("import-facts").textContent = `${result.filename} · ${result.format.toUpperCase()} · 삼각형 ${numberFormat.format(facts.triangles)}개 · ${facts.closed ? "닫힌 메시" : "열린 메시"}${facts.volume_mm3 ? ` · 부피 ${numberFormat.format(facts.volume_mm3 / 1000)} cm³` : ""}${result.build_items > 1 ? ` · 개체 ${result.build_items}개를 한 판으로 봄` : ""}`;
+    $("import-scope").textContent = result.scope || "";
+    $("import-source").href = result.source_url;
+    $("import-orientations").replaceChildren(...result.orientations.slice(0, 6).map((item, index) => {
+      const button = node("button", "import-orientation");
+      button.type = "button";
+      button.setAttribute("role", "radio");
+      button.dataset.importOrientation = String(item.id);
+      button.append(node("span", "import-rank", String(index + 1)), node("strong", "", `${item.label}${item.recommended ? " · 추천" : ""}${item.id === result.original_id ? " · 파일에 저장된 방향" : ""}`), node("span", "", importOrientationText(item)));
+      button.addEventListener("click", () => selectImportOrientation(item.id));
+      return button;
+    }));
+    selectImportOrientation(result.recommended_id);
+    setBadge("import-badge", "점검 완료", "success");
+  }
+
+  async function submitImport(event) {
+    event?.preventDefault();
+    const file = $("import-file").files?.[0];
+    if (!file || state.importPending) return;
+    const request = state.importRequest = (state.importRequest || 0) + 1;
+    state.importPending = true;
+    updateImportControls();
+    hideNotice("import-feedback");
+    setBadge("import-badge", "불러오는 중", "info");
+    try {
+      if (!/\.(stl|3mf)$/i.test(file.name) || file.name.length > 120) throw new Error("이름이 120자 이하인 .stl 또는 .3mf 파일을 선택해 주세요.");
+      if (!file.size || file.size > IMPORT_MAX_BYTES) throw new Error("모델 파일은 1바이트 이상, 32 MiB 이하여야 합니다.");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const chunks = [];
+      for (let offset = 0; offset < bytes.length; offset += 32768) chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
+      const result = await api("/api/imports", { filename: file.name, content_base64: btoa(chunks.join("")) });
+      if (request !== state.importRequest) return;
+      renderImport(result);
+      loadRecentImports();
+    } catch (error) {
+      if (request === state.importRequest) {
+        setBadge("import-badge", "불러오지 못함", "error");
+        showNotice("import-feedback", error.message, "error");
+      }
+    } finally {
+      if (request === state.importRequest) state.importPending = false;
+      updateImportControls();
+    }
+  }
+
+  async function openImport(importId) {
+    const request = state.importRequest = (state.importRequest || 0) + 1;
+    try {
+      const result = await api(`/api/imports/${encodeURIComponent(importId)}`);
+      if (request === state.importRequest) { renderImport(result); hideNotice("import-feedback"); }
+    } catch (error) {
+      if (request === state.importRequest) showNotice("import-feedback", error.message, "error");
+    }
+  }
+
+  async function loadRecentImports() {
+    if (!state.token) return;
+    try {
+      const { imports } = await api("/api/imports?limit=10");
+      $("import-recent").hidden = !imports.length;
+      $("import-recent-list").replaceChildren(...imports.map((item) => {
+        const row = node("li", "");
+        if (item.unreadable) { row.textContent = "읽을 수 없는 기록(원본 보존)"; return row; }
+        const button = node("button", "", `${item.filename} · ${dateTime(item.created_at)}`);
+        button.type = "button";
+        button.addEventListener("click", () => openImport(item.import_id));
+        row.append(button);
+        return row;
+      }));
+    } catch {
+      $("import-recent").hidden = true;
+    }
+  }
+
+  $("import-file").addEventListener("change", updateImportControls);
+  $("import-form").addEventListener("submit", submitImport);
+
   function renderRetainedOutcomes() {
     const area = $("retained-outcome-notes");
     area.replaceChildren();
@@ -5421,6 +5569,7 @@
       document.title = `${name} · 로컬 작업 공간`;
       $("app-version").textContent = data.app?.version ? `Version ${data.app.version}` : "버전 정보 없음";
       renderSlicerEnvironment();
+      updateImportControls();
       const editLlmOption = $("model-edit-mode").querySelector('option[value="llm"]');
       editLlmOption.disabled = !state.provider.configured;
       editLlmOption.textContent = state.provider.configured ? "LLM 모드 · 설정 있음" : "LLM 모드 · 미설정";

@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
+import time
 import tomllib
 import unicodedata
 import urllib.error
@@ -87,6 +88,7 @@ REQUIRED_CHECKS = frozenset({
     'cad_validated_wall_hook', 'printability_review_wall_hook', 'wall_hook_prints_without_overhang',
     'cad_validated_keycap', 'printability_review_keycap', 'keycap_cross_stems_and_title',
     'cad_validated_cup', 'printability_review_cup', 'cup_drain_hole_cavity_and_title',
+    'import_model_ranked_and_placed',
     'printer_send_requires_verified_slice', 'printer_send_unknown_review_is_refused',
     'printer_send_requires_bed_confirmation_without_echo', 'printer_send_refusals_record_nothing',
 })
@@ -453,6 +455,21 @@ def verified_package(api, repository, run, source):
     return assets, receipt, receipts, reports
 
 
+# A tag created a moment ago can read back as absent (GitHub read-after-write lag).
+# Only absence is retried; a tag on any other commit still fails immediately.
+TAG_READ_ATTEMPTS = 6
+TAG_READ_DELAY_SECONDS = 2.0
+
+
+def settled_tag_commit(api, prefix, tag):
+    for attempt in range(TAG_READ_ATTEMPTS):
+        commit = tag_commit(api, prefix, tag)
+        if commit is not None or attempt == TAG_READ_ATTEMPTS - 1:
+            return commit
+        time.sleep(TAG_READ_DELAY_SECONDS)
+    return None
+
+
 def tag_commit(api, prefix, tag):
     value = api.json('GET', prefix + '/git/ref/tags/' + urllib.parse.quote(tag, safe=''), not_found=True)
     if value is None:
@@ -617,7 +634,7 @@ def promote(api, repository, event, source, report=None):
             # an update/delete ref API and never let release creation select main.
             created_tag = api.json('POST', prefix + '/git/refs', {'ref': 'refs/tags/' + tag, 'sha': source.commit})
             require(created_tag.get('object', {}).get('sha') == source.commit, 'GitHub did not confirm the exact version tag')
-        require(tag_commit(api, prefix, tag) == source.commit, 'Version tag differs before publication; draft preserved')
+        require(settled_tag_commit(api, prefix, tag) == source.commit, 'Version tag differs before publication; draft preserved')
         if not current_main():
             return skipped('Main advanced before final publication; qualified tag and draft preserved')
         reason = revalidate_gates('gate_revalidation_before_publication')
