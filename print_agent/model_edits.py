@@ -48,8 +48,10 @@ def _length_number(value):
 
 def _required(template):
     # A name tag's outline follows its text; a keycap's follows its key size.
+    # A round cup is sized by its diameter (width); depth is not used.
     common = (_COMMON - {'width', 'depth', 'height'} if template == 'name_tag'
-              else _COMMON - {'width', 'depth'} if template == 'keycap' else _COMMON)
+              else _COMMON - {'width', 'depth'} if template == 'keycap'
+              else _COMMON - {'depth'} if template == 'cup' else _COMMON)
     return common | TEMPLATE_SPECIFIC_FIELDS[template]
 
 
@@ -221,7 +223,13 @@ _TEXT_EDIT = re.compile(
 
 def _rule_operations(text, template):
     # Consume every meaningful token. Unknown clauses cannot disappear beside a valid edit.
-    alias = '|'.join('(?P<'+field+'>'+pattern+')' for field,pattern in sorted(_ALIASES.items(),key=lambda item:-len(item[1])))
+    aliases = dict(_ALIASES)
+    if template == 'cup':
+        # “지름” is the cup's outer diameter and any “구멍” is its drain hole.
+        aliases['width'] = r'(?:바깥\s*|컵\s*)?(?:지름|직경)|' + _ALIASES['width']
+        aliases.pop('hole_diameter')
+        aliases['drain_hole'] = r'(?:배수\s*)?구멍(?:\s*(?:지름|크기))?|drain\s*hole'
+    alias = '|'.join('(?P<'+field+'>'+pattern+')' for field,pattern in sorted(aliases.items(),key=lambda item:-len(item[1])))
     pattern = re.compile(r'(?P<label>'+alias+r')\s*(?:는|은|을|를|만|:|=)?\s*(?P<value>'+_NUMBER+r')\s*(?P<unit>'+_UNIT+r')?\s*(?P<count_unit>개)?\s*(?P<action>'+_ACTION+r')?\s*'+_TAIL, re.I)
     operations = []
     colors, text = planner.extract_colors(text)
@@ -235,7 +243,7 @@ def _rule_operations(text, template):
             return ' '
         text = _TEXT_EDIT.sub(text_edit, text)
     def field_edit(match):
-        field = next(field for field in _ALIASES if match.group(field) is not None)
+        field = next(field for field in aliases if match.group(field) is not None)
         value = Decimal(match.group('value'))
         unit = match.group('unit')
         if field in _COUNTS:

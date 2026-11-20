@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.31.0 — 2026-11-20
+
+- Eighth template: a **round cup** (docs/CUP.md), an open-top cylinder for pen holders, utensil holders and planters.
+  - `width` is the outer diameter; `depth` is not used.
+  - The new `drain_hole` field cuts a centred hole in the floor: 0 for none, otherwise 3–30 mm.
+  - Rules keep the inner diameter at least 10 mm, at least 5 mm of height above the floor, and at least 3 mm of floor around a drain hole.
+  - `drain_hole` is a later field, so earlier jobs, recipes and review hashes keep their shape.
+- Requests such as "연필꽂이", "화분 지름 12cm", "수저통" and "원형 수납함 지름 60 높이 50" now make a cup.
+  - Pen holders (펜꽂이) used to become a rectangular tray; they are now cups.
+  - Lids and handles are asked about, not guessed. A depth value asks for the diameter, and a coaster is not mistaken for a cup.
+- Edits read "지름" as the cup's diameter and "(배수) 구멍" as the drain hole. A "weak" outcome offers a thicker side wall.
+- Two starting projects: **원통 연필꽂이** (책상·서랍 정리) and **작은 화분** under the new purpose **화분·식물**, for 14 projects across 8 purposes.
+- Job titles read "원통 수납컵 · 지름 90 × 높이 80 mm · 배수 구멍".
+- Installed-package qualification generates a planter on every platform and checks the STEP size, the drain hole, the cavity, the wall and floor, no overhang, and the title. Promotion requires these checks.
+  - The round outline is compared in the 3MF within the export's 0.05 mm chord tolerance.
+  - A local run on macOS passed 389/389.
+- Three cups were sliced locally with Bambu Studio 02.09.01.70 on synthetic settings, all without supports. Watertightness, food safety and physical prints are not verified.
+
 ## 0.30.0 — 2026-11-20
 
 - Three new starting projects, so every template has one:

@@ -27,8 +27,11 @@ class PlannerTests(unittest.TestCase):
                 self.assertEqual(plan_from_text(text)['status'],'needs_input')
 
     def test_unsupported_shapes_are_not_silently_simplified(self):
-        for text in ('원형 수납함 가로 100mm 높이 30mm 만들어줘','손잡이 달린 수납함 만들어줘'):
-            self.assertEqual(plan_from_text(text)['status'],'needs_input')
+        self.assertEqual(plan_from_text('손잡이 달린 수납함 만들어줘')['status'],'needs_input')
+        self.assertEqual(plan_from_text('트레이 원형으로 만들어줘')['status'],'needs_input')
+        # A round box is now its own template, not a rectangle in disguise.
+        round_box=plan_from_text('원형 수납함 가로 100mm 높이 30mm 만들어줘')['parameters']
+        self.assertEqual((round_box['template'],round_box['width'],round_box['height']),('cup',100.0,30.0))
 
     def test_leading_decimal_and_channel_count(self):
         parameters=plan_from_text('케이블 받침 3칸으로 만들어줘 벽 .8mm')['parameters']

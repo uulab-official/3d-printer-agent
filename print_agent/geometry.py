@@ -49,6 +49,10 @@ def template_catalog() -> list[dict]:
                       "lean_angle": 65, "device_thickness": 12, "lip_height": 12, "fit_clearance": 1},
          "editable_fields": ["width", "depth", "height", "wall", "bottom", "lean_angle",
                              "device_thickness", "lip_height", "fit_clearance"]},
+        {"id": "cup", "title": "원통 수납컵",
+         "description": "연필꽂이·화분처럼 위가 열린 원통 컵입니다. 가로가 바깥 지름이고, 바닥 가운데에 배수 구멍을 낼 수 있습니다.",
+         "defaults": {"width": 70, "height": 100, "wall": 2, "bottom": 2, "drain_hole": 0},
+         "editable_fields": ["width", "height", "wall", "bottom", "drain_hole"]},
     ]
     # Colours are optional on every template; letters get their own colour only on a name tag.
     for item in catalog:
@@ -188,6 +192,12 @@ def _build_solid(p: dict) -> cq.Shape:
                 .rotate((0, 0, 0), (1, 0, 0), -lean).translate((0, slot_front, bottom)))
         envelope = cq.Workplane("XY").box(w, d, h, centered=False)
         body = body.union(lip).union(back).intersect(envelope)
+    elif p["template"] == "cup":
+        # A round, open-top cup centred on X/Y with its base at z = 0; width is the outer diameter.
+        body = cq.Workplane("XY").circle(w / 2).extrude(h)
+        body = body.cut(cq.Workplane("XY").workplane(offset=bottom).circle(w / 2 - wall).extrude(h))
+        if p["drain_hole"]:
+            body = body.cut(cq.Workplane("XY").workplane(offset=-1).circle(p["drain_hole"] / 2).extrude(bottom + 2))
     elif p["template"] == "magnet_frame":
         radius = (p["inset_diameter"] + p["fit_clearance"]) / 2
         pocket = cq.Solid.makeCylinder(radius, p["inset_depth"] + 1,
@@ -361,6 +371,11 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
           "detail": "키 크기(u)로 정해지는 가로·세로와 요청 높이를 비교"}
          if spec.template == "keycap" else
          {"name": "requested_dimensions",
+          "passed": all(math.isclose(dimensions[axis], expected, abs_tol=1e-6)
+                        for axis, expected in zip("xyz", (parameters["width"], parameters["width"], parameters["height"]))),
+          "detail": "지름(가로·세로)과 높이를 비교"}
+         if spec.template == "cup" else
+         {"name": "requested_dimensions",
           "passed": all(math.isclose(dimensions[axis], parameters[key], abs_tol=1e-6)
                         for axis, key in zip("xyz", ("width", "depth", "height"))),
           "detail": "생성 형상의 외부 치수와 요청 치수 비교"}),
@@ -400,6 +415,9 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
         warnings.append(f"체리 MX 호환 십자 스템(십자 구멍 {keycap_layout(parameters)['cross'][0]:.2f} × {keycap_layout(parameters)['cross'][1]:.2f} mm)입니다. 프린터마다 구멍이 조금씩 달라지므로 한 개를 먼저 뽑아 스위치에 끼워 보고 십자 여유를 조정하세요. 스위치·스태빌라이저와의 맞춤과 타건감은 보장하지 않습니다.")
         if parameters["text"].strip():
             warnings.append(f"글자는 글꼴 {_name_tag_font()['label']}로 윗면에 새겼습니다. 다른 PC에서는 글자 모양이 조금 다를 수 있습니다.")
+    elif spec.template == "cup":
+        warnings.append("위가 열린 원통 컵입니다. 물을 담는 용도라면 방수·식품 안전을 보장하지 않으며, 배수 구멍이 있으면 받침 접시를 쓰세요."
+                        if parameters["drain_hole"] else "위가 열린 원통 컵입니다. 물을 담는 용도라면 FDM 출력물은 틈으로 샐 수 있고 식품 안전을 보장하지 않습니다.")
     elif spec.template == "phone_stand":
         warnings.append("기기 두께와 여유로 홈 폭을 정합니다. 실제 기기·케이스 두께와 넘어짐·충전 케이블 위치는 직접 확인하세요.")
     elif spec.template == "magnet_frame":

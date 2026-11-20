@@ -10,6 +10,7 @@ TEMPLATE_SPECIFIC_FIELDS = {
     'name_tag': {'text','text_size','text_depth','hole_diameter'},
     'wall_hook': {'hole_diameter','lip_height'},
     'keycap': {'text','text_size','text_depth','fit_clearance','key_units'},
+    'cup': {'drain_hole'},
 }
 # Filament colours a person can name. Keys are stored; hex values are display
 # approximations only, not a measured filament colour.
@@ -32,13 +33,13 @@ KEY_UNITS = (1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.75, 6.25, 7.0)
 # Fields added after v0.10. They appear in canonical parameters only for the
 # templates that use them, so earlier jobs, recipes and review hashes keep the
 # exact same eleven-field shape.
-LATER_FIELDS = {'lean_angle','device_thickness','lip_height','text','text_size','text_depth','hole_diameter','key_units'}
+LATER_FIELDS = {'lean_angle','device_thickness','lip_height','text','text_size','text_depth','hole_diameter','key_units','drain_hole'}
 # Colours are optional for every template; an unchosen colour ('') is omitted from
 # canonical parameters, so models without colours keep their earlier shape and hashes.
 
 class GeometryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    template: Literal["tray", "cable_comb", "magnet_frame", "phone_stand", "name_tag", "wall_hook", "keycap"] = "tray"
+    template: Literal["tray", "cable_comb", "magnet_frame", "phone_stand", "name_tag", "wall_hook", "keycap", "cup"] = "tray"
     width: float = Field(default=120, ge=10, le=500)
     depth: float = Field(default=80, ge=10, le=500)
     height: float = Field(default=35, ge=2, le=300)
@@ -58,6 +59,8 @@ class GeometryRequest(BaseModel):
     text_depth: float = Field(default=2, ge=0.6, le=6)
     hole_diameter: float = Field(default=4, ge=2, le=10)
     key_units: float = Field(default=1, ge=1, le=7)
+    # A round cup's drain hole in the bottom; 0 means no hole.
+    drain_hole: float = Field(default=0, ge=0, le=30)
     color: str = Field(default="", max_length=16)
     accent_color: str = Field(default="", max_length=16)
 

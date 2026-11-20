@@ -21,8 +21,7 @@ class EverydayRequestTests(unittest.TestCase):
         self.assertEqual(plan('수납함 가로 150mm 150x90mm')[1]['depth'], 90.0)
 
     def test_everyday_names_start_from_announced_sizes(self):
-        for text, template, size in (('책상 위에 둘 펜꽂이 만들어줘', 'tray', (80.0, 80.0, 100.0)),
-                                     ('명함 꽂이', 'tray', (100.0, 65.0, 35.0)),
+        for text, template, size in (('명함 꽂이', 'tray', (100.0, 65.0, 35.0)),
                                      ('이어폰 정리', 'tray', (90.0, 70.0, 30.0)),
                                      ('태블릿 받침대 만들어줘', 'phone_stand', (160.0, 80.0, 120.0))):
             with self.subTest(text=text):
@@ -30,6 +29,9 @@ class EverydayRequestTests(unittest.TestCase):
                 self.assertEqual(result['status'], 'ready')
                 self.assertEqual((p['template'], p['width'], p['depth'], p['height']), (template, *size))
                 self.assertIn('시작합니다', result['assumptions'][0])
+        result, pen = plan('책상 위에 둘 펜꽂이 만들어줘')
+        self.assertEqual((pen['template'], pen['width'], pen['height'], pen['drain_hole']), ('cup', 70.0, 100.0, 0.0))
+        self.assertIn('지름 70 mm', result['assumptions'][0])
         _, pen = plan('펜꽂이 높이 120mm')
         self.assertEqual(pen['height'], 120.0)
 

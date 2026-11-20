@@ -52,6 +52,18 @@ def _validate_geometry(p: dict) -> None:
             raise ValueError("나사 구멍 양옆에 2 mm 이상 남도록 가로를 늘리거나 구멍을 줄이세요.")
         if h - bottom < 3 * hole + 6:
             raise ValueError("나사 구멍 두 개가 들어가도록 높이를 늘리거나 구멍을 줄이세요.")
+    elif p["template"] == "cup":
+        # width is the outer diameter; depth is not used.
+        inner = w - 2 * wall
+        if inner < 10:
+            raise ValueError(f"안쪽 지름이 10 mm 이상 남도록 지름을 {2 * wall + 10:g} mm 이상으로 늘리거나 벽을 얇게 하세요.")
+        if h < bottom + 5:
+            raise ValueError(f"바닥 위로 5 mm 이상 담을 공간이 남도록 높이를 {bottom + 5:g} mm 이상으로 정하세요.")
+        hole = p["drain_hole"]
+        if hole and hole < 3:
+            raise ValueError("배수 구멍은 막히지 않도록 지름 3 mm 이상으로 하거나, 0으로 두어 구멍을 없애세요.")
+        if hole and hole > inner - 6:
+            raise ValueError(f"배수 구멍 둘레에 바닥이 3 mm 이상 남도록 구멍을 {inner - 6:g} mm 이하로 줄이세요.")
     elif p["template"] == "keycap":
         if not 6 <= h <= 14:
             raise ValueError("키캡 높이는 6~14 mm로 정하세요.")

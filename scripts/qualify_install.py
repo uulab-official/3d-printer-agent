@@ -382,6 +382,8 @@ def qualify(args, report):
             # Cherry MX-compatible 2u keycap: size from key units, engraved legend, stabilizer stems.
             ({'template': 'keycap', 'key_units': 2, 'height': 8, 'wall': 1.3, 'bottom': 2, 'text': 'Bk',
               'text_size': 4, 'text_depth': 0.8, 'fit_clearance': 0.15}, (37.05, 18, 8)),
+            # Round planter: width is the outer diameter (both X and Y); a drain hole in the floor.
+            ({'template': 'cup', 'width': 90, 'height': 80, 'wall': 2, 'bottom': 3, 'drain_hole': 8}, (90, 90, 80)),
         ]
         models = []
         for payload, dimensions in requests:
@@ -422,8 +424,10 @@ def qualify(args, report):
                 check('3mf_mm_geometry_' + kind, model.attrib.get('unit') == 'millimeter' and len(vertices) >= 8)
                 mesh_bounds = {axis: max(float(v.attrib[axis]) for v in vertices) - min(float(v.attrib[axis]) for v in vertices)
                                for axis in 'xyz'}
-                check('3mf_dimensions_' + kind, all(abs(mesh_bounds[axis] - expected) < 1e-5
-                                                  for axis, expected in zip('xyz', dimensions)))
+                # A round outline is tessellated within the export's 0.05 mm chord tolerance.
+                mesh_tolerance = 0.05 if kind == 'cup' else 1e-5
+                check('3mf_dimensions_' + kind, all(abs(mesh_bounds[axis] - expected) < mesh_tolerance
+                                                  for axis, expected in zip('xyz', dimensions)), json.dumps(mesh_bounds))
             if kind == 'wall_hook':
                 overhang = next((item for item in printability.get('items', []) if item['id'] == 'overhang'), {})
                 check('wall_hook_prints_without_overhang', overhang.get('status') == 'pass'
@@ -434,6 +438,12 @@ def qualify(args, report):
                 check('keycap_cross_stems_and_title', all(not hole and ring for _, hole, ring in stems)
                       and fit.get('status') == 'pass' and job['title'] == '키캡 2u “Bk” · 37.1 × 18.0 × 8.0 mm',
                       json.dumps({'stems': stems, 'title': job['title']}, ensure_ascii=False))
+            if kind == 'cup':
+                overhang = next((item for item in printability.get('items', []) if item['id'] == 'overhang'), {})
+                hollow = [shape.isInside(cq.Vector(*point)) for point in ((0, 0, 1.5), (0, 0, 40), (44, 0, 40), (10, 0, 1.5))]
+                check('cup_drain_hole_cavity_and_title', hollow == [False, False, True, True]
+                      and overhang.get('status') == 'pass' and job['title'] == '원통 수납컵 · 지름 90 × 높이 80 mm · 배수 구멍',
+                      json.dumps({'hollow': hollow, 'title': job['title']}, ensure_ascii=False))
             if kind == 'name_tag':
                 # Plate (filament 1) and letters (filament 2) as parts of one Studio object.
                 parts = job['result'].get('color_parts') or []
@@ -732,8 +742,8 @@ def qualify(args, report):
         servers.append(restarted)
         refreshed = restarted.wait_ready()
         recovery = refreshed['storage']['recovery']
-        # The phone stand, name tag and wall hook models add three completed jobs to the earlier five.
-        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 9
+        # The phone stand, name tag, wall hook, keycap and cup models add five completed jobs to the earlier five.
+        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 10
               and recovery['interrupted'] == 1 and recovery['unreadable'] == 0, json.dumps(recovery))
         check('restart_rotates_session', refreshed['session_token'] != token)
         old_session = get_json(restarted, '/api/discovery', method='POST', payload={}, token=token, expected=403)
@@ -788,7 +798,7 @@ def qualify(args, report):
             cursor = page['next_cursor']
             if cursor is None:
                 break
-        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 9
+        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 10
               and set(paged_ids) == {model['id'] for model in models} | {interrupted_id, contextual_job['id']})
 
         def backup_command(name, arguments, expected_exit=0):
@@ -844,7 +854,7 @@ def qualify(args, report):
             restored_model = get_json(restored_server, '/api/jobs/' + model['id'])
             code, content, _ = request(restored_server.base, restored_model['artifacts']['three_mf'])
             verified_downloads.append(code == 200 and sha256(content) == model['artifacts']['three_mf']['sha256'])
-        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == len(models) == 7)
+        check('restored_verified_downloads', all(verified_downloads) and len(verified_downloads) == len(models) == 8)
         restored_source = get_json(restored_server, '/api/studio-projects/' + imported['source_id'])
         restored_project = get_json(restored_server, '/api/jobs/' + models[1]['id'])
         source_code, restored_source_bytes, _ = request(restored_server.base, imported['archive_url'])

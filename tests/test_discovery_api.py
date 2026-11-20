@@ -38,13 +38,13 @@ class DiscoveryAPITests(unittest.TestCase):
              patch('print_agent.app.plan_with_llm') as llm, \
              patch('print_agent.app.probe_environment') as native:
             data = self.client.get('/api/bootstrap').json()
-            self.assertEqual(len(data['templates']), 7)
+            self.assertEqual(len(data['templates']), 8)
             self.assertEqual(data['discovery']['schema_version'], 1)
-            self.assertEqual(len(data['discovery']['projects']), 12)
+            self.assertEqual(len(data['discovery']['projects']), 14)
             response = self.post('/api/discovery', {})
             self.assertEqual(response.status_code, 200, response.text)
             result = response.json()
-            self.assertEqual(result['total_in_purpose'], 12)
+            self.assertEqual(result['total_in_purpose'], 14)
             self.assertEqual(result['excluded_count'], 0)
             self.assertEqual([item['project']['id'] for item in result['matches']],
                              [item['id'] for item in data['discovery']['projects']])
@@ -60,8 +60,8 @@ class DiscoveryAPITests(unittest.TestCase):
             'purpose': 'organization', 'available_space': {'width': 60, 'depth': 90, 'height': 18}})
         self.assertEqual(response.status_code, 200, response.text)
         result = response.json()
-        self.assertEqual(result['total_in_purpose'], 4)
-        self.assertEqual(result['excluded_count'], 3)
+        self.assertEqual(result['total_in_purpose'], 5)
+        self.assertEqual(result['excluded_count'], 4)
         self.assertEqual([item['project']['id'] for item in result['matches']], ['small-parts-tray'])
         fit = result['matches'][0]['space_fit']
         self.assertEqual(fit['status'], 'fits_rotated')

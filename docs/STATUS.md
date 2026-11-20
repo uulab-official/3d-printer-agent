@@ -2,9 +2,11 @@
 
 Date: 2026-11-20 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.30 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.31 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.31 adds an eighth template, a round cup: an open cylinder with an optional floor drain hole, for pen holders, utensil holders and planters. It comes with requests, edits, recovery steps, two starting projects and installed-package qualification ([cup guide](CUP.md)). Three cups sliced locally with Bambu Studio 02.09.01.70 on synthetic settings without supports. Watertightness and physical prints are not verified.
 
 Version 0.30 gives every template a starting project. It adds a name keychain and Esc and Enter keycaps under two new purposes, 12 projects in all. Name-tag and keycap recipes state their outer size: exact for keycaps, a font-dependent upper bound for the keychain. Cards and placement comparisons use that size ([project discovery](PROJECT_DISCOVERY.md)). CI now caches the browser and apt downloads. Published as [v0.30.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.30.0) on 2026-11-20 from `ebdc45e`.
 
@@ -257,7 +259,7 @@ Source authenticity checks, Studio default/include/variant resolution, MakerWorl
 Development priorities set on 2026-11-16. Each item lands as its own verified release; a later stage is never claimed from evidence of an earlier one.
 
 1. **Real Bambu printer integration:** v0.9 implements read-only identification, connection state and reported print status. Next: live qualification on one physical printer/firmware. (A saved printer list without access codes arrived in v0.17; linking a reported finish/failure to the stored job in v0.26.)
-2. **Natural-language CAD beyond the fixed templates** (v0.10 adds the phone stand as the fourth): typed, validated new geometry families and edits; no LLM-generated code execution.
+2. **Natural-language CAD beyond the fixed templates** (eight templates as of v0.31, the latest a round cup): typed, validated new geometry families and edits; no LLM-generated code execution.
 3. **Filament automation:** check profile compatibility across printer, nozzle and material (the send review checks nozzle since v0.15, material type as a warning, and the printer model and abrasive filament on a soft nozzle since v0.29) (including AMS-reported slots as unverified input), then resolve full preset inheritance and show unknown/conflicting values.
 4. **Print failure recovery:** classify user-reported and printer-reported (HMS/error code) failures, keep setting-change history (model attempt history arrived in v0.27 and slicer-setting history in v0.28), and prepare a re-print with only the affected settings rechecked.
 5. **Operational completeness:** physical-device tests, install/update/recovery qualification on each desktop platform, and recorded native/printer evidence per version.

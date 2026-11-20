@@ -41,6 +41,11 @@ def _thin_features(p):
     if p['template'] == 'keycap':
         top = p['bottom'] - p['text_depth'] if p['text'].strip() else p['bottom']
         return [('wall', '옆벽', wall), ('bottom' if not p['text'].strip() else 'text_depth', '글자 아래 윗면' if p['text'].strip() else '윗면', top)]
+    if p['template'] == 'cup':
+        features = [('wall', '옆벽', wall), ('bottom', '바닥', bottom)]
+        if p['drain_hole']:
+            features.append(('drain_hole', '배수 구멍 둘레 바닥', (w - 2 * wall - p['drain_hole']) / 2))
+        return features
     if p['template'] == 'name_tag':
         # Letter strokes depend on the font; about a tenth of the letter height for bold sans.
         return [('bottom', '받침판', bottom), ('hole_diameter', '고리 둘레', wall),

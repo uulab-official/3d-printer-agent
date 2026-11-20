@@ -22,6 +22,7 @@ DEFAULTS = {
     'name_tag': {'text':'MINSU','text_size':12,'text_depth':2,'wall':3,'bottom':2,'hole_diameter':4},
     'wall_hook': {'width':20,'depth':35,'height':50,'wall':4,'bottom':4,'hole_diameter':4,'lip_height':10},
     'keycap': {'key_units':1,'height':8,'wall':1.3,'bottom':2,'text':'','text_size':5,'text_depth':0.8,'fit_clearance':0.15},
+    'cup': {'width':70,'height':100,'wall':2,'bottom':2,'drain_hole':0},
 }
 COLOR_WORDS = {
     'white': r'흰색|하얀색|하얀|하양|흰|화이트|white',
@@ -93,8 +94,15 @@ def _with_colors(result: dict, colors: dict) -> dict:
 
 
 KEYCHAIN_WORDS = ('키링','키홀더','열쇠고리','이름표','네임택','name tag','keychain','key ring')
-LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대','name_tag':'이름 키링','wall_hook':'벽걸이 후크','keycap':'키캡'}
+LABELS = {'tray':'수납 트레이','cable_comb':'케이블 정리 받침','magnet_frame':'원형 인셋 프레임','phone_stand':'휴대폰 거치대','name_tag':'이름 키링','wall_hook':'벽걸이 후크','keycap':'키캡','cup':'원통 수납컵'}
 KEYCAP_WORDS = ('키캡','키 캡','keycap','key cap')
+CUP_WORDS = ('연필꽂이','연필 꽂이','펜꽂이','펜 꽂이','붓통','수저통','화분','원통','둥근 통','원형 통','컵','pen holder','pencil cup','plant pot','planter','cup')
+# Starting sizes for what goes in the cup; the person's own numbers always win.
+CUP_RECIPES = (
+    (('화분','plant pot','planter'), {'width':90,'height':80,'bottom':3,'drain_hole':8}, '화분은 지름 90 mm, 높이 80 mm, 배수 구멍 8 mm로 시작합니다.'),
+    (('수저통',), {'width':80,'height':140}, '수저통은 지름 80 mm, 높이 140 mm로 시작합니다.'),
+    (('연필꽂이','연필 꽂이','펜꽂이','펜 꽂이','붓통','pen holder','pencil cup'), {'width':70,'height':100}, '연필꽂이는 지름 70 mm, 높이 100 mm로 시작합니다.'),
+)
 # Named keys: legend, ANSI size in units, and the legend size that fits the top.
 NAMED_KEYS = (
     (r'(?<![a-z])esc(?:ape)?(?![a-z])|이스케이프', 'ESC', 1.0, 3.5),
@@ -118,8 +126,6 @@ NUMBER = r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'
 # Everyday names mapped to the closest supported template. Each starting size is
 # announced in the plan; the user's own numbers always override it.
 ITEM_RECIPES = (
-    (('펜꽂이','펜 꽂이','연필꽂이','pen holder'), 'tray', {'width':80,'depth':80,'height':100,'dividers':0},
-     '펜꽂이는 위가 열린 수납함(80 × 80 × 100 mm)으로 시작합니다.'),
     (('명함꽂이','명함 꽂이','명함 정리','명함'), 'tray', {'width':100,'depth':65,'height':35,'dividers':0},
      '명함 꽂이는 위가 열린 수납함(100 × 65 × 35 mm)으로 시작합니다. 실제 명함 크기를 재서 조정하세요.'),
     (('이어폰','에어팟','airpods'), 'tray', {'width':90,'depth':70,'height':30,'dividers':1},
@@ -148,7 +154,7 @@ FIELD_LABELS = {
     'width':'가로','depth':'세로','height':'높이','wall':'벽 두께','bottom':'바닥 두께','dividers':'칸막이',
     'slots':'케이블 홈','cable_diameter':'케이블 지름','inset_diameter':'원판 지름','inset_depth':'포켓 깊이',
     'fit_clearance':'여유','lean_angle':'등판 각도','device_thickness':'기기 두께','lip_height':'앞턱 높이',
-    'text':'글자','text_size':'글자 크기','text_depth':'글자 높이','hole_diameter':'고리 구멍 지름','key_units':'키 크기',
+    'text':'글자','text_size':'글자 크기','text_depth':'글자 높이','hole_diameter':'고리 구멍 지름','key_units':'키 크기','drain_hole':'배수 구멍 지름',
 }
 
 
@@ -157,6 +163,7 @@ TEMPLATE_FIELD_LABELS = {
     'name_tag': {'wall':'테두리 여백','bottom':'받침 두께'},
     'wall_hook': {'depth':'걸이 길이','wall':'등판·끝 턱 두께','bottom':'걸이 두께','hole_diameter':'나사 구멍 지름','lip_height':'끝 턱 높이'},
     'keycap': {'height':'키캡 높이','wall':'옆벽 두께','bottom':'윗면 두께','text_depth':'글자 깊이','fit_clearance':'스템 십자 여유'},
+    'cup': {'width':'지름','wall':'옆벽 두께','drain_hole':'배수 구멍 지름'},
 }
 
 
@@ -166,6 +173,8 @@ def _default_text(key, value, template=None):
         return f'글자 “{value}”'
     if key == 'key_units':
         return f'키 크기 {float(value):g}u'
+    if key == 'drain_hole' and not value:
+        return '배수 구멍 없음'
     unit = '개' if key in ('slots', 'dividers') else '°' if key == 'lean_angle' else ' mm'
     label = TEMPLATE_FIELD_LABELS.get(template, {}).get(key) or FIELD_LABELS.get(key, key)
     return f'{label} {float(value):g}{unit}'
@@ -216,12 +225,16 @@ def _plan_uncolored(text: str) -> dict:
         return _plan_keycap(text)
     if any(word in lowered for word in KEYCHAIN_WORDS):
         return _plan_name_tag(text)
+    cup_word = any(word in lowered for word in CUP_WORDS) and not re.search(r'컵\s*(?:받침|홀더)|코스터|coaster|cup\s*holder',lowered)
+    if cup_word or (any(word in lowered for word in ('수납','통','정리함'))
+                                                      and any(word in lowered for word in ('원형','동그란','원통','둥근','circular','round','cylinder'))):
+        return _plan_cup(text)
     hook_requested = any(word in lowered for word in HOOK_WORDS) and not any(word in lowered for word in STAND_WORDS)
     unsupported = ('뚜껑','경첩','방수','피규어','dragon','hinge','lid','손잡이','handle','곡면','둥근 모서리','rounded corner')
     if not hook_requested:
         unsupported += ('나사','screw','구멍')  # a hook has screw holes of its own
     if any(word in lowered for word in unsupported):
-        return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크, 키캡을 지원합니다. 지원 템플릿으로 바꿀까요?')
+        return _question('이 버전은 열린 수납 트레이, 케이블 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크, 키캡, 원통 수납컵을 지원합니다. 지원 템플릿으로 바꿀까요?')
     for words,message in UNSUPPORTED_ITEMS:
         if any(word in lowered for word in words):
             return _question(message)
@@ -255,9 +268,9 @@ def _plan_uncolored(text: str) -> dict:
         template,recipe_defaults,note=recipe
         notes.append(note)
     elif template is None:
-        return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크, 키캡 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
+        return _question('수납 트레이, 케이블 정리 받침, 원형 인셋 프레임, 휴대폰 거치대, 이름 키링, 벽걸이 후크, 키캡, 원통 수납컵 중 무엇을 만들까요? 가로·세로·높이는 mm 또는 cm로 적어주세요.')
     if template=='tray' and any(word in lowered for word in ('원형','동그란','원통','circular','round','cylinder')):
-        return _question('수납함 템플릿은 직사각형입니다. 원형 수납함은 아직 지원하지 않습니다. 직사각형으로 만들까요?')
+        return _question('수납 트레이는 직사각형입니다. 둥근 통은 “원통 수납컵 지름 80mm 높이 100mm”처럼 요청하세요.')
     if re.search(r'\b(inch|inches)\b|인치|\d\s*m\b',lowered):
         return _question('이 버전의 대화 입력은 mm 또는 cm를 지원합니다. 치수를 해당 단위로 알려주세요.')
     start={**DEFAULTS[template],**recipe_defaults}
@@ -465,6 +478,54 @@ def _plan_name_tag(text: str) -> dict:
     }
 
 
+def _plan_cup(text: str) -> dict:
+    """A round, open-top cup: diameter, height, walls and an optional drain hole."""
+    lowered=text.lower()
+    if any(word in lowered for word in ('뚜껑','lid','손잡이','handle')):
+        return _question('원통 수납컵은 뚜껑과 손잡이 없이 위가 열린 컵만 만듭니다. 열린 컵으로 만들까요?')
+    if re.search(r'\b(inch|inches)\b|인치',lowered):
+        return _question('이 버전의 대화 입력은 mm 또는 cm를 지원합니다. 치수를 해당 단위로 알려주세요.')
+    values=dict(DEFAULTS['cup'])
+    notes=[]
+    recipe=next(((overrides,note) for words,overrides,note in CUP_RECIPES if any(word in lowered for word in words)),None)
+    if recipe:
+        values.update(recipe[0]); notes.append(recipe[1])
+    explicit=set()
+    working=lowered
+    aliases=(('drain_hole',r'(?:배수\s*)?구멍\s*(?:지름|크기)?'),('bottom',r'바닥\s*(?:두께)?'),('wall',r'(?:옆\s*)?벽\s*(?:두께)?'),
+             ('width',r'(?:바깥\s*|컵\s*)?(?:지름|직경|너비|폭|가로)'),('height',r'높이'))
+    for field,pattern in aliases:
+        matches=list(re.finditer(pattern+r'\s*(?:는|은|을|를|:|=)?\s*'+NUMBER+UNIT,working))
+        found={_mm(m.group(1),m.group(2)) for m in matches}
+        if len(found)>1:
+            return _question(f'{TEMPLATE_FIELD_LABELS["cup"].get(field) or FIELD_LABELS[field]} 값이 여러 개입니다. 하나만 알려주세요.')
+        if found:
+            values[field]=next(iter(found));explicit.add(field)
+            for m in matches:
+                working=working[:m.start()]+' '*(m.end()-m.start())+working[m.end():]
+    if 'drain_hole' not in explicit:
+        if re.search(r'구멍\s*(?:없이|없는|빼고)|배수\s*(?:구멍\s*)?없이',lowered):
+            values['drain_hole']=0; explicit.add('drain_hole')
+        elif '배수' in lowered or 'drain' in lowered:
+            values['drain_hole']=8; explicit.add('drain_hole'); notes.append('배수 구멍은 지름 8 mm로 시작합니다.')
+    if re.search(r'(?:세로|깊이|depth)\s*(?:는|은|을|를|:|=)?\s*'+NUMBER,working):
+        return _question('원통 수납컵은 지름과 높이로 정합니다. 가로·세로 대신 지름을 알려주세요.')
+    try:
+        parameters=GeometryRequest(template='cup',**values).model_dump()
+        _validate_geometry(parameters)
+    except ValidationError:
+        return _question('원통 수납컵의 지름·높이·두께를 mm로, 배수 구멍은 0(없음) 또는 3~30 mm로 알려주세요.')
+    except ValueError as exc:
+        return _question(str(exc))
+    defaults={key:value for key,value in DEFAULTS['cup'].items() if key not in explicit and not (recipe and key in recipe[0])}
+    return {
+        'status':'ready','engine':'template_rules','message':'원통 수납컵의 제작안을 준비했습니다. 가로는 바깥 지름입니다.',
+        'parameters':parameters,'questions':[],
+        'assumptions':notes+([f'입력하지 않아 기본값을 쓴 치수: '+', '.join(_default_text(key,value,'cup') for key,value in defaults.items())] if defaults else []),
+        'capability':'supported_template_only',
+    }
+
+
 def _plan_keycap(text: str) -> dict:
     """Cherry MX-compatible keycap: size from "Nu" or a named key, legend from quotes or "글자 …"."""
     lowered=text.lower()
@@ -590,7 +651,7 @@ async def plan_with_llm(text: str) -> dict:
     system=(
         'You plan parameterized 3D-printing models. Return only a JSON object with parameters, explanation in Korean, and questions (array). '
         'Never return code, commands, temperatures, prices or claims of printing success. '
-        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim), phone_stand (base, front lip and back plate leaning at lean_angle degrees from horizontal; device_thickness plus fit_clearance sets the slot; no tipping or charging-port guarantee), name_tag (raised text of 1-20 letters on a rounded plate with a ring hole; width and depth follow the text), wall_hook (back plate with two screw holes, arm and end lip; no load guarantee), keycap (Cherry MX-compatible cross stem; key_units sets width and depth, height is the keycap height, wall is the side wall, bottom is the top thickness, text is an engraved legend of 0-6 letters, fit_clearance widens the cross hole; no switch fit or feel guarantee). '
+        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim), phone_stand (base, front lip and back plate leaning at lean_angle degrees from horizontal; device_thickness plus fit_clearance sets the slot; no tipping or charging-port guarantee), name_tag (raised text of 1-20 letters on a rounded plate with a ring hole; width and depth follow the text), wall_hook (back plate with two screw holes, arm and end lip; no load guarantee), keycap (Cherry MX-compatible cross stem; key_units sets width and depth, height is the keycap height, wall is the side wall, bottom is the top thickness, text is an engraved legend of 0-6 letters, fit_clearance widens the cross hole; no switch fit or feel guarantee), cup (round open-top cup such as a pen holder or plant pot; width is the outer diameter and depth is not used, height, wall is the side wall, bottom is the floor, drain_hole is a centred hole in the floor in mm, 0 for none or 3-30; no watertightness or food-safety guarantee). '
         'All dimensions in mm; convert units explicitly. If the user requests unsupported objects, moving joints, load/safety guarantees, lids or unsupported edits, ask a clarification in questions and do not generate parameters. '
         'For N tray compartments use dividers=N-1. fit_clearance adds to diameter. Missing dimensions must be described as assumptions in explanation. '
         'Allowed parameter schema: '+json.dumps(GeometryRequest.model_json_schema(),ensure_ascii=False)

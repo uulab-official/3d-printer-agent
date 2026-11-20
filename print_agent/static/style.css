@@ -596,6 +596,10 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .project-art-name_tag { background: #fdf3f1; }
 .project-art-name_tag .project-shape { width: 112px; height: 34px; border: 0; border-radius: 9px; align-items: center; padding-left: 22px; color: #fff; font-weight: 800; font-size: 15px; letter-spacing: 0.5px; background: #e39a8c; box-shadow: 4px 5px 0 #c47a6c; transform: perspective(220px) rotateX(26deg) rotateZ(-10deg); }
 .project-art-name_tag .project-shape::before { content: ""; position: absolute; left: 8px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: #fdf3f1; }
+/* Round cup: an open cylinder seen from slightly above. */
+.project-art-cup { background: #f1f6ef; }
+.project-art-cup .project-shape { width: 52px; height: 62px; border: 0; border-radius: 4px 4px 22px 22px / 4px 4px 9px 9px; background: linear-gradient(90deg, #8fb08a, #b5d0ae 45%, #86a681); box-shadow: 4px 4px 0 #6f8f6a; transform: none; }
+.project-art-cup .project-shape::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 16px; border-radius: 50%; background: #5f7f5b; box-shadow: inset 0 0 0 4px #b5d0ae; }
 /* Keycap: a square cap with a dished top and its legend. */
 .project-art-keycap { background: #eef3f8; }
 .project-art-keycap .project-shape { width: 54px; height: 54px; border: 7px solid #5d6f86; border-radius: 9px; align-items: center; justify-content: center; color: #f4f7fb; font-weight: 700; font-size: 11px; background: #7d90a8; box-shadow: 4px 5px 0 #4b5b70; transform: perspective(220px) rotateX(30deg) rotateZ(-12deg); }
