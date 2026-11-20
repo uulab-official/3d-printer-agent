@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-20 v0.29.1 공개 릴리스
+
+[v0.29.1](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.29.1)을 2026-11-20 01:14:07 UTC에 `f9bacff`에서 게시했습니다(PR #26, 프린터로 보내기 화면의 실제 브라우저 테스트).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44644109003)는 Ubuntu 미러 지연으로 Chromium·한글 폰트 설치 단계에서 차수 1·2가 20분 제한에 걸려 취소됐고(한 번은
+security.ubuntu.com 연결 시간 초과, 한 번은 61 MB 폰트를 초당 158 kB로 받는 중), 코드 변경 없이 차수 3에서 Python **798개**·컨트롤러 **219개**·
+Chromium **108개**로 통과했습니다. [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44644108891) 세 OS 각 **373개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44644108924)는 차수 1로
+통과했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(326,042바이트, `25866d08cb3b9520…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서
+해시·소스 커밋이 내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 새 브라우저 사례의 슬라이스·프린터 응답은 합성이며 실제 프린터는 확인하지 않았습니다.
+
 ## 2026-11-19 v0.29.0 공개 릴리스
 
 [v0.29.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.29.0)을 2026-11-19 13:27:25 UTC에 `6164466`에서 게시했습니다(PR #25, 전송 전 기종·노즐 재질·AMS 온도 범위 확인).
