@@ -47,7 +47,7 @@ test('thin wall warning leads to the field, and the regenerated model passes', a
 test('preview view presets, toggles and toolbar stay inside the stage', async ({ page }) => {
   await generate(page, { width: '120', depth: '80', height: '35' });
   const stage = await page.locator('#preview-stage').boundingBox();
-  const card = await page.locator('.preview-card').boundingBox();
+  const card = await page.locator('#view-models .preview-card').boundingBox();
   expect(stage.x + stage.width).toBeLessThanOrEqual(card.x + card.width + 1);
   const tools = await page.locator('#preview-tools').boundingBox();
   expect(tools.x + tools.width).toBeLessThanOrEqual(stage.x + stage.width + 1);

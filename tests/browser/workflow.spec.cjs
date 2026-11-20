@@ -984,7 +984,7 @@ test('Korean request creates real CAD, downloads it, records an outcome, and inv
   await page.locator('#zoom-in').click();
   await expect.poll(() => canvas.evaluate(element => element.toDataURL())).not.toBe(beforeZoom);
   await page.locator('#reset-view').click();
-  await page.locator('.preview-card').screenshot({ path: testInfo.outputPath('real-cad-preview.png') });
+  await page.locator('#view-models .preview-card').screenshot({ path: testInfo.outputPath('real-cad-preview.png') });
 
   const manifestResponse = await page.request.get(job.artifacts.manifest);
   expect(manifestResponse.ok()).toBe(true);

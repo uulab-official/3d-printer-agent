@@ -11,6 +11,7 @@ Help people discover useful things to print, customize models, prepare settings 
 - `model_edits.py`, `geometry_rules.py`: contextual parameter edits, canonical review records and shared pure geometry constraints.
 - `geometry.py`: deterministic CadQuery solids, mesh preview, exports and reproduction source.
 - `printability.py`: advisory pure-geometry printability review (reference 0.4 mm nozzle) stored with each generated result; never blocks generation.
+- `model_import.py`, `imports.py`: imported STL/3MF meshes (bounded parsing, mesh facts, ranked placements, oriented 3MF) and their unchanged, hash-verified originals.
 - `print_volume.py`: bounded recorded build-volume comparison; generated CAD identity and preparation gates stay in the existing parser/adapter boundaries.
 - `profiles.py`: supplied evidence, exact scope matching and calibration review.
 - `preset_library.py`: explicit single-parent values, per-field evidence and original-baseline comparison.

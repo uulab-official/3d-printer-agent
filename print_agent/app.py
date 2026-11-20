@@ -47,11 +47,15 @@ from .studio_project import MAX_ARCHIVE_BYTES, MAX_IMPORT_REQUEST_BYTES
 from .studio_revisions import StudioSettingsRevisionStore, StudioRevisionIntegrityError
 from .studio_settings import settings_editor, derive_settings
 from .studio_sources import StudioProjectStore, StudioSourceIntegrityError
+from .imports import ImportIntegrityError, ImportStore
+from .model_import import MAX_MODEL_BYTES
 from .studio_workspaces import StudioWorkspaceStore, StudioWorkspaceIntegrityError
 from .workspaces import ProfileWorkspaceStore, WorkspaceConflict, WorkspaceIntegrityError
 
 MAX_BODY = 2 * 1024 * 1024
 MAX_WORKSPACE_BODY = 8 * 1024 * 1024
+# A model file travels as base64 inside JSON: four bytes for every three, plus the envelope.
+MAX_MODEL_REQUEST_BYTES = 4 * ((MAX_MODEL_BYTES + 2) // 3) + 64 * 1024
 CAD_LOCK = threading.Lock()
 SLICER_LOCK = threading.Lock()
 LOGGER = logging.getLogger(__name__)
@@ -91,6 +95,7 @@ class LocalSessionMiddleware:
             large_import = (path in ('/api/slice', '/api/profiles/resolve', '/api/profiles/import-archive', '/api/profile-workspaces')
                             or path.startswith('/api/profile-workspaces/'))
             max_body = (MAX_IMPORT_REQUEST_BYTES if path == '/api/studio-projects/import'
+                        else MAX_MODEL_REQUEST_BYTES if path == '/api/imports'
                         else MAX_WORKSPACE_BODY if large_import else MAX_BODY)
             size_message = f'요청 전체는 {max_body // (1024 * 1024)} MiB 이하여야 합니다.'
             try:
@@ -237,6 +242,11 @@ class SlicePayload(StrictPayload):
         return self
 
 
+class ModelImportPayload(StrictPayload):
+    filename: str = Field(min_length=1, max_length=120)
+    content_base64: str = Field(min_length=1, max_length=4 * ((MAX_MODEL_BYTES + 2) // 3))
+
+
 class StudioProjectPayload(StrictPayload):
     filename: str = Field(min_length=1, max_length=240)
     content_base64: str = Field(min_length=1, max_length=4 * ((MAX_ARCHIVE_BYTES + 2) // 3))
@@ -313,10 +323,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     studio_sources = StudioProjectStore(data_root) if test_mode else None
     studio_revisions = StudioSettingsRevisionStore(data_root, studio_sources) if test_mode else None
     studio_workspaces = StudioWorkspaceStore(data_root, studio_sources, studio_revisions) if test_mode else None
+    model_imports = ImportStore(data_root) if test_mode else None
 
     @asynccontextmanager
     async def lifespan(application):
-        nonlocal store, workspaces, studio_sources, studio_revisions, studio_workspaces, recovery
+        nonlocal store, workspaces, studio_sources, studio_revisions, studio_workspaces, model_imports, recovery
         if test_mode:
             yield
             return
@@ -327,12 +338,14 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             studio_sources = StudioProjectStore(data_root)
             studio_revisions = StudioSettingsRevisionStore(data_root, studio_sources)
             studio_workspaces = StudioWorkspaceStore(data_root, studio_sources, studio_revisions)
+            model_imports = ImportStore(data_root)
             recovery = store.recover()
             application.state.store = store
             application.state.workspaces = workspaces
             application.state.studio_sources = studio_sources
             application.state.studio_revisions = studio_revisions
             application.state.studio_workspaces = studio_workspaces
+            application.state.model_imports = model_imports
             yield
 
     token = secrets.token_urlsafe(32)
@@ -342,6 +355,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     app.state.studio_sources = studio_sources
     app.state.studio_revisions = studio_revisions
     app.state.studio_workspaces = studio_workspaces
+    app.state.model_imports = model_imports
     app.add_middleware(LocalSessionMiddleware, token=token)
     hosts = ['localhost','127.0.0.1'] + (['testserver'] if test_mode else [])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
@@ -357,6 +371,10 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.exception_handler(StudioSourceIntegrityError)
     async def studio_source_integrity(_request, exception):
         return JSONResponse({'detail': str(exception), 'code': 'studio_source_integrity'}, status_code=409)
+
+    @app.exception_handler(ImportIntegrityError)
+    async def import_integrity(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'import_integrity'}, status_code=409)
 
     @app.exception_handler(StudioRevisionIntegrityError)
     async def studio_revision_integrity(_request, exception):
@@ -683,6 +701,35 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.post('/api/offers/compare')
     def offers_compare(payload: OffersPayload):
         return compare_offers(payload.offers)
+
+    @app.post('/api/imports', status_code=201)
+    def import_model(payload: ModelImportPayload):
+        """Keep an STL/3MF original unchanged and report its mesh, review and ranked placements."""
+        try:
+            content = base64.b64decode(payload.content_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError('모델 파일을 다시 선택해 주세요. 올바른 base64 데이터가 필요합니다.') from exc
+        return model_imports.create(payload.filename, content)
+
+    @app.get('/api/imports')
+    def list_imports(limit: int = Query(default=20, ge=1, le=100)):
+        return model_imports.list(limit)
+
+    @app.get('/api/imports/{import_id}')
+    def get_import(import_id: str):
+        return model_imports.get(import_id)
+
+    @app.get('/api/imports/{import_id}/source')
+    def import_source(import_id: str):
+        receipt, content = model_imports.read_source(import_id)
+        return Response(content, media_type='application/octet-stream',
+                        headers={'Content-Disposition': "attachment; filename*=utf-8''" + quote(receipt['filename'])})
+
+    @app.get('/api/imports/{import_id}/oriented')
+    def import_oriented(import_id: str, orientation: int = Query(ge=0, le=64)):
+        filename, content = model_imports.oriented(import_id, orientation)
+        return Response(content, media_type='model/3mf',
+                        headers={'Content-Disposition': "attachment; filename*=utf-8''" + quote(filename)})
 
     @app.post('/api/studio-projects/import', status_code=201)
     def import_studio_project(payload: StudioProjectPayload):

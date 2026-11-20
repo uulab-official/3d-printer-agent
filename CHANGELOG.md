@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.32.0 — 2026-11-20
+
+- **가진 모델 점검** (docs/MODEL_IMPORT.md): open an STL or 3MF downloaded from MakerWorld, Printables or elsewhere.
+  - The original is kept byte for byte and its SHA-256 is rechecked on every read. Nothing is repaired or simplified.
+  - The app reports triangles, whether the mesh is closed (open and non-manifold edge counts), volume and a material ceiling.
+  - Placements are ranked: the six axis directions and up to six largest flat areas are each tried as the bed face, ordered by least area steeper than 45° that is not on the bed, then more bed contact, then lower height.
+  - Each placement gets the same bed-contact, stability, overhang and material checks as generated models. Wall thickness is not measured on a mesh.
+  - The chosen placement downloads as a new 3MF, only rotated and moved onto the bed.
+- 3MF reading follows Bambu Studio-style files: parts in `3D/Objects/*.model` via components, transforms, units and non-printable items. Limits are 32 MiB and 400,000 triangles. The preview samples at most 60,000 triangles, while checks and downloads use all of them.
+- New endpoints `POST/GET /api/imports`, `/api/imports/{id}`, `/source` and `/oriented?orientation=N`. A changed original returns 409 `import_integrity`.
+- Mesh-only printability checks now share one implementation for generated and imported models. The mesh viewer can run on more than one screen.
+- Installed-package qualification imports an overhanging STL on every platform and checks three things: the original's bytes, the "upside down" recommendation, and a closed, overhang-free placed 3MF. Promotion requires this check. A local macOS run passed 393/393.
+- Release promotion now re-reads a just-created version tag for up to about 10 seconds when GitHub reads it back as absent. This read-back lag stopped the v0.31.0 promotion until it was re-run. A tag on any other commit still fails at once.
+
 ## 0.31.0 — 2026-11-20
 
 - Eighth template: a **round cup** (docs/CUP.md), an open-top cylinder for pen holders, utensil holders and planters.
