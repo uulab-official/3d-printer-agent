@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.29.1 — 2026-11-19
+
+- Real-browser coverage for **프린터로 보내기**, which until now was only checked as controller state. A new Chromium case, run on both desktop and mobile, generates real CAD and drives the send card through these steps:
+  - a review refused for another printer model, which shows both models and gives no confirmation or start
+  - a slot choice and a ready review that carries the abrasive-filament warning
+  - the bed confirmation gate
+  - a changed slot that drops the reviewed token until a fresh review
+  - a started print, which sends exactly one start request with the latest token and never shows the access code on the page
+
+  The slice marker and printer answers are labelled synthetic responses, because the browser CI has no Bambu Studio and no printer.
+- No application behaviour changed.
+
 ## 0.29.0 — 2026-11-19
 
 - The print-send review compares the printer model the file was sliced for (`printer_model_id` in `slice_info.config`) with the product name the printer reports through `get_version`. Each send review gets a token only when nothing blocks it. A file sliced for another known Bambu model is refused before upload, because plate size and start G-code differ and the head can crash. Refusal requires an exact match on the name after an optional "Bambu Lab" prefix (X1 Carbon, X1, X1E, P1P, P1S, A1 mini, A1 or H2D).
