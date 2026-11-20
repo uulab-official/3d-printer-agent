@@ -114,6 +114,20 @@ class ImportStore:
         data = model_import.three_mf(model_import.oriented_vertices(vertices, placement['rotation']), faces, stem)
         return f'{stem}-출력방향{orientation_id + 1}.3mf', data
 
+    def placed_job_parts(self, import_id, orientation_id):
+        """Everything a job needs for one placement, from verified original bytes."""
+        receipt, content = self.read_source(import_id)
+        analysis = model_import.analyse(receipt['filename'], content)
+        if _public_analysis(analysis) != receipt['analysis']:
+            raise ImportIntegrityError(_INTEGRITY_MESSAGE)
+        result, placement, files = model_import.placed_result(analysis, orientation_id, filename=receipt['filename'],
+                                                              sha256=receipt['sha256'])
+        source = {'kind': 'imported_file', 'schema_version': 1, 'import_id': import_id, 'filename': receipt['filename'],
+                  'format': receipt['format'], 'bytes': receipt['bytes'], 'sha256': receipt['sha256'],
+                  'orientation': {'id': placement['id'], 'label': placement['label'], 'rotation': placement['rotation']},
+                  'source_url': f'/api/imports/{import_id}/source'}
+        return result, source, files
+
     def list(self, limit=20):
         entries = []
         for folder in self.directory.iterdir():

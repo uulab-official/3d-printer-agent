@@ -478,6 +478,16 @@
     area.hidden = !source;
     if (id === "generated-source") $("generated-source-record").hidden = !source;
     if (!source) return;
+    if (source.kind === "imported_file") {
+      area.append(node("strong", "", `불러온 파일 · ${source.filename}`),
+        node("p", "", `출력 방향 · ${source.orientation?.label || "미기록"} (회전·이동만 함)`),
+        node("p", "source-hash", `원본 SHA-256 · ${source.sha256}`));
+      const original = node("a", "", "원본 파일 내려받기");
+      original.href = source.source_url;
+      original.download = "";
+      area.append(original, node("p", "source-scope", "다른 곳에서 받은 메시입니다. 이 앱의 CAD 검증·벽 두께 점검·실물 출력 확인은 하지 않았습니다."));
+      return;
+    }
     const recipe = source.recipe || source;
     const origin = recipe.source || {};
     area.append(node("strong", "", recipe.title || "로컬 원본 시작점"));
@@ -910,7 +920,15 @@
 
   function performModelReplacement(action) {
     if (state.workflowBusy) return;
-    if (action.kind === "history") {
+    if (action.kind === "history" && action.job.result.template === "imported") {
+      // An imported model has no template draft: keep the draft, show the job for slicing and sending.
+      cancelModelReplacement();
+      cancelModelEdit();
+      renderJob(action.job);
+      hideNotice("model-feedback");
+      hideNotice("plan-feedback");
+      changeView("models");
+    } else if (action.kind === "history") {
       applyDraft(action.job.result.template, action.job.result.parameters, action.job.design_source || null);
       renderJob(action.job);
       hideNotice("model-feedback");
@@ -1397,8 +1415,10 @@
     const pending = Boolean(state.printabilityPending);
     const reported = printerReportedNozzle();
     const current = Number($("printability-nozzle").value);
-    $("printability-nozzle").disabled = pending || !state.job || !state.token;
-    $("printability-run").disabled = pending || !state.job || !state.token;
+    // An imported mesh has no measured wall thickness, so a nozzle recheck changes nothing.
+    const imported = state.job?.template === "imported";
+    $("printability-nozzle").disabled = pending || !state.job || !state.token || imported;
+    $("printability-run").disabled = pending || !state.job || !state.token || imported;
     const usePrinter = $("printability-use-printer");
     usePrinter.hidden = !reported || reported === current || !state.printabilityShown;
     usePrinter.disabled = pending;
@@ -1593,10 +1613,10 @@
     const dims = result.dimensions_mm || {};
     $("model-metrics").replaceChildren(
       metric("가로 × 세로 × 높이", `${numberFormat.format(dims.x)} × ${numberFormat.format(dims.y)} × ${numberFormat.format(dims.z)} mm`),
-      metric("CAD 체적", `${numberFormat.format(result.volume_mm3 / 1000)} cm³`),
-      metric("형상 상태", result.geometry_status === "validated" ? "CAD 검증 완료" : "확인 필요")
+      metric(result.template === "imported" ? "메시 부피" : "CAD 체적", Number.isFinite(result.volume_mm3) ? `${numberFormat.format(result.volume_mm3 / 1000)} cm³` : "열린 메시 · 계산 안 함"),
+      metric("형상 상태", result.geometry_status === "validated" ? "CAD 검증 완료" : result.geometry_status === "imported_mesh" ? "불러온 메시 · CAD 검증 아님" : "확인 필요")
     );
-    const checkNames = { valid_cad: "형상 유효성", single_solid: "단일 솔리드", positive_volume: "양의 체적", requested_dimensions: "요청 치수", closed_preview_mesh: "닫힌 메시" };
+    const checkNames = { valid_cad: "형상 유효성", single_solid: "단일 솔리드", positive_volume: "양의 체적", requested_dimensions: "요청 치수", closed_preview_mesh: "닫힌 메시", original_verified: "원본 확인", placement_applied: "출력 방향 적용" };
     $("model-checks").replaceChildren(...(result.checks || []).map((check) => {
       const element = node("span", `check-item${check.passed ? "" : " failed"}`, checkNames[check.name] || check.name);
       element.title = check.detail || "";
@@ -5355,6 +5375,7 @@
     importViewer.setMesh(placedPreview(result.preview, item.rotation), result.filename, null);
     $("import-caption").textContent = `${item.label}${item.recommended ? " (추천)" : ""}${result.preview.sampled ? " · 미리보기는 삼각형 일부만 표시" : ""}`;
     $("import-download").href = `/api/imports/${encodeURIComponent(result.import_id)}/oriented?orientation=${id}`;
+    $("import-make-job").disabled = !state.token || Boolean(state.importJobPending);
   }
 
   function renderImport(result) {
@@ -5436,6 +5457,27 @@
     }
   }
 
+  async function makeImportJob() {
+    const result = state.importResult;
+    if (!result || state.importJobPending || state.importSelected === undefined) return;
+    if (state.workflowBusy) return;
+    state.importJobPending = true;
+    $("import-make-job").disabled = true;
+    try {
+      const job = await api(`/api/imports/${encodeURIComponent(result.import_id)}/jobs`, { orientation: state.importSelected });
+      requestModelReplacement({ kind: "history", job, title: job.title, button: $("import-make-job") });
+      // Unsaved model work asks first; that question is on the model screen.
+      if (state.modelReplacement) changeView("models");
+      showNotice("import-feedback", "작업을 만들었습니다. 모델 만들기 화면의 슬라이싱·프린터로 보내기·결과 기록을 이어서 쓸 수 있습니다.", "success");
+    } catch (error) {
+      showNotice("import-feedback", error.message, "error");
+    } finally {
+      state.importJobPending = false;
+      $("import-make-job").disabled = !state.token || !state.importResult;
+    }
+  }
+
+  $("import-make-job").addEventListener("click", makeImportJob);
   $("import-file").addEventListener("change", updateImportControls);
   $("import-form").addEventListener("submit", submitImport);
 

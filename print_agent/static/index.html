@@ -224,7 +224,7 @@
                 <ol>
                   <li>위의 <strong>3MF 형상</strong>을 내려받습니다.</li>
                   <li>Bambu Studio 창에 파일을 끌어다 놓거나 <strong>파일 → 가져오기</strong>로 엽니다.</li>
-                  <li>사용할 프린터·필라멘트·플레이트를 고르고 슬라이스한 뒤 프린터로 보냅니다. 이 앱은 출력 명령을 보내지 않습니다.</li>
+                  <li>사용할 프린터·필라멘트·플레이트를 고르고 슬라이스한 뒤 프린터로 보냅니다. 이 앱에서 슬라이싱했다면 아래 <strong>프린터로 보내기</strong>로 LAN 프린터에 바로 보낼 수도 있습니다.</li>
                   <li>출력이 끝나면 아래 <a href="#outcome-card">결과 기록</a>에 성공·실패를 남겨 주세요.</li>
                 </ol>
                 <p class="field-help">Studio 프로젝트의 설정을 모델에 담거나 이 PC에서 직접 슬라이싱하려면 아래 ‘출력 준비’를 쓰세요. 선택 사항입니다.</p>
@@ -497,7 +497,7 @@
             <p class="field-help">서포트가 필요한 면(45° 넘는 돌출부)이 적고 바닥에 닿는 면이 넓은 순서입니다. 고르면 미리보기와 점검이 바뀝니다.</p>
             <div id="import-orientations" class="import-orientations" role="radiogroup" aria-labelledby="import-orient-heading"></div>
             <div id="import-review" class="import-review"></div>
-            <div class="import-actions"><a id="import-download" class="button button-primary" href="#" download>이 방향으로 3MF 내려받기</a><a id="import-source" class="button button-secondary" href="#" download>원본 내려받기</a></div>
+            <div class="import-actions"><button id="import-make-job" class="button button-primary" type="button" disabled>이 방향으로 슬라이스·출력 준비</button><a id="import-download" class="button button-secondary" href="#" download>이 방향으로 3MF 내려받기</a><a id="import-source" class="button button-secondary" href="#" download>원본 내려받기</a></div>
             <p id="import-facts" class="field-help"></p>
             <p id="import-scope" class="field-help"></p>
           </section>
