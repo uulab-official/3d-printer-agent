@@ -134,6 +134,16 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-21 v0.37.0 공개 릴리스
+
+[v0.37.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.37.0)을 2026-11-21 10:24:01 UTC에 `5e0c6d2`에서 게시했습니다(PR #34, AMS 칸과 재고 스풀 연결).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44893426063) Python **844개**·컨트롤러 **226개**·Chromium **124개**(합성 프린터 응답으로 칸 연결·재료 경고·이동·해제를 확인하는 브라우저 사례 포함),
+[설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44893426031) 세 OS 각 **410개**(스풀을 칸에 연결해 “프린터에 장착”이 되고 실제 재시작·백업 복원 뒤에도 연결이 남는지 확인 포함),
+[Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44893426061)가 모두 실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44894136594)도 차수 1에 게시했습니다. PR을 연 직후 GitHub가 몇 분 동안 PR 검사를
+시작하지 않았지만 다시 올리지 않고 기다려 정상 실행됐습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(374,082바이트, `556e1607dd00e080…`)이 `SHA256SUMS`·영수증과
+같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 실제 프린터가 보고하는 칸 번호·재료 값과의
+일치는 확인하지 않았습니다.
+
 ## 2026-11-21 v0.36.0 공개 릴리스
 
 [v0.36.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.36.0)을 2026-11-21 08:40:55 UTC에 `7206058`에서 게시했습니다(PR #33, 용어 사전과 첫 사용 안내).
