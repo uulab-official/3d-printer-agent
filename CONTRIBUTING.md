@@ -10,7 +10,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-On Linux, `npx playwright install --with-deps chromium` installs Chromium system libraries as well. CI uses that route. The suite starts its own server on `127.0.0.1:8765`; stop another development server on that port first. Test jobs and reports are written beneath ignored `qa-output/playwright/`. No physical printer, native slicer, LLM account or API key is used.
+On Linux, `npx playwright install --with-deps chromium` installs Chromium system libraries as well. CI uses that route. The suite starts its own server on `127.0.0.1:8765`; stop another development server on that port first. Test jobs and reports are written beneath ignored `qa-output/playwright/`; the app data folder `qa-output/playwright/data` is emptied at the start of every run, as in CI, so jobs interrupted by an earlier stopped run cannot change the result. No physical printer, native slicer, LLM account or API key is used.
 
 Desktop and mobile browser projects check real CAD creation/downloads, profile evidence, saved filament workspaces and guided edits, shipping cost uncertainty, saved outcomes and failed-job history. `npm run test:browser:list` lists tests without launching a browser. DOM/controller tests and the real browser suite provide different evidence; report which one you actually ran.
 
