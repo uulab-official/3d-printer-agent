@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.36 adds a guide view ([glossary](GLOSSARY.md)): a five-step first-run guide, a searchable glossary of 35 words the app uses, and a small “○○ 뜻” button next to key headings. A dismissible welcome on the model page points to it; closing it is remembered only in that browser. The glossary explains words and does not give recommended settings.
+Version 0.36 adds a guide view ([glossary](GLOSSARY.md)): a five-step first-run guide, a searchable glossary of 35 words the app uses, and a small “○○ 뜻” button next to key headings. A dismissible welcome on the model page points to it; closing it is remembered only in that browser. The glossary explains words and does not give recommended settings. Published as [v0.36.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.36.0) on 2026-11-21 from `7206058`.
 
 Version 0.35 adds a filament inventory ([inventory](INVENTORY.md)). Spools are entered by the person and updated by weigh-ins and by one deduction per sliced print, which uses the slicer's estimate. Records keep revisions and survive restart and backup restore. Slice results now also carry the slicer's time and filament estimates, which were previously always empty. Published as [v0.35.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.35.0) on 2026-11-21 from `1d85d25`.
 
