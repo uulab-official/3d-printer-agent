@@ -6,6 +6,8 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
+Version 0.37.1 polishes the inventory: a common colour name fills the spool colour until one is picked, a deduction reports the recorded remaining amount and warns below 150 g, and choosing a slot spool keeps keyboard focus. Published as [v0.37.1](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.37.1) on 2026-11-21 from `4417769`.
+
 Version 0.37 links spools to printer slots ([inventory](INVENTORY.md)). After reading a printer's status, each reported AMS slot and the external spool can be linked to the spool the person put there; one spool per slot and printer. A material that differs from the slot's reported material is only warned about. The send review shows the linked spool and warns when its recorded amount is below the slicer estimate, and the deduction preselects the spool in the slot the print was sent to. Links are the person's record and are verified against a synthetic printer report only. Published as [v0.37.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.37.0) on 2026-11-21 from `5e0c6d2`.
 
 Version 0.36 adds a guide view ([glossary](GLOSSARY.md)): a five-step first-run guide, a searchable glossary of 35 words the app uses, and a small “○○ 뜻” button next to key headings. A dismissible welcome on the model page points to it; closing it is remembered only in that browser. The glossary explains words and does not give recommended settings. Published as [v0.36.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.36.0) on 2026-11-21 from `7206058`.
