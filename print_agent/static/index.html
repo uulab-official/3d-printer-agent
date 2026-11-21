@@ -306,7 +306,9 @@
                 <div class="label-row"><label for="slicer-json">전체 구성 JSON</label><label class="file-button">JSON 파일 열기<input id="slicer-file" type="file" accept=".json,application/json"></label></div>
                 <textarea id="slicer-json" class="code-input" rows="8" spellcheck="false" placeholder='{"machine": {}, "process": {}, "filaments": [], "plate_type": "사용 중인 플레이트", "source": "user_export"}'></textarea>
                 <p class="field-help">묶음을 직접 입력하거나 JSON 파일로 열 수도 있습니다. 위의 파일 선택을 편집 중이라면 먼저 묶음을 만들거나 편집을 취소하세요. 완성한 전체 설정은 실행 계획에서 다시 검토합니다.</p>
-                <div class="button-row"><button id="prepare-slice" class="button button-secondary" type="button" disabled>설정과 실행 계획 검토</button><button id="execute-slice" class="button button-primary" type="button" disabled>슬라이싱 실행</button></div>
+                <div class="button-row"><button id="prepare-slice" class="button button-secondary" type="button" disabled>설정과 실행 계획 검토</button><button id="execute-slice" class="button button-primary" type="button" disabled>슬라이싱 실행</button><button id="compare-slices" class="button button-secondary" type="button" disabled>품질별 4가지 비교</button></div>
+                <p class="field-help">비교는 이 설정의 공정 값 몇 개(레이어 높이·채움·벽·껍질)만 바꿔 네 번 슬라이스하고 예상 시간·재료만 보여 줍니다. 현재 슬라이스 결과는 바꾸지 않습니다.</p>
+                <div id="slice-compare" class="slice-compare" hidden></div>
               </div>
             </div>
           </details>

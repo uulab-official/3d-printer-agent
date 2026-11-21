@@ -889,3 +889,11 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .import-recent-list { margin: 8px 0 0; padding-left: 1.1rem; display: grid; gap: 6px; }
 .import-recent-list button { font: inherit; color: var(--blue); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
 @media (max-width: 900px) { .import-result { grid-template-columns: 1fr; } }
+
+/* Slice comparison */
+.slice-compare { margin-top: 12px; display: grid; gap: 8px; overflow-x: auto; }
+.slice-compare table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.slice-compare th, .slice-compare td { padding: 8px 6px; border-bottom: 1px solid #e3e9f2; text-align: left; vertical-align: top; }
+.slice-compare td.number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.slice-compare small { display: block; color: var(--muted); font-size: 0.78rem; }
+.slice-compare .text-button { font-size: 0.82rem; }

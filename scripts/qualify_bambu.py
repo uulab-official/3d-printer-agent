@@ -372,6 +372,54 @@ def adapter_smoke(executable, cube, evidence, env, report):
         raise RuntimeError("Application adapter native smoke did not pass both original input cases; inspect plan/result/native evidence.")
 
 
+def compare_smoke(executable, evidence, env, report):
+    """Slice the original example with the four comparison variants through the public helpers."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from print_agent import slice_compare
+    from print_agent.slicer import execute_slice, prepare_slice
+
+    report.update(status="running", synthetic_fixture=True, variants=[])
+    folder = evidence / "native-compare"
+    folder.mkdir()
+    bundle, _ = synthetic_fixture()
+    example = REPO_ROOT / "examples" / "cable_comb" / "model.3mf"
+    old_xdg = {key: os.environ.get(key) for key in ("XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME")}
+    os.environ.update({key: env[key] for key in old_xdg})
+    try:
+        for variant, label, _ in slice_compare.VARIANTS:
+            row = {"id": variant, "label": label, "overrides": slice_compare.overrides(bundle, variant), "status": "running"}
+            report["variants"].append(row)
+            plan = prepare_slice(example, folder / variant, slice_compare.variant_bundle(bundle, variant), executable_path=str(executable))
+            if not plan.get("ready"):
+                row.update(status="failed", diagnostics=plan.get("diagnostics"))
+                continue
+            result = execute_slice(plan, timeout_seconds=180)
+            row["adapter_status"] = result.get("status")
+            output = Path(plan["output_path"])
+            if result.get("status") == "sliced" and output.is_file():
+                row.update(slice_compare.summarize(output.read_bytes()), status="sliced")
+            else:
+                row.update(status="failed", checks=result.get("checks", []))
+            print(f"Comparison variant {variant}: {row['status']}.", flush=True)
+    finally:
+        for key, previous in old_xdg.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+    rows = {row["id"]: row for row in report["variants"]}
+    sliced = len(rows) == 4 and all(row["status"] == "sliced" for row in rows.values())
+    report["checks"] = {
+        "all_four_variants_sliced": sliced,
+        "fine_has_more_layers": sliced and rows["fine"]["layers"] > rows["original"]["layers"],
+        "fast_has_fewer_layers": sliced and rows["fast"]["layers"] < rows["original"]["layers"],
+        "strong_uses_more_filament": sliced and rows["strong"]["grams"] > rows["original"]["grams"],
+    }
+    report["status"] = "passed" if all(report["checks"].values()) else "failed"
+    if report["status"] != "passed":
+        raise RuntimeError("Slice comparison native smoke failed; inspect native-compare evidence.")
+
+
 def native_mesh(archive_path):
     """Independent one-mesh evidence reader for these original CI fixtures."""
     meshes = []
@@ -632,6 +680,7 @@ def main():
         "runtime_kind": "installed_executable" if args.studio_executable else "pinned_linux_appimage",
         "native_bootstrap": {"status": "not_run"}, "native_adapter_smoke": {"status": "not_run"},
         "native_project_smoke": {"status": "not_run"}, "native_edited_project_smoke": {"status": "not_run"},
+        "native_compare_smoke": {"status": "not_run"},
         "adapter_qualified": False, "project_adapter_qualified": False, "edited_project_adapter_qualified": False,
         "raw_preset_resolution_qualified": False, "printer_connected": False, "physical_print_verified": False,
         "declared_release_version": VERSION, "release_commit": RELEASE_COMMIT, "reported_version": None,
@@ -719,14 +768,16 @@ def main():
         project_adapter_smoke(executable, evidence, env, manifest["native_adapter_smoke"], manifest["native_edited_project_smoke"], edited=True)
         manifest["edited_project_adapter_qualified"] = True
         manifest["edited_project_qualification_scope"] = "Same native synthetic source and different current CAD; six user-selected synthetic edits; independently reconstructed complete effective settings, unedited values, qualified native normalizations, mesh topology and G-code. No manufacturer or physical validation."
+        print("Four adapter cases passed. Running the fifth, four-variant slice comparison.", flush=True)
+        compare_smoke(executable, evidence, env, manifest["native_compare_smoke"])
         manifest["status"] = "passed"
-        print("Native bootstrap and all four adapter cases passed. No manufacturer preset or physical printing was qualified.", flush=True)
+        print("Native bootstrap, all four adapter cases and the slice comparison passed. No manufacturer preset or physical printing was qualified.", flush=True)
     except Exception as exc:
         manifest["status"] = "failed"
         manifest["adapter_qualified"] = manifest["native_adapter_smoke"]["status"] == "passed"
         manifest["project_adapter_qualified"] = manifest["native_project_smoke"]["status"] == "passed"
         manifest["edited_project_adapter_qualified"] = manifest["native_edited_project_smoke"]["status"] == "passed"
-        for stage in ("native_bootstrap", "native_adapter_smoke", "native_project_smoke", "native_edited_project_smoke"):
+        for stage in ("native_bootstrap", "native_adapter_smoke", "native_project_smoke", "native_edited_project_smoke", "native_compare_smoke"):
             if manifest[stage]["status"] == "running":
                 manifest[stage]["status"] = "failed"
         for case in manifest["native_adapter_smoke"].get("cases", []):
