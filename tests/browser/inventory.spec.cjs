@@ -20,6 +20,8 @@ test('spools are added, weighed and deducted once by a sliced print', async ({ p
   await openView(page, 'inventory');
   await page.locator('#spool-brand').fill(brand);
   await page.locator('#spool-material').fill('pla');
+  await page.locator('#spool-color-name').fill('흰색');
+  await expect(page.locator('#spool-color-hex')).toHaveValue('#f4f4f1');  // a common colour name fills the swatch
   await page.locator('#spool-color-name').fill('검정');
   await page.locator('#spool-location').fill('책상 서랍');
   await page.locator('#spool-price').fill('25000');
@@ -29,6 +31,7 @@ test('spools are added, weighed and deducted once by a sliced print', async ({ p
   expect(spool.material).toBe('PLA');
   const card = page.locator(`[data-spool="${spool.id}"]`);
   await expect(card).toContainText(`${brand} PLA · 검정`);
+  expect(spool.color_hex).toBe('#232323');
   await expect(card).toContainText('1,000 / 1,000 g');
 
   // Scale reading 1080 g with a 250 g empty spool leaves 830 g.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.37.1 — 2026-11-21
+
+- **Spool colour:** a common colour name (흰색, 빨간색, Blue, …) fills the spool's colour picker with the matching palette colour until the person picks a colour themselves. Previously every new spool was recorded as near-black unless the picker was changed.
+- **Deduction feedback:** after 재고에서 빼기 the message states the recorded remaining amount, and warns below the 150 g low-stock mark (or says the spool is used up).
+- **Keyboard focus:** choosing a spool for a printer slot keeps focus on that slot's select after the list is redrawn, including while it is briefly disabled during the save.
+
 ## 0.37.0 — 2026-11-21
 
 - **Spools in printer slots** (docs/INVENTORY.md). After a printer status read, every reported AMS slot and the external spool gets a “재고 스풀” choice. Choosing a spool records the printer serial and slot on it (`POST /api/spools/{id}/slot`) and sets it to 프린터에 장착.
