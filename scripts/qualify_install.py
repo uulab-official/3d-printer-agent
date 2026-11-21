@@ -518,6 +518,10 @@ def qualify(args, report):
                          payload={'expected_revision': spool['revision'], 'grams': 12.5, 'job_id': models[0]['id']})
         check('filament_spool_weighed_and_deducted', spool['remaining_g'] == 817.5 and spool['status'] == 'opened'
               and spool['revision'] == 3 and spool['history'][-1]['job_id'] == models[0]['id'], json.dumps(spool, ensure_ascii=False)[:300])
+        spool = get_json(server, f"/api/spools/{spool['id']}/slot", method='POST', token=token,
+                         payload={'expected_revision': spool['revision'], 'serial': '01s00qualify0001', 'position': 'ams-0-2'})
+        check('filament_spool_linked_to_printer_slot', spool['slot'] == {'serial': '01S00QUALIFY0001', 'position': 'ams-0-2'}
+              and spool['status'] == 'loaded' and spool['revision'] == 4, json.dumps(spool, ensure_ascii=False)[:300])
 
         # Sending to a printer: an installed server must refuse a job without a verified
         # slice, an unknown review and a missing bed confirmation, never echoing the code.

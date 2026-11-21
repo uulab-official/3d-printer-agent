@@ -954,3 +954,17 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
   .welcome .button-row { width: 100%; }
   .welcome .button-row .button { flex: 1; white-space: nowrap; }
 }
+
+/* Spools placed in printer slots */
+.printer-slot-links { display: grid; gap: 8px; margin: 8px 0 4px; }
+.printer-slot-link { display: grid; grid-template-columns: minmax(120px, auto) minmax(0, 1fr); gap: 4px 10px; align-items: center; font-size: 12px; }
+.printer-slot-link select { min-height: 36px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; font-size: 13px; color: var(--ink); min-width: 0; }
+.printer-slot-name { font-weight: 600; color: #4c5e76; }
+.printer-slot-warning { grid-column: 1 / -1; color: var(--amber); }
+.spool-slot { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 0; font-size: 12px; color: var(--blue-dark); }
+.print-send-spool { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+.print-send-spool:empty { display: none; }
+.print-send-spool.is-warning { color: var(--amber); font-weight: 600; }
+@media (max-width: 540px) {
+  .printer-slot-link { grid-template-columns: 1fr; }
+}

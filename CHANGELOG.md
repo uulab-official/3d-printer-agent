@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.37.0 — 2026-11-21
+
+- **Spools in printer slots** (docs/INVENTORY.md). After a printer status read, every reported AMS slot and the external spool gets a “재고 스풀” choice. Choosing a spool records the printer serial and slot on it (`POST /api/spools/{id}/slot`) and sets it to 프린터에 장착.
+  - One spool per slot and printer: linking a slot that already holds another spool unlinks that spool. The same slot number on another printer is a different slot.
+  - Unlinking (연결 안 함, or 연결 해제 on the inventory card) returns 프린터에 장착 to 개봉. An empty spool cannot be linked.
+  - A spool material that differs from the slot's reported material (compared by base material, e.g. PLA vs PETG) is shown as a warning; neither value is changed.
+- **Send review:** each chosen slot shows its linked spool and recorded remaining amount, and warns when that amount is below the filament's slicer estimate. It does not block sending.
+- **Deduction:** the outcome card preselects the spool linked to the slot the print was sent to from this page.
+- Links are stored on the spool record with revisions, validated on read (a damaged link makes the record unreadable and preserved), included in backup/restore and in a new last CSV column 프린터 칸. Records written before this version read as unlinked.
+- **Installed-package qualification:** a spool is linked to a printer slot and the link must survive a real restart and a backup restore. Promotion requires this check.
+
 ## 0.36.0 — 2026-11-21
 
 - **용어·안내** (docs/GLOSSARY.md). A new view with:
