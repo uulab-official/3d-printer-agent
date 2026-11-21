@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-21 v0.37.3 공개 릴리스
+
+[v0.37.3](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.37.3)을 2026-11-21 14:00:23 UTC에 `ba3e2c2`에서 게시했습니다(PR #37, 브라우저 테스트의 빈 데이터 폴더 시작).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44910971347) Python **844개**·컨트롤러 **227개**·Chromium **126개**,
+[설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44910971325) 세 OS 각 **410개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44910971528)가 모두 실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44911613127)도
+차수 1에 게시했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(375,632바이트, `02e0080d4e9e1049…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스
+커밋이 내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 로컬에서는 예전 데이터 폴더에 넣어 둔 표시 파일이 실행 시작 때 지워지고, 다음
+실행이 작업 0개에서 시작함을 확인했습니다. v0.37.2 기록에 적은 로컬 실패 원인은 이 릴리스로 해소됐습니다.
+
 ## 2026-11-21 v0.37.2 공개 릴리스
 
 [v0.37.2](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.37.2)를 2026-11-21 12:30:57 UTC에 `41d2879`에서 게시했습니다(PR #36, 모델 파일 끌어 놓기).
