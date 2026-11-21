@@ -134,6 +134,16 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-21 v0.34.0 공개 릴리스
+
+[v0.34.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.34.0)을 2026-11-21 03:44:14 UTC에 `1ce91b1`에서 게시했습니다(PR #31, 품질별 슬라이스 4가지 비교).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44861993160), [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44861993176)(세 OS 각 **397개**), [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44861993202)가
+모두 실행 차수 1로 성공했고 [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44862598604)도 차수 1에 게시했습니다. 이번에는 GitHub가 실행 로그 내려받기에 저장소 관리자 권한을
+요구해(HTTP 403) main 실행의 테스트 개수를 로그에서 다시 읽지 못했습니다. 같은 코드의 [PR 실행](https://github.com/uulab-official/3d-printer-agent/pull/31)에서는 Python **828개**·컨트롤러 **222개**·
+Chromium **118개**가 통과했고, Native의 새 비교 단계는 네 설정 모두 슬라이스되고 레이어 순서·재료 증가 검사를 통과했습니다. 공개 자산 7개를 인증 없이
+내려받아 wheel(351,623바이트, `b28402093bb7095f…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며
+보고서가 모두 통과 상태임을 확인했습니다. 비교 값은 슬라이서 예상치이며 실물 출력은 확인하지 않았습니다.
+
 ## 2026-11-21 v0.33.0 공개 릴리스
 
 [v0.33.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.33.0)을 2026-11-21 03:09:09 UTC에 `4b5bcea`에서 게시했습니다(PR #30, 불러온 모델을 작업으로 만들어 슬라이스·전송).
