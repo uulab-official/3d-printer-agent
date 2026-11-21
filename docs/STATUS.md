@@ -1,12 +1,12 @@
 # Development status
 
-Date: 2026-11-20 (Asia/Seoul).
+Date: 2026-11-21 (Asia/Seoul).
 
 Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.33 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
 
-Version 0.33 turns a chosen placement of an imported model into a job. That job uses the existing slicing, print-volume review, LAN sending, outcomes and history ([model import](MODEL_IMPORT.md)). The dimension panel and model edits do not apply to it. Two placements were sliced locally with Bambu Studio 02.09.01.70 on synthetic settings; physical prints are not verified.
+Version 0.33 turns a chosen placement of an imported model into a job. That job uses the existing slicing, print-volume review, LAN sending, outcomes and history ([model import](MODEL_IMPORT.md)). The dimension panel and model edits do not apply to it. Two placements were sliced locally with Bambu Studio 02.09.01.70 on synthetic settings; physical prints are not verified. Published as [v0.33.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.33.0) on 2026-11-21 from `4b5bcea`.
 
 Version 0.32 checks model files people already have ([model import](MODEL_IMPORT.md)). An STL or 3MF, including Bambu Studio component files, is kept unchanged and verified on every read. Its mesh is measured, placements are ranked by unsupported area and bed contact, and the chosen placement downloads as a new 3MF. Imported models cannot yet be sliced or sent from the app. Published as [v0.32.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.32.0) on 2026-11-20 from `ae6688b`.
 

@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-21 v0.33.0 공개 릴리스
+
+[v0.33.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.33.0)을 2026-11-21 03:09:09 UTC에 `4b5bcea`에서 게시했습니다(PR #30, 불러온 모델을 작업으로 만들어 슬라이스·전송).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44858957287) Python **821개**·컨트롤러 **221개**·Chromium **116개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44858957303)
+세 OS 각 **396개**(불러온 방향으로 작업을 만들고 작업 3MF가 슬라이스 경로가 받는 구조인지 확인 포함), [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44858957292)가 모두
+실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44859573595)도 차수 1에 게시했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(347,213바이트,
+`18a142bdcb890bf8…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을
+확인했습니다. 불러온 모델의 실제 프린터 전송·실물 출력과 메시 벽 두께는 확인하지 않았습니다.
+
 ## 2026-11-20 v0.32.0 공개 릴리스
 
 [v0.32.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.32.0)을 2026-11-20 07:37:02 UTC에 `ae6688b`에서 게시했습니다(PR #29, 가진 모델 파일 점검과 출력 방향 추천).
