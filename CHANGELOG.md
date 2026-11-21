@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.33.0 — 2026-11-20
+
+- Imported models now reach the printer. **이 방향으로 슬라이스·출력 준비** turns the chosen placement into a job and opens it on the model screen.
+  - Template: `imported`. Geometry status: `imported_mesh`.
+  - Files: a placed 3MF in the app's own CAD layout, an STL and a manifest.
+  - Source: the file name, the original's SHA-256 and the placement with its rotation.
+  - The existing steps then apply unchanged: Bambu Studio slicing (config bundle or Studio project) with the print-volume review, printer sending with its checks, outcomes, failure reasons, measurements and history.
+- The dimension panel, model edits and the nozzle recheck do not apply to an imported job. The draft is left as it was, and the recheck explains why it is off.
+- Two placements of an imported STL were sliced locally with Bambu Studio 02.09.01.70 on synthetic settings.
+- New `POST /api/imports/{id}/jobs`. An unknown placement returns 422 and a changed original returns 409; nothing is created in either case.
+- Installed-package qualification also turns the imported placement into a job and checks that its 3MF has the layout slicing accepts (local macOS run: 396/396).
+- The "easiest way to print" note no longer says the app cannot send prints; it points to **프린터로 보내기**.
+
 ## 0.32.0 — 2026-11-20
 
 - **가진 모델 점검** (docs/MODEL_IMPORT.md): open an STL or 3MF downloaded from MakerWorld, Printables or elsewhere.

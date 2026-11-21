@@ -396,14 +396,17 @@ def analyse(filename: str, content: bytes) -> dict:
 
 
 def three_mf(vertices, faces, name='imported model') -> bytes:
-    """A plain core-spec 3MF of one mesh object (mm)."""
+    """One mesh in the same minimal layout the app's own CAD export uses (object 0 holds the
+    mesh, object 1 references it, one untransformed build item), so every existing slicing,
+    print-volume and Studio-project path accepts it unchanged."""
     from xml.sax.saxutils import quoteattr
     points = ''.join(f'<vertex x="{x:.5f}" y="{y:.5f}" z="{z:.5f}"/>' for x, y, z in vertices)
     triangles = ''.join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in faces)
     model = ('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" '
              'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">'
              f'<metadata name="Application">3D Printer Agent</metadata><metadata name="Title">{quoteattr(name)[1:-1]}</metadata>'
-             f'<resources><object id="1" type="model"><mesh><vertices>{points}</vertices><triangles>{triangles}</triangles></mesh></object></resources>'
+             f'<resources><object id="0" name="imported mesh" type="model"><mesh><vertices>{points}</vertices><triangles>{triangles}</triangles></mesh></object>'
+             '<object id="1" name="imported model" type="model"><components><component objectid="0"/></components></object></resources>'
              '<build><item objectid="1"/></build></model>')
     types = ('<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
              '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
@@ -417,3 +420,38 @@ def three_mf(vertices, faces, name='imported model') -> bytes:
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, text)
     return stream.getvalue()
+
+
+def stl_bytes(vertices, faces, name='imported model') -> bytes:
+    """A binary STL of the same triangles (normals left for the reader to compute)."""
+    header = name.encode('ascii', 'replace')[:80].ljust(80, b' ')
+    body = b''.join(struct.pack('<12fH', 0.0, 0.0, 0.0, *vertices[a], *vertices[b], *vertices[c], 0) for a, b, c in faces)
+    return header + struct.pack('<I', len(faces)) + body
+
+
+def placed_result(analysis, orientation_id, *, filename, sha256):
+    """A job result for one recorded placement: the mesh only rotated and set on the bed."""
+    placement = next((item for item in analysis['orientations'] if item['id'] == orientation_id), None)
+    if placement is None:
+        raise ModelImportError('없는 출력 방향입니다.')
+    vertices, faces = analysis['_mesh']
+    placed = oriented_vertices(vertices, placement['rotation'])
+    size = {axis: max(p[index] for p in placed) - min(p[index] for p in placed) for index, axis in enumerate('xyz')}
+    facts = analysis['facts']
+    warnings = ['불러온 메시를 회전·이동만 해서 썼습니다. 앱이 만든 CAD가 아니므로 솔리드·치수 검증과 벽 두께 점검은 하지 않았습니다. '
+                '출력 성공·강도·치수 맞춤은 실제 프린터에서 확인해야 합니다.']
+    if not facts['closed']:
+        warnings.append(f'열린 메시입니다(열린 모서리 {facts["open_edges"]}개, 겹친 모서리 {facts["non_manifold_edges"]}개). '
+                        '슬라이서가 일부를 빠뜨리거나 다르게 채울 수 있으니 슬라이스 미리보기를 확인하세요.')
+    result = {
+        'template': 'imported', 'parameters': {'template': 'imported'}, 'dimensions_mm': size,
+        'volume_mm3': facts['volume_mm3'], 'geometry_status': 'imported_mesh', 'print_status': 'not_tested',
+        'checks': [{'name': 'original_verified', 'passed': True, 'detail': f'원본 {filename}의 SHA-256 {sha256[:12]}… 확인'},
+                   {'name': 'placement_applied', 'passed': True,
+                    'detail': f'출력 방향 {orientation_id + 1}({placement["label"]})로 회전·이동만 함'}],
+        'files': {'three_mf': 'model.3mf', 'stl': 'model.stl'}, 'color_parts': [],
+        'mesh': {key: value for key, value in preview_mesh(placed, faces).items() if key != 'sampled'},
+        'warnings': warnings, 'printability': review(facts, placement),
+    }
+    stem = re.sub(r'\.[A-Za-z0-9]+$', '', filename)
+    return result, placement, {'three_mf': three_mf(placed, faces, stem), 'stl': stl_bytes(placed, faces, stem)}

@@ -247,6 +247,10 @@ class ModelImportPayload(StrictPayload):
     content_base64: str = Field(min_length=1, max_length=4 * ((MAX_MODEL_BYTES + 2) // 3))
 
 
+class ImportJobPayload(StrictPayload):
+    orientation: int = Field(ge=0, le=64, strict=True)
+
+
 class StudioProjectPayload(StrictPayload):
     filename: str = Field(min_length=1, max_length=240)
     content_base64: str = Field(min_length=1, max_length=4 * ((MAX_ARCHIVE_BYTES + 2) // 3))
@@ -633,6 +637,8 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         result = job.get('result') or {}
         if job.get('status') != 'geometry_validated' or not result.get('mesh'):
             raise ValueError('형상 검증을 마친 작업만 다시 점검할 수 있습니다.')
+        if job.get('template') == 'imported':
+            raise ValueError('불러온 모델은 벽 두께를 재지 않아 노즐별 재점검이 없습니다. 점검 결과는 노즐과 관계없는 항목만입니다.')
         return review_mesh(result['parameters'], result['mesh'], result['volume_mm3'], payload.nozzle_mm)
 
     @app.post('/api/jobs/{job_id}/outcome')
@@ -710,6 +716,26 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         except (binascii.Error, ValueError) as exc:
             raise ValueError('모델 파일을 다시 선택해 주세요. 올바른 base64 데이터가 필요합니다.') from exc
         return model_imports.create(payload.filename, content)
+
+    @app.post('/api/imports/{import_id}/jobs', status_code=201)
+    def import_to_job(import_id: str, payload: ImportJobPayload):
+        """Make a job from one placement, so the existing slice, send and outcome steps apply."""
+        result, source, files = model_imports.placed_job_parts(import_id, payload.orientation)
+        if not CAD_LOCK.acquire(blocking=False):
+            return resource_busy()
+        job_id = None
+        try:
+            job_id, folder = store.reserve(design_source=source)
+            for kind, filename in result['files'].items():
+                with (folder / filename).open('xb') as stream:
+                    stream.write(files[kind])
+            return store.finish(job_id, result, design_source=source)
+        except Exception:
+            if job_id is not None:
+                store.fail(job_id, '불러온 모델로 작업을 만들지 못했습니다. 원본을 다시 불러와 주세요.')
+            raise
+        finally:
+            CAD_LOCK.release()
 
     @app.get('/api/imports')
     def list_imports(limit: int = Query(default=20, ge=1, le=100)):

@@ -489,6 +489,20 @@ def qualify(args, report):
               and mesh_again is not None and mesh_again['facts']['closed']
               and mesh_again['orientations'][mesh_again['original_id']]['overhang_mm2'] < 1,
               json.dumps({'best': mesh_best['label'], 'stored': mesh_stored['overhang_mm2']}, ensure_ascii=False))
+        # The same placement as a job: an imported template, its source recorded, a 3MF that slicing accepts.
+        mesh_job = get_json(server, f"/api/imports/{mesh_import['import_id']}/jobs", method='POST', token=token, expected=201,
+                            payload={'orientation': mesh_import['recommended_id']})
+        mesh_job_status, mesh_job_model, _ = request(server.base, mesh_job['artifacts']['three_mf'])
+        from print_agent.studio_project import _generated_model
+        try:
+            _generated_model(mesh_job_model)
+            mesh_job_layout = True
+        except ValueError:
+            mesh_job_layout = False
+        check('import_placement_becomes_job', mesh_job['template'] == 'imported' and mesh_job['status'] == 'geometry_validated'
+              and mesh_job['design_source']['sha256'] == sha256(mesh_stl) and mesh_job_status == 200 and mesh_job_layout
+              and mesh_job['title'] == '불러온 모델 “overhanging-cap.stl” · 60.0 × 40.0 × 35.0 mm',
+              json.dumps({'title': mesh_job['title'], 'layout': mesh_job_layout}, ensure_ascii=False))
 
         # Sending to a printer: an installed server must refuse a job without a verified
         # slice, an unknown review and a missing bed confirmation, never echoing the code.
@@ -764,8 +778,9 @@ def qualify(args, report):
         servers.append(restarted)
         refreshed = restarted.wait_ready()
         recovery = refreshed['storage']['recovery']
-        # The phone stand, name tag, wall hook, keycap and cup models add five completed jobs to the earlier five.
-        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 10
+        # The phone stand, name tag, wall hook, keycap and cup models add five completed jobs to the earlier
+        # five, and an imported model's placement adds one more.
+        check('restart_reconciles_index_and_interrupted_job', recovery['indexed'] == 11
               and recovery['interrupted'] == 1 and recovery['unreadable'] == 0, json.dumps(recovery))
         check('restart_rotates_session', refreshed['session_token'] != token)
         old_session = get_json(restarted, '/api/discovery', method='POST', payload={}, token=token, expected=403)
@@ -813,15 +828,15 @@ def qualify(args, report):
         check('interruption_recorded_once', len(events) == 1)
 
         paged_ids, cursor = [], None
-        for _ in range(5):
+        for _ in range(8):  # two jobs a page; enough pages for every job above
             query = urllib.parse.urlencode({'limit': 2, **({'before': cursor} if cursor else {})})
             page = get_json(restarted, '/api/jobs?' + query)
             paged_ids.extend(item['id'] for item in page['jobs'])
             cursor = page['next_cursor']
             if cursor is None:
                 break
-        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 10
-              and set(paged_ids) == {model['id'] for model in models} | {interrupted_id, contextual_job['id']})
+        check('history_cursor_reaches_all_recovered_jobs', cursor is None and len(paged_ids) == 11
+              and set(paged_ids) == {model['id'] for model in models} | {interrupted_id, contextual_job['id'], mesh_job['id']})
 
         def backup_command(name, arguments, expected_exit=0):
             operation = subprocess.run([entrypoint, *map(str, arguments)], cwd=work, env=environment,

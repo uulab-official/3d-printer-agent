@@ -57,6 +57,32 @@ test('an imported STL is checked, flipped onto its flat cap and downloaded in th
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
+test('a chosen placement becomes a job that the model screen can slice, send and record', async ({ page }) => {
+  const menu = page.locator('#menu-toggle');
+  if (await menu.isVisible()) await menu.click();
+  await page.locator('.nav-item[data-view="imports"]').click();
+  await page.locator('#import-file').setInputFiles(FIXTURE);
+  await page.locator('#import-submit').click();
+  await expect(page.locator('#import-badge')).toHaveText('점검 완료');
+  const created = page.waitForResponse(r => /\/api\/imports\/[a-f0-9]{32}\/jobs$/.test(r.url()));
+  await page.locator('#import-make-job').click();
+  const job = await (await created).json();
+  expect(job.template).toBe('imported');
+  expect(job.design_source.orientation.label).toBe('위아래 뒤집기');
+  expect(Object.keys(job.artifacts).sort()).toEqual(['manifest', 'stl', 'three_mf']);
+  await expect(page.locator('#view-models')).toBeVisible();
+  await expect(page.locator('#result-heading')).toContainText('불러온 모델 “overhanging-cap.stl”');
+  await expect(page.locator('#model-metrics')).toContainText('불러온 메시 · CAD 검증 아님');
+  await expect(page.locator('#generated-source')).toContainText('출력 방향 · 위아래 뒤집기');
+  await expect(page.locator('#printability-run')).toBeDisabled();
+  await expect(page.locator('#outcome-card')).toBeVisible();
+  await expect(page.locator('#print-send-card')).toBeHidden();  // not sliced yet
+  // The same job reopens from history.
+  if (await menu.isVisible()) await menu.click();
+  await page.locator('.nav-item[data-view="history"]').click();
+  await expect(page.locator('#history-list')).toContainText('불러온 모델 “overhanging-cap.stl”');
+});
+
 test('a file that is not a mesh model is refused without a result', async ({ page }) => {
   const menu = page.locator('#menu-toggle');
   if (await menu.isVisible()) await menu.click();

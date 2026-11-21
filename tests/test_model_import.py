@@ -188,6 +188,49 @@ class ImportApiTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/imports', headers=self.headers, json={'filename': 'a.stl', 'content_base64': '***'}).status_code, 422)
         self.assertEqual(list((self.root / 'imports').iterdir()), [source.parent])  # refused uploads leave nothing
 
+    def test_a_placement_becomes_a_sliceable_job_with_its_source_recorded(self):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+        from qualify_bambu import synthetic_fixture
+        from print_agent.studio_project import _generated_model
+        content = stl_bytes(t_shape())
+        body = self.upload('cap.stl', content).json()
+        response = self.client.post(f'/api/imports/{body["import_id"]}/jobs', headers=self.headers,
+                                    json={'orientation': body['recommended_id']})
+        self.assertEqual(response.status_code, 201, response.text)
+        job = response.json()
+        self.assertEqual((job['template'], job['status'], job['result']['geometry_status']), ('imported', 'geometry_validated', 'imported_mesh'))
+        self.assertEqual(job['title'], '불러온 모델 “cap.stl” · 60.0 × 40.0 × 35.0 mm')
+        source = job['design_source']
+        self.assertEqual((source['kind'], source['sha256'], source['orientation']['label']),
+                         ('imported_file', hashlib.sha256(content).hexdigest(), '위아래 뒤집기'))
+        model = self.client.get(job['artifacts']['three_mf']).content
+        _generated_model(model)  # the same layout as the app's own CAD, so Studio composition accepts it
+        self.assertLess(model_import.analyse('m.3mf', model)['orientations'][0]['overhang_mm2'], 1)
+        stl = self.client.get(job['artifacts']['stl']).content
+        self.assertAlmostEqual(model_import.analyse('m.stl', stl)['facts']['volume_mm3'], body['facts']['volume_mm3'], places=1)
+        manifest = self.client.get(job['artifacts']['manifest']).json()
+        self.assertEqual((manifest['template'], manifest['design_source']['import_id']), ('imported', body['import_id']))
+        bundle, _ = synthetic_fixture()
+        plan = self.client.post('/api/slice', headers=self.headers, json={'job_id': job['id'], 'config_bundle': bundle}).json()['plan']
+        self.assertTrue(plan['print_volume']['can_prepare'], plan)
+        self.assertEqual(self.client.post(f'/api/jobs/{job["id"]}/printability', headers=self.headers,
+                                          json={'nozzle_mm': 0.6}).status_code, 422)
+        self.assertEqual(self.client.get(f'/api/jobs/{job["id"]}/recovery').json()['items'], [])
+        self.assertEqual(self.client.get('/api/jobs/' + job['id']).json()['title'], job['title'])
+        self.assertEqual(self.client.post('/api/model-edits/plan', headers=self.headers, json={
+            'text': '높이 5mm 늘려줘', 'base_parameters': job['result']['parameters']}).status_code, 422)
+
+    def test_job_needs_a_known_placement_and_an_unchanged_original(self):
+        body = self.upload('cube.3mf', zipfile_bytes({'3D/3dmodel.model': cube_mesh_model()})).json()
+        url = f'/api/imports/{body["import_id"]}/jobs'
+        self.assertEqual(self.client.post(url, headers=self.headers, json={'orientation': 63}).status_code, 422)
+        self.assertEqual(self.client.post(url, headers=self.headers, json={'orientation': '0'}).status_code, 422)
+        source = next((self.root / 'imports' / body['import_id']).glob('source.*'))
+        source.write_bytes(source.read_bytes() + b' ')
+        self.assertEqual(self.client.post(url, headers=self.headers, json={'orientation': 0}).status_code, 409)
+        self.assertEqual(self.client.get('/api/jobs').json()['jobs'], [])
+
     def test_oversized_request_is_refused_before_reading(self):
         from print_agent.app import MAX_MODEL_REQUEST_BYTES
         response = self.client.post('/api/imports', headers={**self.headers, 'Content-Type': 'application/json',
