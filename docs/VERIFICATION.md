@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-21 v0.37.2 공개 릴리스
+
+[v0.37.2](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.37.2)를 2026-11-21 12:30:57 UTC에 `41d2879`에서 게시했습니다(PR #36, 모델 파일 끌어 놓기).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44903535299) Python **844개**·컨트롤러 **227개**·Chromium **126개**(실제 STL을 끌어 놓아 불러오는 데스크톱·모바일 사례 포함),
+[설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44903535364) 세 OS 각 **410개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44903535333)가 모두 실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44904223031)도
+차수 1에 게시했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(375,632바이트, `1201d508049e0c41…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스
+커밋이 내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 로컬에서는 브라우저 테스트용 데이터 폴더(`qa-output/playwright/data`)가 실행 사이에
+지워지지 않아 중단된 작업 기록이 쌓이면 연결 표시 검사가 실패할 수 있음을 확인했습니다. CI는 매번 새 폴더를 씁니다.
+
 ## 2026-11-21 v0.37.1 공개 릴리스
 
 [v0.37.1](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.37.1)을 2026-11-21 11:12:58 UTC에 `4417769`에서 게시했습니다(PR #35, 스풀 색 채우기·재고 부족 안내·칸 선택 초점 유지).
