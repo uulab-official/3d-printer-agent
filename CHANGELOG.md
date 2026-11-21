@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.34.0 — 2026-11-21
+
+- **Four-way slice comparison** (docs/SLICE_COMPARE.md). One click slices the current model four times from the supplied settings JSON. Only the process keys listed below change; the machine, filaments, plate and model stay as they are.
+  - **지금 설정:** unchanged.
+  - **곱게:** layer height = nozzle × 0.3.
+  - **빠르게:** layer height = nozzle × 0.7 and 10% infill.
+  - **튼튼하게:** +2 walls, +1 top and bottom shell, 40% infill.
+- Each variant goes through the normal preparation (print-volume review included) and execution. Only the estimates read from the verified output are kept: minutes, grams, layers and whether supports appear.
+  - Temporary slices are removed, and the current slice and its downloads are untouched.
+  - The comparison stays on the job.
+  - **이 설정 적용** changes only those keys in the settings JSON, so the plan is reviewed and sliced as usual.
+- New `POST /api/slice/compare`. Variants are derived and refused before the slicer is reserved, and the request has the same 8 MiB budget as slicing.
+- The native qualification adds a fifth stage. The original example is sliced with all four variants on Linux Studio 02.09.01.70 and checked:
+  - all four variants slice;
+  - layer counts run fine > current > fast;
+  - the strong variant uses more filament.
+- Locally on macOS Studio 02.09.01.70 with synthetic settings, a 70 × 100 mm pencil cup estimated 247, 392, 176 and 208 minutes for the four variants. These are slicer estimates, not measured prints.
+
 ## 0.33.0 — 2026-11-20
 
 - Imported models now reach the printer. **이 방향으로 슬라이스·출력 준비** turns the chosen placement into a job and opens it on the model screen.

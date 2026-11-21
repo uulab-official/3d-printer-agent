@@ -315,6 +315,7 @@ class JobStore:
                     or (job['latest_slice'] is not None and not isinstance(job['latest_slice'], dict))
                     or (job['user_outcome'] is not None and not isinstance(job['user_outcome'], dict))
                     or (job.get('printer_report') is not None and not isinstance(job['printer_report'], dict))
+                    or (job.get('slice_comparison') is not None and not isinstance(job['slice_comparison'], dict))
                     or (job['bundle_url'] is not None and not isinstance(job['bundle_url'], str))):
                 raise ValueError('Invalid record structure')
             if job['status'] == 'geometry_validated':
@@ -892,6 +893,21 @@ class JobStore:
                 entry['slice_changes'] = None if older is None or not entry['slice_settings'] else {
                     'compared_with': older['job_id'], 'changes': slice_changes(entry['slice_settings'], older['slice_settings'])}
             return {'schema_version': 1, 'job_id': job_id, 'attempts': entries, 'stopped': stopped}
+
+    def record_slice_comparison(self, job_id, record):
+        """Keep the latest side-by-side estimates; the current slice and its files are not touched."""
+        if not isinstance(record, dict):
+            raise ValueError('슬라이스 비교 기록 형식이 올바르지 않습니다.')
+        _json_bytes(record)
+        with self.lock:
+            job = self._read(job_id)
+            if job['status'] != 'geometry_validated':
+                raise ValueError('형상 검증이 완료된 모델이 필요합니다.')
+            job['slice_comparison'] = copy.deepcopy(record)
+            job['events'].append({'at': now_iso(), 'type': 'slice_comparison',
+                                  'message': ', '.join(f"{row['id']}:{row['status']}" for row in record.get('variants', []))})
+            self._write(job)
+            return self._public(job)
 
     def sliced_for_printing(self, job_id):
         """The verified bytes of this job's current successful slice, for sending to a printer."""

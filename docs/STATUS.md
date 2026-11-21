@@ -2,9 +2,11 @@
 
 Date: 2026-11-21 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.33 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.34 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.34 compares four process variants of the supplied settings: current, fine, fast and strong. Each variant is a real slice through the normal preparation, and only the slicer's estimates are kept; the current slice is left unchanged. A chosen variant is applied to the settings JSON for a normal review. The native workflow now slices all four variants ([slice comparison](SLICE_COMPARE.md)).
 
 Version 0.33 turns a chosen placement of an imported model into a job. That job uses the existing slicing, print-volume review, LAN sending, outcomes and history ([model import](MODEL_IMPORT.md)). The dimension panel and model edits do not apply to it. Two placements were sliced locally with Bambu Studio 02.09.01.70 on synthetic settings; physical prints are not verified. Published as [v0.33.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.33.0) on 2026-11-21 from `4b5bcea`.
 

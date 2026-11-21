@@ -269,6 +269,8 @@
     $("outcome-card").hidden = true;
     $("download-links").replaceChildren();
     $("slice-result").replaceChildren();
+    $("slice-compare").hidden = true;
+    $("slice-compare").replaceChildren();
     setBadge("preview-status", "새 제작안 · 생성 전");
     $("preview-caption").textContent = "변경한 제작안은 아직 모델에 반영되지 않았습니다.";
     $("preview-empty").querySelector("h3").textContent = "새 제작안으로 다시 만들어 주세요";
@@ -1641,6 +1643,7 @@
     state.modelCleanSignature = modelDraftSignature();
     hideNotice("outcome-feedback");
     $("slice-result").replaceChildren();
+    renderSliceComparison(job.slice_comparison);
     showNotice("slice-feedback", state.environment.available ? "전체 설정을 제공하고 실행 계획을 먼저 검토해 주세요." : "Bambu Studio를 사용할 수 없어 현재 환경에서는 슬라이싱을 실행할 수 없습니다.");
     if (job.latest_slice?.phase === "running") showNotice("slice-feedback", "이 기록의 슬라이싱 요청은 실행 중으로 저장되어 있습니다. 완료 여부는 작업 기록에서 다시 열어 확인해 주세요. 이전 슬라이스 파일을 현재 결과로 제공하지 않습니다.", "info");
     else if (job.latest_slice?.phase === "interrupted") showNotice("slice-feedback", "이전 슬라이싱은 완료 결과를 저장하기 전에 중단되었습니다. 설정을 다시 검토한 뒤 실행해 주세요. CAD 모델은 유지되며 이전 슬라이스 파일은 현재 결과로 제공하지 않습니다.", "warning");
@@ -2291,6 +2294,7 @@
     const canPrepare = Boolean(state.token && state.job && state.environment.available && state.environment.cli_supported !== false && !busy && !state.slicerStaged && !reading);
     if (!$("prepare-slice").dataset.busy) $("prepare-slice").disabled = !canPrepare;
     if (!$("execute-slice").dataset.busy) $("execute-slice").disabled = !canPrepare || !state.slicePrepared;
+    if (!$("compare-slices").dataset.busy) $("compare-slices").disabled = !canPrepare || !$("slicer-json").value.trim();
     $("probe-slicer").disabled = busy || !state.token || !state.environment.available;
     $("assemble-slicer").disabled = busy || reading || !state.slicerStaged;
     $("cancel-slicer-assembly").disabled = busy || (!reading && !state.slicerStaged);
@@ -2465,6 +2469,81 @@
     }
     finally { updateSliceControls(); }
   }
+  function renderSliceComparison(record) {
+    const area = $("slice-compare");
+    const rows = Array.isArray(record?.variants) ? record.variants : [];
+    if (!rows.length) { area.hidden = true; area.replaceChildren(); return; }
+    const base = rows.find((row) => row.id === "original" && Number.isFinite(row.minutes));
+    const change = (value, reference, unit) => (Number.isFinite(value) && Number.isFinite(reference) && reference && value !== reference)
+      ? ` (${value > reference ? "+" : ""}${Math.round((value - reference) / reference * 100)}%)` : "";
+    const table = node("table", "");
+    const head = node("tr", "");
+    for (const title of ["설정", "예상 시간", "재료", "레이어", "서포트", ""]) head.append(node("th", "", title));
+    table.append(head);
+    for (const row of rows) {
+      const line = node("tr", "");
+      line.dataset.compareVariant = row.id;
+      const name = node("td", "");
+      const changed = Object.entries(row.overrides || {}).map(([key, value]) => `${({ layer_height: "레이어", sparse_infill_density: "채움", wall_loops: "벽", top_shell_layers: "윗면 층", bottom_shell_layers: "바닥 층" })[key] || key} ${value}`).join(" · ");
+      name.append(node("strong", "", row.label), node("small", "", changed || row.description));
+      line.append(name);
+      if (row.status === "sliced") {
+        line.append(node("td", "number", `${numberFormat.format(row.minutes)}분${change(row.minutes, base?.minutes)}`),
+          node("td", "number", `${numberFormat.format(row.grams)} g${change(row.grams, base?.grams)}`),
+          node("td", "number", row.layers ? numberFormat.format(row.layers) : "–"), node("td", "", row.support ? "있음" : "없음"));
+        const cell = node("td", "");
+        if (row.id !== "original") {
+          const apply = node("button", "text-button", "이 설정 적용");
+          apply.type = "button";
+          apply.addEventListener("click", () => applySliceVariant(row));
+          cell.append(apply);
+        }
+        line.append(cell);
+      } else {
+        const failed = node("td", "", `슬라이스하지 못함 · ${(row.diagnostics || [])[0] || row.status}`);
+        failed.colSpan = 5;
+        line.append(failed);
+      }
+      table.append(line);
+    }
+    area.replaceChildren(table, node("p", "field-help", record.scope || ""));
+    area.hidden = false;
+  }
+
+  function applySliceVariant(row) {
+    // Change only the listed process keys in the reviewed JSON; the person reviews and slices it as usual.
+    let bundle;
+    try { bundle = parseObject($("slicer-json").value, "슬라이서 전체 설정"); } catch (error) { showNotice("slice-feedback", error.message, "error"); return; }
+    if (!bundle.process || typeof bundle.process !== "object") { showNotice("slice-feedback", "설정 JSON에 process가 없습니다.", "error"); return; }
+    for (const [key, value] of Object.entries(row.overrides || {})) {
+      const current = bundle.process[key];
+      bundle.process[key] = Array.isArray(current) && current.length ? current.map(() => value) : value;
+    }
+    $("slicer-json").value = JSON.stringify(bundle, null, 2);
+    $("slicer-json").dispatchEvent(new Event("input", { bubbles: true }));
+    resetSlicePreparation(`“${row.label}” 설정을 설정 JSON에 넣었습니다. 바뀐 값: ${Object.entries(row.overrides || {}).map(([key, value]) => `${key}=${value}`).join(", ")}. 실행 계획을 다시 검토한 뒤 슬라이싱하세요.`);
+    updateSliceControls();
+  }
+
+  async function compareSlices() {
+    const button = $("compare-slices");
+    try {
+      if (state.slicerStaged || Object.keys(state.slicerPending).length) throw new Error("설정 파일을 선택 중입니다. 묶음을 만든 뒤 비교해 주세요.");
+      await withWorkflow(button, "4가지 슬라이스 중", async () => {
+        const jobId = state.job?.id;
+        if (!jobId) throw new Error("먼저 모델을 준비해 주세요.");
+        const bundle = parseObject($("slicer-json").value, "슬라이서 전체 설정");
+        const job = await api("/api/slice/compare", { job_id: jobId, config_bundle: bundle });
+        if (state.job?.id !== jobId) return;
+        state.job = { ...state.job, slice_comparison: job.slice_comparison };
+        renderSliceComparison(job.slice_comparison);
+      });
+    } catch (error) {
+      showNotice("slice-feedback", error.message, "error");
+    } finally { updateSliceControls(); }
+  }
+  $("compare-slices").addEventListener("click", compareSlices);
+
   $("prepare-slice").addEventListener("click", () => runSlice(false));
   $("execute-slice").addEventListener("click", () => runSlice(true));
 

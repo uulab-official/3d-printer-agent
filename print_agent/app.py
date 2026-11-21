@@ -8,6 +8,7 @@ import logging
 import secrets
 import sqlite3
 import threading
+import shutil
 import uuid
 from pathlib import Path
 from typing import Annotated, Literal
@@ -42,7 +43,8 @@ from .profiles import evaluate_profile, review_calibrations
 from .runtime import DataDirectoryLease, require_compatible_data, resolve_data_directory
 from .schemas import GeometryRequest
 from .slicer import detect_environment, execute_slice, prepare_slice, prepare_project_slice, probe_environment
-from .storage import ArtifactIntegrityError, JobRecordError, JobStore
+from .storage import ArtifactIntegrityError, JobRecordError, JobStore, now_iso
+from . import slice_compare
 from .studio_project import MAX_ARCHIVE_BYTES, MAX_IMPORT_REQUEST_BYTES
 from .studio_revisions import StudioSettingsRevisionStore, StudioRevisionIntegrityError
 from .studio_settings import settings_editor, derive_settings
@@ -92,7 +94,7 @@ class LocalSessionMiddleware:
             # Full native configs and retained original/draft collections need
             # the same bounded import budget. Individual validators still apply.
             path = scope['path']
-            large_import = (path in ('/api/slice', '/api/profiles/resolve', '/api/profiles/import-archive', '/api/profile-workspaces')
+            large_import = (path in ('/api/slice', '/api/slice/compare', '/api/profiles/resolve', '/api/profiles/import-archive', '/api/profile-workspaces')
                             or path.startswith('/api/profile-workspaces/'))
             max_body = (MAX_IMPORT_REQUEST_BYTES if path == '/api/studio-projects/import'
                         else MAX_MODEL_REQUEST_BYTES if path == '/api/imports'
@@ -245,6 +247,13 @@ class SlicePayload(StrictPayload):
 class ModelImportPayload(StrictPayload):
     filename: str = Field(min_length=1, max_length=120)
     content_base64: str = Field(min_length=1, max_length=4 * ((MAX_MODEL_BYTES + 2) // 3))
+
+
+class SliceComparePayload(StrictPayload):
+    job_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    config_bundle: dict
+    variants: list[Literal['original', 'fine', 'fast', 'strong']] = Field(
+        default_factory=lambda: ['original', 'fine', 'fast', 'strong'], min_length=1, max_length=4)
 
 
 class ImportJobPayload(StrictPayload):
@@ -816,6 +825,46 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.get('/api/studio-settings-revisions/{revision_id}')
     def get_studio_settings_revision(revision_id: str):
         return studio_revisions.get(revision_id)
+
+    @app.post('/api/slice/compare')
+    def compare_slices(payload: SliceComparePayload):
+        """Slice the current model with a few process settings changed and keep only the estimates."""
+        job = store.get(payload.job_id)
+        if job['status'] != 'geometry_validated':
+            raise ValueError('형상 검증이 완료된 모델이 필요합니다.')
+        variants = list(dict.fromkeys(payload.variants))
+        # Every variant is derived (and rejected) before the slicer is reserved.
+        bundles = {variant: slice_compare.variant_bundle(payload.config_bundle, variant) for variant in variants}
+        if not SLICER_LOCK.acquire(blocking=False):
+            return resource_busy()
+        work = store.directory(payload.job_id) / 'slices' / ('compare-' + uuid.uuid4().hex)
+        try:
+            input_path, input_bytes = store.read_artifact(payload.job_id, 'three_mf')
+            labels = {variant_id: (label, description) for variant_id, label, description in slice_compare.VARIANTS}
+            rows = []
+            for variant in variants:
+                plan = prepare_slice(input_path, work / variant, bundles[variant], input_bytes=input_bytes, require_volume_review=True)
+                row = {'id': variant, 'label': labels[variant][0], 'description': labels[variant][1],
+                       'overrides': slice_compare.overrides(payload.config_bundle, variant), 'status': 'not_ready',
+                       'diagnostics': list(plan.get('diagnostics') or [])[:5]}
+                if plan.get('ready'):
+                    execution = execute_slice(plan)
+                    row['status'] = execution.get('status') or 'failed'
+                    output = Path(plan.get('output_path') or work / 'missing')
+                    if row['status'] == 'sliced' and output.is_file():
+                        row.update(slice_compare.summarize(output.read_bytes()))
+                        row['diagnostics'] = []
+                    else:
+                        row['diagnostics'] = [check.get('detail') for check in execution.get('checks', []) if not check.get('passed')][:5]
+                rows.append(row)
+            record = {'schema_version': 1, 'compared_at': now_iso(), 'source': 'config_bundle',
+                      'machine': (payload.config_bundle.get('machine') or {}).get('name'),
+                      'process': (payload.config_bundle.get('process') or {}).get('name'), 'variants': rows,
+                      'scope': '같은 모델·프린터·필라멘트 설정에서 공정 설정 몇 개만 바꿔 슬라이서가 낸 예상치입니다. 실물 출력 시간·강도·품질을 측정한 값이 아닙니다.'}
+            return store.record_slice_comparison(payload.job_id, record)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)  # only the folder this request created
+            SLICER_LOCK.release()
 
     @app.post('/api/slice')
     def slice_model(payload: SlicePayload):
