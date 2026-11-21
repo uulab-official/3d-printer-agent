@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.37.3 — 2026-11-21
+
+- **Browser tests start from empty app data.** `playwright.config.cjs` clears `qa-output/playwright/data` once per run before the test server starts (workers inherit a marker so they never clear it mid-run). Locally the folder had kept every earlier run, 3,028 jobs including interrupted ones from stopped runs, which made the connection-status check fail on one machine only. CI already started from a fresh checkout. No application behaviour changes.
+
 ## 0.37.2 — 2026-11-21
 
 - **Model file drop zone:** the 가진 모델 점검 picker is now a labelled drop area. Dragging an STL or 3MF onto it selects the file exactly as the file dialog does (nothing is read until 불러와서 점검); dropping several files asks for one. The area shows the chosen file's name and size, the badge changes to 파일 선택됨 · 점검 전, and the hidden file input stays keyboard-focusable with a visible focus ring. The browser's default "Choose File" control no longer appears.

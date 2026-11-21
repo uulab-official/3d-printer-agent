@@ -1,8 +1,18 @@
+const fs = require('node:fs');
 const path = require('node:path');
 const { defineConfig, devices } = require('@playwright/test');
 
 const root = __dirname;
 const output = path.join(root, 'qa-output', 'playwright');
+
+// Every run starts from an empty app data folder, as CI does. The config is loaded again in
+// each worker; the variable set by the first (main) load stops a worker from clearing the
+// folder while the server is already using it.
+const data = path.join(output, 'data');
+if (!process.env.PPA_BROWSER_DATA_READY) {
+  fs.rmSync(data, { recursive: true, force: true });
+  process.env.PPA_BROWSER_DATA_READY = '1';
+}
 
 module.exports = defineConfig({
   testDir: './tests/browser',
@@ -38,7 +48,7 @@ module.exports = defineConfig({
     stdout: 'pipe',
     stderr: 'pipe',
     env: {
-      PPA_DATA_DIR: path.join(output, 'data'),
+      PPA_DATA_DIR: data,
       PPA_LLM_BASE_URL: '',
       PPA_LLM_MODEL: '',
       PPA_LLM_API_KEY: '',
