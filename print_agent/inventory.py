@@ -24,6 +24,8 @@ MAX_HISTORY = 200
 MAX_DEDUCTIONS = 1000
 _MAX_FILE_BYTES = 256 * 1024
 _ID = re.compile(r'[a-f0-9]{32}')
+_SERIAL = re.compile(r'[0-9A-Z]{8,32}')
+_POSITION = re.compile(r'ams-[0-7]-[0-7]|external')
 _INTEGRITY = '필라멘트 재고 기록을 읽을 수 없습니다. 원본 파일은 보존했습니다.'
 _TEXT_FIELDS = ('created_at', 'updated_at', 'brand', 'material', 'color_name', 'location', 'notes')
 _AMOUNT_FIELDS = ('diameter_mm', 'net_weight_g', 'empty_spool_g', 'remaining_g')
@@ -80,6 +82,16 @@ def _valid_deductions(deductions):
     return isinstance(deductions, list) and all(_valid_job_entry(entry, 'grams') for entry in deductions)
 
 
+def slot_label(slot):
+    """Where a spool was recorded as loaded, in words; empty when it is not linked."""
+    if not slot:
+        return ''
+    if slot['position'] == 'external':
+        return f"{slot['serial']} · 외부 스풀"
+    _, unit, tray = slot['position'].split('-')
+    return f"{slot['serial']} · AMS {int(unit) + 1} · {int(tray) + 1}번 칸"
+
+
 class InventoryStore:
     def __init__(self, root: Path):
         self.directory = Path(root).expanduser().resolve() / 'spools'
@@ -107,6 +119,7 @@ class InventoryStore:
             raise InventoryIntegrityError(_INTEGRITY) from exc
         # Records written before deduction identities existed derive them from their history.
         spool['deductions'] = self._deductions(spool)
+        spool.setdefault('slot', None)  # records from before printer slots existed are unlinked
         return spool
 
     @staticmethod
@@ -127,6 +140,11 @@ class InventoryStore:
         if not _valid_history(spool.get('history')):
             raise ValueError('Invalid spool record')
         if 'deductions' in spool and not _valid_deductions(spool['deductions']):
+            raise ValueError('Invalid spool record')
+        slot = spool.get('slot')
+        if slot is not None and not (isinstance(slot, dict) and set(slot) == {'serial', 'position'}
+                                     and isinstance(slot['serial'], str) and _SERIAL.fullmatch(slot['serial'])
+                                     and isinstance(slot['position'], str) and _POSITION.fullmatch(slot['position'])):
             raise ValueError('Invalid spool record')
 
     @staticmethod
@@ -162,7 +180,7 @@ class InventoryStore:
         with self.lock:
             now = now_iso()
             spool = {'id': uuid.uuid4().hex, 'revision': 1, 'created_at': now, 'updated_at': now,
-                     **self._fields(values), 'deductions': [],
+                     **self._fields(values), 'slot': None, 'deductions': [],
                      'history': [{'at': now, 'kind': 'created', 'remaining_g': _round(values['remaining_g'])}]}
             spool['status'] = _weight_status(spool)
             self._write(spool)
@@ -216,6 +234,62 @@ class InventoryStore:
         self._write(spool)
         return spool
 
+    def link(self, spool_id, expected_revision, serial=None, position=None):
+        """Record which printer slot holds this spool, as the person says; ``None`` removes the link.
+
+        One spool per printer slot: a spool previously recorded in the same slot is unlinked.
+        Nothing is read from the printer here; the reported slot material stays a separate fact.
+        """
+        if (serial is None) != (position is None):
+            raise ValueError('프린터 시리얼과 칸을 함께 고르세요.')
+        if serial is not None:
+            serial = serial.strip().upper()
+            if _SERIAL.fullmatch(serial) is None or _POSITION.fullmatch(position) is None:
+                raise ValueError('프린터 시리얼이나 칸 위치가 올바르지 않습니다.')
+        with self.lock:
+            spool = self._read(spool_id)
+            self._check_revision(spool, expected_revision)
+            target = {'serial': serial, 'position': position} if serial is not None else None
+            if target and spool['status'] == 'empty':
+                raise ValueError('다 쓴 스풀은 프린터 칸에 연결할 수 없습니다. 남은 양을 먼저 고쳐 주세요.')
+            if target == spool.get('slot'):
+                return spool
+            displaced = []
+            if target:
+                for path in sorted(self.directory.glob('*.json')):
+                    if path.stem == spool_id:
+                        continue
+                    try:
+                        other = self._read(path.stem)
+                    except (InventoryIntegrityError, ValueError, KeyError):
+                        continue
+                    if other.get('slot') == target:
+                        displaced.append(other)
+            now = now_iso()
+            for other in displaced:
+                self._unlink(other, now, 'replaced')
+            if target:
+                spool['slot'] = target
+                if spool['status'] in ('sealed', 'opened', 'drying'):
+                    spool['status'] = 'loaded'
+                entry = {'at': now, 'kind': 'linked', 'serial': serial, 'position': position, 'remaining_g': spool['remaining_g']}
+                spool['revision'] += 1
+                spool['updated_at'] = now
+                spool['history'] = (spool['history'] + [entry])[-MAX_HISTORY:]
+                self._write(spool)
+                return spool
+            return self._unlink(spool, now, 'removed')
+
+    def _unlink(self, spool, now, reason):
+        spool['slot'] = None
+        if spool['status'] == 'loaded':
+            spool['status'] = 'opened' if spool['remaining_g'] > 0 else 'empty'
+        spool['revision'] += 1
+        spool['updated_at'] = now
+        spool['history'] = (spool['history'] + [{'at': now, 'kind': 'unlinked', 'reason': reason, 'remaining_g': spool['remaining_g']}])[-MAX_HISTORY:]
+        self._write(spool)
+        return spool
+
     def delete(self, spool_id, expected_revision):
         with self.lock:
             spool = self._read(spool_id)
@@ -246,11 +320,11 @@ class InventoryStore:
     def csv(self):
         stream = io.StringIO()
         writer = csv.writer(stream)
-        writer.writerow(['브랜드', '재료', '색', '색 코드', '지름(mm)', '새 스풀 필라멘트(g)', '빈 스풀(g)', '남은 양(g)', '상태', '보관 위치', '가격(원)', '메모', '마지막 변경'])
+        writer.writerow(['브랜드', '재료', '색', '색 코드', '지름(mm)', '새 스풀 필라멘트(g)', '빈 스풀(g)', '남은 양(g)', '상태', '보관 위치', '가격(원)', '메모', '마지막 변경', '프린터 칸'])
         for item in self.list()['spools']:
             row = [item['brand'], item['material'], item['color_name'], item['color_hex'] or '', item['diameter_mm'], item['net_weight_g'],
                    item['empty_spool_g'], item['remaining_g'], STATUSES.get(item['status'], item['status']), item['location'],
-                   item['price_krw'] if item.get('price_krw') is not None else '', item['notes'], item['updated_at']]
+                   item['price_krw'] if item.get('price_krw') is not None else '', item['notes'], item['updated_at'], slot_label(item.get('slot'))]
             # A spreadsheet must not run a cell as a formula.
             writer.writerow([("'" + value) if isinstance(value, str) and value[:1] in '=+-@\t\r' else value for value in row])
         return '﻿' + stream.getvalue()

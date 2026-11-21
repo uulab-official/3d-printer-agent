@@ -290,6 +290,11 @@ class SpoolUsePayload(SpoolRevisionPayload):
     job_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
 
 
+class SpoolSlotPayload(SpoolRevisionPayload):
+    serial: str | None = Field(default=None, pattern=r'^[0-9A-Za-z]{8,32}$')
+    position: str | None = Field(default=None, pattern=r'^(?:ams-[0-7]-[0-7]|external)$')
+
+
 class ImportJobPayload(StrictPayload):
     orientation: int = Field(ge=0, le=64, strict=True)
 
@@ -818,6 +823,10 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         if payload.job_id is not None:
             store.get(payload.job_id)  # an unknown job is refused before the spool changes
         return inventory.use(spool_id, payload.expected_revision, payload.grams, payload.job_id)
+
+    @app.post('/api/spools/{spool_id}/slot')
+    def link_spool(spool_id: str, payload: SpoolSlotPayload):
+        return inventory.link(spool_id, payload.expected_revision, payload.serial, payload.position)
 
     @app.delete('/api/spools/{spool_id}', status_code=204)
     def delete_spool(spool_id: str, payload: SpoolRevisionPayload):

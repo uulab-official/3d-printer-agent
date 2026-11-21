@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -165,6 +166,80 @@ class InventoryApiTests(unittest.TestCase):
         weighed = self.post(f'/api/spools/{spool["id"]}/weigh', {'expected_revision': 2, 'gross_g': 1200})
         self.assertEqual([entry['job_id'] for entry in weighed['deductions']], [job['id']])
         self.assertEqual([entry['job_id'] for entry in json.loads(path.read_text(encoding='utf-8'))['deductions']], [job['id']])
+
+
+class SpoolSlotTests(unittest.TestCase):
+    SERIAL = '01S00TEST000001'
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.client = TestClient(create_app(self.root, test_mode=True))
+        self.headers = {'X-Session-Token': self.client.get('/api/bootstrap').json()['session_token']}
+
+    def tearDown(self):
+        self.client.close()
+        self.temporary.cleanup()
+
+    def link(self, spool, serial, position, expected=200):
+        response = self.client.post(f'/api/spools/{spool["id"]}/slot', headers=self.headers,
+                                    json={'expected_revision': spool['revision'], 'serial': serial, 'position': position})
+        self.assertEqual(response.status_code, expected, response.text)
+        return response.json()
+
+    def create(self, **change):
+        response = self.client.post('/api/spools', headers=self.headers, json={**SPOOL, **change})
+        self.assertEqual(response.status_code, 201, response.text)
+        return response.json()
+
+    def test_one_spool_per_slot_and_unlinking_restores_opened(self):
+        first = self.create()
+        self.assertIsNone(first['slot'])
+        first = self.link(first, self.SERIAL.lower(), 'ams-0-1')
+        self.assertEqual((first['slot'], first['status'], first['revision']), ({'serial': self.SERIAL, 'position': 'ams-0-1'}, 'loaded', 2))
+        self.assertEqual(first['history'][-1]['kind'], 'linked')
+        self.assertEqual(self.link(first, self.SERIAL, 'ams-0-1')['revision'], 2, 'the same link changes nothing')
+        second = self.link(self.create(material='PETG'), self.SERIAL, 'ams-0-1')
+        self.assertEqual(second['slot']['position'], 'ams-0-1')
+        listed = {item['id']: item for item in self.client.get('/api/spools').json()['spools']}
+        self.assertIsNone(listed[first['id']]['slot'], 'the earlier spool in that slot is unlinked')
+        self.assertEqual(listed[first['id']]['status'], 'opened')
+        self.assertEqual(listed[first['id']]['history'][-1], {**listed[first['id']]['history'][-1], 'kind': 'unlinked', 'reason': 'replaced'})
+        external = self.link(listed[first['id']], self.SERIAL, 'external')
+        self.assertEqual(external['slot']['position'], 'external')
+        other_printer = self.link(self.create(color_name='빨강'), '01S00TEST000002', 'ams-0-1')
+        self.assertEqual(other_printer['slot']['serial'], '01S00TEST000002', 'the same slot on another printer is a different slot')
+        self.assertEqual(self.client.get(f'/api/spools').json()['totals']['spools'], 3)
+        unlinked = self.link(second, None, None)
+        self.assertEqual((unlinked['slot'], unlinked['status']), (None, 'opened'))
+        rows = list(csv.reader(io.StringIO(self.client.get('/api/spools.csv').content.decode('utf-8-sig'))))
+        self.assertEqual(rows[0][-1], '프린터 칸')
+        self.assertIn(f'{self.SERIAL} · 외부 스풀', [row[-1] for row in rows[1:]])
+        self.assertIn('01S00TEST000002 · AMS 1 · 2번 칸', [row[-1] for row in rows[1:]])
+
+    def test_invalid_links_and_stale_pages_are_refused(self):
+        spool = self.create()
+        for serial, position in (('short', 'ams-0-0'), (self.SERIAL, 'ams-8-0'), (self.SERIAL, 'slot-1'), (self.SERIAL, None), (None, 'ams-0-0')):
+            with self.subTest(serial=serial, position=position):
+                self.link(spool, serial, position, 422)
+        self.link(spool, self.SERIAL, 'ams-0-0')
+        stale = self.link(spool, self.SERIAL, 'ams-0-1', 409)
+        self.assertEqual(stale['current']['slot']['position'], 'ams-0-0')
+        empty = self.create(remaining_g=0)
+        self.assertEqual(empty['status'], 'empty')
+        self.link(empty, self.SERIAL, 'ams-0-2', 422)
+
+    def test_older_records_read_unlinked_and_damaged_links_are_unreadable(self):
+        spool = self.create()
+        path = self.root / 'spools' / f'{spool["id"]}.json'
+        record = json.loads(path.read_text(encoding='utf-8'))
+        record.pop('slot')
+        path.write_text(json.dumps(record), encoding='utf-8')
+        self.assertIsNone(self.client.get('/api/spools').json()['spools'][0]['slot'])
+        record['slot'] = {'serial': self.SERIAL, 'position': 'ams-9-9'}
+        path.write_text(json.dumps(record), encoding='utf-8')
+        listed = self.client.get('/api/spools').json()
+        self.assertEqual((listed['spools'], listed['unreadable']), ([], 1))
 
 
 class SliceEstimateTests(unittest.TestCase):

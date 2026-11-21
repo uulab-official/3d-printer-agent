@@ -3947,6 +3947,7 @@
   }
 
   function renderPrinterStatus(result) {
+    state.printerSlotView = null;
     const connection = result?.connection || {};
     const area = $("printer-result");
     area.replaceChildren();
@@ -3997,7 +3998,7 @@
     if (slots.length) {
       const list = node("ul", "printer-slots");
       for (const slot of slots) {
-        const where = slot.unit === "external" ? "외부 스풀" : `AMS ${Number(slot.unit) + 1} · 슬롯 ${Number(slot.slot) + 1}`;
+        const where = slot.unit === "external" ? "외부 스풀" : `AMS ${Number(slot.unit) + 1} · ${Number(slot.slot) + 1}번 칸`;
         const item = node("li", "");
         if (slot.color) {
           const swatch = node("span", "printer-swatch");
@@ -4010,7 +4011,12 @@
         list.append(item);
       }
       area.append(node("p", "field-help", "프린터에 등록된 재료 정보(사용자가 설정한 값일 수 있음):"), list);
+      const links = node("div", "printer-slot-links");
+      links.id = "printer-slot-links";
+      area.append(links);
     }
+    state.printerSlotView = slots.length && result.target?.serial ? { serial: String(result.target.serial).toUpperCase(), slots } : null;
+    renderPrinterSlotLinks();
     area.append(node("p", "field-help", `확인 시각 ${dateTime(result.observed_at)} · ${result.scope || ""}`));
     area.hidden = false;
   }
@@ -4427,10 +4433,13 @@
         select.append(external);
       }
       if (previous && previous[index] !== undefined) select.value = String(previous[index]);
-      label.append(select);
+      const hint = node("span", "print-send-spool");
+      hint.dataset.printSpool = String(index);
+      label.append(select, hint);
       area.append(label);
     });
     area.hidden = !filaments.length;
+    renderPrintSendSpools();
   }
 
   function renderPrintSendSummary(review) {
@@ -4546,6 +4555,7 @@
   $("print-send-start").addEventListener("click", startPrintSend);
   $("print-send-confirm").addEventListener("change", updatePrintSendControls);
   $("print-send-slots").addEventListener("change", () => {
+    renderPrintSendSpools();
     // A different slot choice needs a fresh review.
     state.printSendRequest += 1;
     if (state.printSend?.review?.review_token) { state.printSend.review = { ...state.printSend.review, review_token: null }; setBadge("print-send-badge", "다시 확인 필요"); }
@@ -5579,6 +5589,8 @@
       state.inventory = data;
       renderInventory();
       renderOutcomeSpool();
+      renderPrinterSlotLinks();
+      renderPrintSendSpools();
     } catch (error) {
       if (request === state.inventoryRequest) showNotice("inventory-feedback", error.message, "error");
     }
@@ -5624,7 +5636,16 @@
       actions.append(scale, weigh, edit, remove);
       card.append(swatch, node("strong", "", spoolLabel(spool)),
         node("span", "field-help", `${numberFormat.format(spool.remaining_g)} / ${numberFormat.format(spool.net_weight_g)} g · ${SPOOL_STATUS[spool.status] || spool.status}${spool.location ? ` · ${spool.location}` : ""}`),
-        meter, actions);
+        meter);
+      if (spool.slot) {
+        const linked = node("p", "spool-slot", `프린터 ${spool.slot.serial} · ${positionLabel(spool.slot.position)}에 넣어 둠`);
+        const unlink = node("button", "text-button", "연결 해제");
+        unlink.type = "button";
+        unlink.addEventListener("click", () => spoolAction(spool, "slot", { serial: null, position: null }));
+        linked.append(unlink);
+        card.append(linked);
+      }
+      card.append(actions);
       return card;
     }) : [node("p", "field-help", "아직 기록한 스풀이 없습니다. 아래에서 추가하세요.")]));
     $("spool-save").disabled = !state.token || Boolean(state.inventoryPending);
@@ -5685,7 +5706,8 @@
       if (action === "delete") await api(`/api/spools/${spool.id}`, { expected_revision: spool.revision }, "DELETE");
       else await api(`/api/spools/${spool.id}/${action}`, { expected_revision: spool.revision, ...values });
       if (input) input.value = "";
-      showNotice("inventory-feedback", action === "delete" ? "스풀 기록을 삭제했습니다." : "무게를 반영했습니다. 빈 스풀 무게를 뺀 값이 남은 양입니다.", "success");
+      const done = { delete: "스풀 기록을 삭제했습니다.", slot: "프린터 칸 연결을 해제했습니다.", weigh: "무게를 반영했습니다. 빈 스풀 무게를 뺀 값이 남은 양입니다." };
+      showNotice("inventory-feedback", done[action] || "저장했습니다.", "success");
     } catch (error) {
       showNotice("inventory-feedback", error.message, "error");
     } finally {
@@ -5707,7 +5729,10 @@
     const select = $("outcome-spool-select");
     const previous = select.value;
     select.replaceChildren(...spools.map((spool) => { const option = node("option", "", `${spoolLabel(spool)} · ${numberFormat.format(spool.remaining_g)} g`); option.value = spool.id; return option; }));
-    if (spools.some((spool) => spool.id === previous)) select.value = previous;
+    const sent = sentSpoolForJob(state.job.id);
+    if (spools.some((spool) => spool.id === previous) && state.outcomeSpoolJob === state.job.id) select.value = previous;
+    else if (sent && spools.includes(sent)) select.value = sent.id;
+    if (sent && !used) $("outcome-spool-help").textContent += ` 이 출력을 보낸 칸에 연결된 ${spoolLabel(sent)}을 골라 두었습니다.`;
     if (!$("outcome-spool-grams").value || state.outcomeSpoolJob !== state.job.id) $("outcome-spool-grams").value = String(grams);
     state.outcomeSpoolJob = state.job.id;
     $("outcome-spool-use").disabled = !spools.length || Boolean(used);
@@ -6024,6 +6049,127 @@
   });
   $("welcome-guide").addEventListener("click", () => changeView("guide"));
   $("welcome-dismiss").addEventListener("click", dismissWelcome);
+
+  // Spools the person placed in printer slots. The link is their record; the printer's own slot report stays a separate fact.
+
+  function slotPosition(slot) {
+    if (slot?.unit === "external") return "external";
+    return Number.isInteger(slot?.unit) && Number.isInteger(slot?.slot) && slot.unit >= 0 && slot.unit <= 7 && slot.slot >= 0 && slot.slot <= 7 ? `ams-${slot.unit}-${slot.slot}` : null;
+  }
+
+  function sendChoicePosition(value) {
+    if (value === "external") return "external";
+    return Number.isInteger(value) && value >= 0 && value < 32 ? `ams-${Math.floor(value / 4)}-${value % 4}` : null;
+  }
+
+  function positionLabel(position) {
+    if (position === "external") return "외부 스풀";
+    const match = /^ams-(\d)-(\d)$/.exec(position || "");
+    return match ? `AMS ${Number(match[1]) + 1} · ${Number(match[2]) + 1}번 칸` : "알 수 없는 칸";
+  }
+
+  function spoolInSlot(serial, position) {
+    if (!serial || !position) return null;
+    const key = String(serial).toUpperCase();
+    return (state.inventory?.spools || []).find((spool) => spool.slot?.serial === key && spool.slot.position === position) || null;
+  }
+
+  function materialBase(value) {
+    return String(value || "").trim().toUpperCase().split(/[\s-]/)[0];
+  }
+
+  function renderPrinterSlotLinks() {
+    const area = $("printer-slot-links");
+    const view = state.printerSlotView;
+    if (!area || !view) return;
+    if (!state.inventory) {
+      area.replaceChildren(node("p", "field-help", "재고 스풀 목록을 불러오는 중입니다."));
+      if (!state.inventoryRequest) loadInventory();
+      return;
+    }
+    const choices = (state.inventory.spools || []).filter((spool) => spool.status !== "empty");
+    const rows = view.slots.map((slot) => {
+      const position = slotPosition(slot);
+      if (!position) return null;
+      const linked = spoolInSlot(view.serial, position);
+      const row = node("div", "printer-slot-link");
+      row.dataset.position = position;
+      const select = node("select", "");
+      select.dataset.slotLink = position;
+      select.setAttribute("aria-label", `${positionLabel(position)}에 넣은 재고 스풀`);
+      const none = node("option", "", "연결 안 함");
+      none.value = "";
+      select.append(none, ...choices.map((spool) => {
+        const option = node("option", "", `${spoolLabel(spool)} · ${numberFormat.format(spool.remaining_g)} g`);
+        option.value = spool.id;
+        return option;
+      }));
+      select.value = linked && choices.includes(linked) ? linked.id : "";
+      select.disabled = Boolean(state.slotLinkPending);
+      row.append(node("span", "printer-slot-name", positionLabel(position)), select);
+      const reported = slot.material || "";
+      if (linked && reported && materialBase(linked.material) !== materialBase(reported)) {
+        row.append(node("span", "printer-slot-warning", `재고 기록은 ${linked.material}, 프린터 보고는 ${reported}입니다. 실제로 넣은 스풀을 확인하세요.`));
+      }
+      return row;
+    }).filter(Boolean);
+    area.replaceChildren(node("p", "field-help", choices.length
+      ? "칸마다 실제로 넣은 재고 스풀을 고르면 기억해 두고, 보내기 확인과 재고 빼기에서 씁니다. 프린터가 보고한 값을 바꾸지는 않습니다."
+      : "재고 화면에 스풀을 추가하면 칸마다 넣은 스풀을 연결할 수 있습니다."), ...rows);
+  }
+
+  async function linkSpoolToSlot(position, spoolId) {
+    const view = state.printerSlotView;
+    if (!view || state.slotLinkPending) return;
+    const current = spoolInSlot(view.serial, position);
+    const chosen = (state.inventory?.spools || []).find((spool) => spool.id === spoolId) || null;
+    if (current?.id === chosen?.id) return;
+    state.slotLinkPending = true;
+    renderPrinterSlotLinks();
+    try {
+      if (chosen) await api(`/api/spools/${chosen.id}/slot`, { expected_revision: chosen.revision, serial: view.serial, position });
+      else if (current) await api(`/api/spools/${current.id}/slot`, { expected_revision: current.revision, serial: null, position: null });
+      showNotice("printer-feedback", chosen ? `${positionLabel(position)}에 ${spoolLabel(chosen)}을 연결했습니다.` : `${positionLabel(position)}의 스풀 연결을 해제했습니다.`, "success");
+    } catch (error) {
+      showNotice("printer-feedback", error.message, "error");
+    } finally {
+      state.slotLinkPending = false;
+      await loadInventory();
+    }
+  }
+
+  function renderPrintSendSpools() {
+    const review = state.printSend?.review;
+    const filaments = review?.summary?.filaments || [];
+    const serial = currentPrinterTarget().serial;
+    const choice = printSendSlotChoice() || [];
+    for (const hint of document.querySelectorAll("[data-print-spool]")) {
+      const index = Number(hint.dataset.printSpool);
+      const position = sendChoicePosition(choice[index]);
+      const spool = position ? spoolInSlot(serial, position) : null;
+      const needed = filaments[index]?.used_g;
+      hint.classList.toggle("is-warning", Boolean(spool && Number.isFinite(needed) && spool.remaining_g < needed));
+      if (!position) hint.textContent = "";
+      else if (!spool) hint.textContent = "이 칸에 연결한 재고 스풀이 없습니다.";
+      else if (Number.isFinite(needed) && spool.remaining_g < needed) hint.textContent = `${spoolLabel(spool)}: 기록상 ${numberFormat.format(spool.remaining_g)} g 남아 예상 사용량 ${numberFormat.format(needed)} g보다 적습니다.`;
+      else hint.textContent = `${spoolLabel(spool)} · 기록상 ${numberFormat.format(spool.remaining_g)} g 남음`;
+    }
+  }
+
+  function sentSpoolForJob(jobId) {
+    if (!jobId || state.printSend?.jobId !== jobId) return null;
+    const choice = printSendSlotChoice() || [];
+    for (const value of choice) {
+      const spool = spoolInSlot(currentPrinterTarget().serial, sendChoicePosition(value));
+      if (spool && spool.status !== "empty") return spool;
+    }
+    return null;
+  }
+
+  document.addEventListener("change", (event) => {
+    const select = event.target.closest?.("[data-slot-link]");
+    if (select) linkSpoolToSlot(select.dataset.slotLink, select.value);
+  });
 
   async function bootstrap() {
     const request = ++state.bootstrapRequest;
