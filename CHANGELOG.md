@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.37.2 — 2026-11-21
+
+- **Model file drop zone:** the 가진 모델 점검 picker is now a labelled drop area. Dragging an STL or 3MF onto it selects the file exactly as the file dialog does (nothing is read until 불러와서 점검); dropping several files asks for one. The area shows the chosen file's name and size, the badge changes to 파일 선택됨 · 점검 전, and the hidden file input stays keyboard-focusable with a visible focus ring. The browser's default "Choose File" control no longer appears.
+
 ## 0.37.1 — 2026-11-21
 
 - **Spool colour:** a common colour name (흰색, 빨간색, Blue, …) fills the spool's colour picker with the matching palette colour until the person picks a colour themselves. Previously every new spool was recorded as near-black unless the picker was changed.

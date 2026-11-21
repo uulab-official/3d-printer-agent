@@ -25,7 +25,7 @@ MAX_ENTRIES = 4096
 MAX_SETTINGS_BYTES = MAX_MODEL_XML_BYTES = 2 * 1024 * 1024
 MAX_IMPORT_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_SETTINGS_DEPTH = 32
-MODIFIER = '3D Printer Agent 0.37.1'
+MODIFIER = '3D Printer Agent 0.37.2'
 CORE = 'http://schemas.microsoft.com/3dmanufacturing/core/2015/02'
 SETTINGS_PATH = 'Metadata/project_settings.config'
 MODEL_PATH = '3D/3dmodel.model'

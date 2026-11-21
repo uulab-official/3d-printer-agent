@@ -514,7 +514,7 @@
         <section class="card" aria-labelledby="import-file-heading">
           <div class="card-heading"><div><span class="step-label">01 · 파일</span><h2 id="import-file-heading" data-term="stl">모델 파일 불러오기</h2></div><span id="import-badge" class="badge badge-neutral">파일 선택 전</span></div>
           <form id="import-form" class="import-form">
-            <label for="import-file">STL 또는 3MF (32 MiB 이하)<input id="import-file" type="file" accept=".stl,.3mf"></label>
+            <label id="import-drop" class="import-drop" for="import-file"><input id="import-file" class="sr-only" type="file" accept=".stl,.3mf" aria-describedby="import-file-name"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3 M7 8l5-5 5 5 M4 15v5h16v-5"/></svg><span class="import-drop-title">STL·3MF 파일을 여기로 끌어 놓거나 눌러서 고르세요</span><span id="import-file-name" class="import-drop-file">한 번에 한 파일 · 32 MiB 이하 · 원본은 바꾸지 않습니다</span></label>
             <button id="import-submit" class="button button-primary" type="submit" disabled>불러와서 점검</button>
           </form>
           <div id="import-feedback" class="notice" role="status" hidden></div>
