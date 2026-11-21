@@ -2322,6 +2322,7 @@
       renderDownloads(state.job);
     }
     $("slice-result").replaceChildren();
+    $("outcome-spool").hidden = true;  // the deduction offer belongs to the slice result being replaced
     if (message) showNotice("slice-feedback", message);
     updateSliceControls();
   }
@@ -2465,6 +2466,7 @@
           if (!current()) return;
           state.job = full;
           renderDownloads(full);
+          renderOutcomeSpool();
         } catch { if (current()) toast("검토 결과는 받았지만 파일 목록을 새로 불러오지 못했습니다. 작업 기록에서 다시 확인해 주세요."); }
       });
     } catch (error) {
@@ -5697,7 +5699,8 @@
     if (!state.job || !Number.isFinite(grams)) { area.hidden = true; return; }
     if (!state.inventory) { area.hidden = true; if (!state.inventoryRequest) loadInventory(); return; }  // shown once the list arrives
     area.hidden = false;
-    const used = (state.inventory?.spools || []).find((spool) => (spool.history || []).some((entry) => entry.job_id === state.job.id));
+    const used = (state.inventory?.spools || []).find((spool) => [...(spool.deductions || []), ...(spool.history || [])]
+      .some((entry) => entry.job_id === state.job.id));
     $("outcome-spool-help").textContent = used ? `이 출력은 이미 ${spoolLabel(used)}에서 뺐습니다.` : `슬라이서 예상 사용량은 ${numberFormat.format(grams)} g입니다. 출력에 쓴 스풀을 고르면 남은 양에서 뺍니다.`;
     const select = $("outcome-spool-select");
     const previous = select.value;

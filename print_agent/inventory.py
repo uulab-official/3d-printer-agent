@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import re
 import threading
 import uuid
@@ -19,9 +20,13 @@ from .storage import _atomic_write, _parse_json, _read_regular, now_iso
 STATUSES = {'sealed': '미개봉', 'opened': '개봉', 'loaded': '프린터에 장착', 'drying': '건조 중', 'empty': '다 씀'}
 LOW_STOCK_G = 150
 MAX_HISTORY = 200
+# Deduction identities outlive the display history so a print is never deducted twice.
+MAX_DEDUCTIONS = 1000
 _MAX_FILE_BYTES = 256 * 1024
 _ID = re.compile(r'[a-f0-9]{32}')
 _INTEGRITY = '필라멘트 재고 기록을 읽을 수 없습니다. 원본 파일은 보존했습니다.'
+_TEXT_FIELDS = ('created_at', 'updated_at', 'brand', 'material', 'color_name', 'location', 'notes')
+_AMOUNT_FIELDS = ('diameter_mm', 'net_weight_g', 'empty_spool_g', 'remaining_g')
 
 
 class InventoryIntegrityError(ValueError):
@@ -38,6 +43,41 @@ class InventoryConflict(ValueError):
 
 def _round(value):
     return round(float(value), 1)
+
+
+def _number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _weight_status(spool):
+    """A spool with no filament left is empty, and a sealed spool that lost filament is opened."""
+    if spool['remaining_g'] == 0:
+        return 'empty'
+    if spool['status'] == 'sealed' and spool['remaining_g'] < spool['net_weight_g']:
+        return 'opened'  # filament has left the spool, so it is no longer sealed
+    return spool['status']
+
+
+def _valid_job_entry(entry, grams_key):
+    return (isinstance(entry, dict) and isinstance(entry.get('job_id'), str) and _ID.fullmatch(entry['job_id']) is not None
+            and isinstance(entry.get('at'), str) and _number(entry.get(grams_key)))
+
+
+def _valid_history(history):
+    if not isinstance(history, list):
+        return False
+    for entry in history:
+        if not isinstance(entry, dict) or not isinstance(entry.get('at'), str) or not isinstance(entry.get('kind'), str):
+            return False
+        if not _number(entry.get('remaining_g')):
+            return False
+        if 'job_id' in entry and not _valid_job_entry(entry, 'remaining_g'):
+            return False
+    return True
+
+
+def _valid_deductions(deductions):
+    return isinstance(deductions, list) and all(_valid_job_entry(entry, 'grams') for entry in deductions)
 
 
 class InventoryStore:
@@ -62,11 +102,42 @@ class InventoryStore:
             raise KeyError('스풀을 찾을 수 없습니다.')
         try:
             spool = _parse_json(_read_regular(path, _MAX_FILE_BYTES))
-            if not isinstance(spool, dict) or spool.get('id') != spool_id or type(spool.get('revision')) is not int:
-                raise ValueError('Invalid spool record')
-        except (OSError, ValueError, TypeError, RecursionError) as exc:
+            self._validate(spool, spool_id)
+        except (OSError, ValueError, TypeError, AttributeError, RecursionError) as exc:
             raise InventoryIntegrityError(_INTEGRITY) from exc
+        # Records written before deduction identities existed derive them from their history.
+        spool['deductions'] = self._deductions(spool)
         return spool
+
+    @staticmethod
+    def _validate(spool, spool_id):
+        """Every field the app reads must be present and of its type, or the record is damaged."""
+        if not isinstance(spool, dict) or spool.get('id') != spool_id or type(spool.get('revision')) is not int:
+            raise ValueError('Invalid spool record')
+        if any(not isinstance(spool.get(key), str) for key in _TEXT_FIELDS):
+            raise ValueError('Invalid spool record')
+        if any(not _number(spool.get(key)) for key in _AMOUNT_FIELDS):
+            raise ValueError('Invalid spool record')
+        if spool.get('color_hex') is not None and not isinstance(spool['color_hex'], str):
+            raise ValueError('Invalid spool record')
+        if spool.get('price_krw') is not None and type(spool['price_krw']) is not int:
+            raise ValueError('Invalid spool record')
+        if spool.get('status') not in STATUSES:
+            raise ValueError('Invalid spool record')
+        if not _valid_history(spool.get('history')):
+            raise ValueError('Invalid spool record')
+        if 'deductions' in spool and not _valid_deductions(spool['deductions']):
+            raise ValueError('Invalid spool record')
+
+    @staticmethod
+    def _deductions(spool):
+        """Job identities kept apart from the bounded history, so an evicted entry still blocks a second deduction."""
+        kept = {}
+        for entry in list(spool.get('deductions') or []) + list(spool.get('history') or []):
+            job_id = entry.get('job_id')
+            if isinstance(job_id, str):
+                kept[job_id] = {'job_id': job_id, 'at': entry.get('at', ''), 'grams': entry.get('grams')}
+        return list(kept.values())[-MAX_DEDUCTIONS:]
 
     def _write(self, spool):
         _atomic_write(self._path(spool['id']), json.dumps(spool, ensure_ascii=False, allow_nan=False).encode('utf-8'))
@@ -91,9 +162,9 @@ class InventoryStore:
         with self.lock:
             now = now_iso()
             spool = {'id': uuid.uuid4().hex, 'revision': 1, 'created_at': now, 'updated_at': now,
-                     **self._fields(values), 'history': [{'at': now, 'kind': 'created', 'remaining_g': _round(values['remaining_g'])}]}
-            if spool['remaining_g'] == 0:
-                spool['status'] = 'empty'
+                     **self._fields(values), 'deductions': [],
+                     'history': [{'at': now, 'kind': 'created', 'remaining_g': _round(values['remaining_g'])}]}
+            spool['status'] = _weight_status(spool)
             self._write(spool)
             return spool
 
@@ -103,6 +174,7 @@ class InventoryStore:
             self._check_revision(spool, expected_revision)
             before = spool['remaining_g']
             spool.update(self._fields(values))
+            spool['status'] = _weight_status(spool)  # a manual edit follows the same weight rules as a weigh-in
             spool['revision'] += 1
             spool['updated_at'] = now_iso()
             if spool['remaining_g'] != before:
@@ -124,7 +196,7 @@ class InventoryStore:
         with self.lock:
             spool = self._read(spool_id)
             self._check_revision(spool, expected_revision)
-            if job_id is not None and any(entry.get('job_id') == job_id for entry in spool['history']):
+            if job_id is not None and any(entry['job_id'] == job_id for entry in spool['deductions']):
                 raise ValueError('이 출력은 이미 이 스풀에서 뺐습니다.')
             remaining = _round(max(0.0, spool['remaining_g'] - grams))
             entry = {'kind': 'used', 'grams': _round(grams)}
@@ -135,13 +207,12 @@ class InventoryStore:
     def _change(self, spool, remaining, entry):
         now = now_iso()
         spool['remaining_g'] = remaining
-        if remaining == 0:
-            spool['status'] = 'empty'
-        elif spool['status'] == 'sealed' and remaining < spool['net_weight_g']:
-            spool['status'] = 'opened'  # filament has left the spool, so it is no longer sealed
+        spool['status'] = _weight_status(spool)
         spool['revision'] += 1
         spool['updated_at'] = now
         spool['history'] = (spool['history'] + [{'at': now, **entry, 'remaining_g': remaining}])[-MAX_HISTORY:]
+        if entry.get('job_id'):
+            spool['deductions'] = (spool['deductions'] + [{'job_id': entry['job_id'], 'at': now, 'grams': entry.get('grams')}])[-MAX_DEDUCTIONS:]
         self._write(spool)
         return spool
 

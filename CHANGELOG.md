@@ -15,7 +15,8 @@
 - **Overview and export:**
   - Totals by material, an approximate remaining value and a low-stock mark below 150 g.
   - Spreadsheet-safe CSV with a BOM and formula-looking cells prefixed with `'`.
-  - Unreadable records are preserved and counted, not repaired.
+  - Unreadable records are preserved and counted, not repaired. That includes a record that is still valid JSON but has lost a required field or holds one of the wrong type.
+- **Fix:** a spool edited by hand follows the same weight rules as a weigh-in: 0 g becomes empty and a sealed spool with less than a full spool becomes opened, while a status the person picked is kept. The deduction offer now appears right after the full-settings slicing workflow too, and goes away when a new slice replaces the result it belonged to. Which print was deducted is kept apart from the 200-entry display history, so an old deduction still blocks a second one; records written before that field existed derive it from their history.
 - **Fix:** slice results now carry the slicer's estimated time and filament weight. The values are read from the verified output's `slice_info.config`. The slice summary always showed "no information" for both because nothing filled them.
 - **Installed-package qualification:** a spool is weighed and deducted by a job on every platform, then checked after a real restart and after a backup restore. Promotion requires these checks. A local macOS run passed 406/406.
 

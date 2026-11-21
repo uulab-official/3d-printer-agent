@@ -2047,6 +2047,21 @@ const printVolumeReport = (overrides={}) => ({
     c.state.inventory.spools[0].history=[{kind:'used',job_id:'j1'}];c.renderOutcomeSpool();
     assert.match(c.$('outcome-spool-help').textContent,/이미 B PLA · 검정에서 뺐습니다/);assert.equal(c.$('outcome-spool-use').disabled,true);
   });
+  await check('Both slicing workflows refresh the deduction panel, and a new slice clears it',async()=>{
+    const c=fixture();c.numberFormat=new Intl.NumberFormat('ko-KR',{maximumFractionDigits:2});
+    const spool={id:'a',revision:1,brand:'B',material:'PLA',color_name:'검정',color_hex:'#232323',net_weight_g:1000,empty_spool_g:250,remaining_g:800,status:'opened',location:'서랍',history:[],deductions:[]};
+    c.state.inventory={spools:[spool],totals:{spools:1,remaining_g:800,by_material:{PLA:800},low_stock_ids:[]},unreadable:0,scope:'s'};
+    c.state.job={...job(),latest_slice:null};c.$('slicer-json').value='{"machine":{},"process":{},"filaments":[]}';
+    c.api=async(path)=>path==='/api/slice'?{plan:{ready:true,diagnostics:[]},execution:{status:'sliced'}}
+      :{...job(),latest_slice:{phase:'complete',execution:{status:'sliced',filament_grams:12.5}}};
+    c.$('outcome-spool').hidden=true;
+    await c.runSlice(true);
+    assert.equal(c.$('outcome-spool').hidden,false,'the full-settings workflow offers the deduction');
+    assert.equal(c.$('outcome-spool-select').children.length,1);assert.equal(c.$('outcome-spool-grams').value,'12.5');
+    spool.deductions=[{job_id:'job-a',at:'2026-11-21T00:00:00Z',grams:12.5}];c.renderOutcomeSpool();
+    assert.match(c.$('outcome-spool-help').textContent,/이미/);assert.equal(c.$('outcome-spool-use').disabled,true);
+    c.resetSlicePreparation('다시 슬라이싱합니다.');assert.equal(c.$('outcome-spool').hidden,true,'a replaced slice takes its offer with it');
+  });
   await check('Slice comparison shows estimates against the current settings and applies only the listed keys',()=>{
     const c=fixture();c.numberFormat=new Intl.NumberFormat('ko-KR',{maximumFractionDigits:2});
     c.state.job={id:'j1'};
