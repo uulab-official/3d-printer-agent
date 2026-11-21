@@ -5665,6 +5665,7 @@
     for (const [id, key] of [["spool-brand", "brand"], ["spool-material", "material"], ["spool-color-name", "color_name"], ["spool-net", "net_weight_g"],
       ["spool-empty", "empty_spool_g"], ["spool-remaining", "remaining_g"], ["spool-status", "status"], ["spool-location", "location"], ["spool-notes", "notes"]]) $(id).value = spool[key] ?? "";
     $("spool-color-hex").value = spool.color_hex || "#232323";
+    state.spoolColorTouched = true;  // an edited spool keeps its recorded colour
     $("spool-price").value = spool.price_krw ?? "";
     $("inventory-form-heading").textContent = "스풀 수정";
     $("spool-save").textContent = "수정 저장";
@@ -5672,8 +5673,21 @@
     $("inventory-form").scrollIntoView?.({ block: "center" });
   }
 
+  // A common colour name fills the swatch until the person picks a colour themselves.
+  function suggestSpoolColor() {
+    if (state.spoolColorTouched) return;
+    const words = { white: ["흰", "하양", "하얀", "화이트", "white"], black: ["검정", "검은", "블랙", "black"], gray: ["회색", "그레이", "gray", "grey"],
+      red: ["빨강", "빨간", "레드", "red"], orange: ["주황", "오렌지", "orange"], yellow: ["노랑", "노란", "옐로", "yellow"],
+      green: ["초록", "녹색", "그린", "green"], blue: ["파랑", "파란", "블루", "blue"], purple: ["보라", "퍼플", "purple"],
+      pink: ["분홍", "핑크", "pink"], brown: ["갈색", "브라운", "brown"] };
+    const name = $("spool-color-name").value.trim().toLowerCase();
+    const key = name && Object.keys(words).find((color) => words[color].some((word) => name.startsWith(word)));
+    if (key && PALETTE[key]) $("spool-color-hex").value = PALETTE[key][1].toLowerCase();
+  }
+
   function resetSpoolForm() {
     state.inventoryEditing = null;
+    state.spoolColorTouched = false;
     $("inventory-form").reset();
     $("inventory-form-heading").textContent = "스풀 추가";
     $("spool-save").textContent = "스풀 추가";
@@ -5745,8 +5759,10 @@
     try {
       if (!spool || !state.job) throw new Error("스풀을 골라 주세요.");
       if (!(grams > 0)) throw new Error("사용량을 g로 적어 주세요.");
-      await api(`/api/spools/${spool.id}/use`, { expected_revision: spool.revision, grams, job_id: state.job.id });
-      showNotice("outcome-spool-feedback", `${spoolLabel(spool)}에서 ${numberFormat.format(grams)} g을 뺐습니다.`, "success");
+      const updated = await api(`/api/spools/${spool.id}/use`, { expected_revision: spool.revision, grams, job_id: state.job.id });
+      const left = Number.isFinite(updated?.remaining_g) ? updated.remaining_g : null;
+      const low = left !== null && left < (state.inventory?.low_stock_g ?? 150);
+      showNotice("outcome-spool-feedback", `${spoolLabel(spool)}에서 ${numberFormat.format(grams)} g을 뺐습니다.${left === null ? "" : left === 0 ? " 기록상 다 썼습니다." : ` 기록상 ${numberFormat.format(left)} g 남았습니다.`}${low && left > 0 ? " 다음 출력 전에 저울로 확인하거나 새 스풀을 준비하세요." : ""}`, low ? "warning" : "success");
     } catch (error) {
       showNotice("outcome-spool-feedback", error.message, "error");
     } finally {
@@ -5756,6 +5772,8 @@
 
   $("inventory-form").addEventListener("submit", saveSpool);
   $("spool-cancel").addEventListener("click", resetSpoolForm);
+  $("spool-color-name").addEventListener("input", suggestSpoolColor);
+  $("spool-color-hex").addEventListener("input", () => { state.spoolColorTouched = true; });
   $("spool-net").addEventListener("change", () => { if (!state.inventoryEditing) $("spool-remaining").value = $("spool-net").value; });
   $("outcome-spool-use").addEventListener("click", useSpoolForJob);
   $("import-file").addEventListener("change", updateImportControls);
@@ -6082,6 +6100,8 @@
     const area = $("printer-slot-links");
     const view = state.printerSlotView;
     if (!area || !view) return;
+    // Redrawing must not drop keyboard focus, including while the select is briefly disabled during a save.
+    const focused = document.activeElement?.dataset?.slotLink || state.slotLinkFocus;
     if (!state.inventory) {
       area.replaceChildren(node("p", "field-help", "재고 스풀 목록을 불러오는 중입니다."));
       if (!state.inventoryRequest) loadInventory();
@@ -6116,6 +6136,8 @@
     area.replaceChildren(node("p", "field-help", choices.length
       ? "칸마다 실제로 넣은 재고 스풀을 고르면 기억해 두고, 보내기 확인과 재고 빼기에서 씁니다. 프린터가 보고한 값을 바꾸지는 않습니다."
       : "재고 화면에 스풀을 추가하면 칸마다 넣은 스풀을 연결할 수 있습니다."), ...rows);
+    const target = focused ? area.querySelector(`[data-slot-link="${focused}"]`) : null;
+    if (target && !target.disabled) { target.focus(); state.slotLinkFocus = null; }
   }
 
   async function linkSpoolToSlot(position, spoolId) {
@@ -6125,6 +6147,7 @@
     const chosen = (state.inventory?.spools || []).find((spool) => spool.id === spoolId) || null;
     if (current?.id === chosen?.id) return;
     state.slotLinkPending = true;
+    state.slotLinkFocus = position;
     renderPrinterSlotLinks();
     try {
       if (chosen) await api(`/api/spools/${chosen.id}/slot`, { expected_revision: chosen.revision, serial: view.serial, position });

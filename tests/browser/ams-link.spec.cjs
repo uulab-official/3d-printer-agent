@@ -41,10 +41,12 @@ test('a reported AMS slot is linked to a spool, warns on a material mismatch and
   await expect(links.locator('[data-slot-link]')).toHaveCount(2);  // the empty slot gets no choice
 
   const linked = page.waitForResponse(r => r.url().endsWith(`/api/spools/${spool.id}/slot`));
+  await links.locator('[data-slot-link="ams-0-1"]').focus();
   await links.locator('[data-slot-link="ams-0-1"]').selectOption(spool.id);
   expect((await linked).status()).toBe(200);
   await expect(page.locator('#printer-feedback')).toContainText('AMS 1 · 2번 칸에');
   await expect(links.locator('[data-position="ams-0-1"]')).toContainText('재고 기록은 PLA, 프린터 보고는 PETG');
+  await expect(links.locator('[data-slot-link="ams-0-1"]')).toBeFocused();  // the redraw keeps keyboard focus
 
   // Moving the spool to the matching slot clears the warning and leaves one link.
   await links.locator('[data-slot-link="ams-0-0"]').selectOption(spool.id);
