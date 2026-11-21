@@ -3998,7 +3998,7 @@
     if (slots.length) {
       const list = node("ul", "printer-slots");
       for (const slot of slots) {
-        const where = slot.unit === "external" ? "외부 스풀" : `AMS ${Number(slot.unit) + 1} · 슬롯 ${Number(slot.slot) + 1}`;
+        const where = slot.unit === "external" ? "외부 스풀" : `AMS ${Number(slot.unit) + 1} · ${Number(slot.slot) + 1}번 칸`;
         const item = node("li", "");
         if (slot.color) {
           const swatch = node("span", "printer-swatch");
