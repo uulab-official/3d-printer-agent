@@ -5432,6 +5432,27 @@
   function updateImportControls() {
     const file = $("import-file").files?.[0];
     $("import-submit").disabled = !state.token || !file || Boolean(state.importPending);
+    $("import-file-name").textContent = file
+      ? `${file.name}${Number.isFinite(file.size) ? ` · ${numberFormat.format(Math.max(0.1, Math.round(file.size / 104857.6) / 10))} MiB` : ""} · “불러와서 점검”을 누르세요`
+      : "한 번에 한 파일 · 32 MiB 이하 · 원본은 바꾸지 않습니다";
+    $("import-drop").classList.toggle("has-file", Boolean(file));
+  }
+
+  // Dropping a file onto the picker selects it exactly as the file dialog would; nothing is read until "불러와서 점검".
+  function dropImportFile(event) {
+    event.preventDefault();
+    $("import-drop").classList.remove("is-dragging");
+    const files = event.dataTransfer?.files;
+    if (!files?.length || state.importPending) return;
+    if (files.length > 1) { showNotice("import-feedback", "한 번에 한 파일만 불러올 수 있습니다. 파일 하나만 끌어 놓아 주세요.", "warning"); return; }
+    try { $("import-file").files = files; } catch { showNotice("import-feedback", "끌어 놓은 파일을 고르지 못했습니다. 눌러서 파일을 골라 주세요.", "warning"); return; }
+    hideNotice("import-feedback");
+    importFileChosen();
+  }
+
+  function importFileChosen() {
+    updateImportControls();
+    if ($("import-file").files?.[0] && !state.importPending) setBadge("import-badge", "파일 선택됨 · 점검 전");
   }
 
   function placedPreview(preview, rotation) {
@@ -5776,7 +5797,10 @@
   $("spool-color-hex").addEventListener("input", () => { state.spoolColorTouched = true; });
   $("spool-net").addEventListener("change", () => { if (!state.inventoryEditing) $("spool-remaining").value = $("spool-net").value; });
   $("outcome-spool-use").addEventListener("click", useSpoolForJob);
-  $("import-file").addEventListener("change", updateImportControls);
+  $("import-file").addEventListener("change", importFileChosen);
+  $("import-drop").addEventListener("dragover", (event) => { event.preventDefault(); if (!state.importPending) $("import-drop").classList.add("is-dragging"); });
+  $("import-drop").addEventListener("dragleave", () => $("import-drop").classList.remove("is-dragging"));
+  $("import-drop").addEventListener("drop", dropImportFile);
   $("import-form").addEventListener("submit", submitImport);
 
   function renderRetainedOutcomes() {

@@ -93,3 +93,26 @@ test('a file that is not a mesh model is refused without a result', async ({ pag
   await expect(page.locator('#import-feedback')).toContainText('ZIP');
   await expect(page.locator('#import-result')).toBeHidden();
 });
+
+test('a file dropped on the picker is selected and checked like a chosen file', async ({ page }) => {
+  const menu = page.locator('#menu-toggle');
+  if (await menu.isVisible()) await menu.click();
+  await page.locator('.nav-item[data-view="imports"]').click();
+  const bytes = [...await fs.readFile(FIXTURE)];
+  const transfer = await page.evaluateHandle(data => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([new Uint8Array(data)], 'dropped-cap.stl', { type: 'model/stl' }));
+    return dt;
+  }, bytes);
+  await page.dispatchEvent('#import-drop', 'dragover', { dataTransfer: transfer });
+  await expect(page.locator('#import-drop')).toHaveClass(/is-dragging/);
+  await page.dispatchEvent('#import-drop', 'drop', { dataTransfer: transfer });
+  await expect(page.locator('#import-drop')).not.toHaveClass(/is-dragging/);
+  await expect(page.locator('#import-file-name')).toContainText('dropped-cap.stl');
+  await expect(page.locator('#import-badge')).toHaveText('파일 선택됨 · 점검 전');
+  await expect(page.locator('#import-submit')).toBeEnabled();
+  const uploaded = page.waitForResponse(r => r.url().endsWith('/api/imports') && r.request().method() === 'POST');
+  await page.locator('#import-submit').click();
+  expect((await (await uploaded).json()).filename).toBe('dropped-cap.stl');
+  await expect(page.locator('#import-badge')).toHaveText('점검 완료');
+});
