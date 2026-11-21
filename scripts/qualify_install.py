@@ -186,6 +186,10 @@ def qualify(args, report):
         token = bootstrap['session_token']
         check('bootstrap_storage_identity', bootstrap['storage']['path'] == str(data.resolve())
               and bootstrap['storage']['source'] == 'argument')
+        glossary = bootstrap.get('glossary') or {}
+        glossary_ids = {term.get('id') for term in glossary.get('terms', [])}
+        check('glossary_and_onboarding_served', len(glossary_ids) >= 30 and len(glossary.get('onboarding', [])) == 5
+              and all(set(term.get('related', [])) <= glossary_ids for term in glossary.get('terms', [])))
         for path in ('/', '/static/app.js', '/static/style.css'):
             status, content, _ = request(server.base, path)
             check('installed_http_asset_' + path, status == 200 and bool(content))

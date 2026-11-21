@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.36.0 — 2026-11-21
+
+- **용어·안내** (docs/GLOSSARY.md). A new view with:
+  - a five-step first-run guide (choose, check, settings, slice and send, record), each step opening its view;
+  - a glossary of 35 words in five categories (material, model, slicing, printer, file), searchable by Korean or English names, with related words and the view where each word appears.
+- **Term help:** eight headings (for example 스풀 추가, Bambu Studio로 출력 준비, 어느 면을 바닥에 둘까요) get a “○○ 뜻” button. It opens a short explanation next to the button, closes with Escape, the close button, a click outside or a larger scroll, and returns focus to the button. “용어 사전에서 보기” opens the glossary at that entry.
+- **Welcome:** the model page shows a short welcome with a link to the guide. Closing it is remembered in that browser only; if browser storage is unavailable it simply shows again.
+- The glossary is validated on the server (unique ids, known categories and views, related words that exist) and sent with bootstrap. It explains words and how this app uses them; it does not give temperatures or recommended settings.
+- **Installed-package qualification:** bootstrap must carry at least 30 linked glossary entries and the five guide steps. Promotion requires this check.
+
 ## 0.35.0 — 2026-11-21
 
 - **필라멘트 재고** (docs/INVENTORY.md). Spools record:

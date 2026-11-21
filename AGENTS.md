@@ -17,6 +17,7 @@ Help people discover useful things to print, customize models, prepare settings 
 - `preset_library.py`: explicit single-parent values, per-field evidence and original-baseline comparison.
 - `workspaces.py`: atomic saved filament inputs, exact drafts and revision conflicts, separate from CAD jobs.
 - `inventory.py`: filament spools the person enters, weigh-ins and deducted prints (one JSON file per spool with revisions).
+- `glossary.py`: validated plain-language glossary and the five-step first-run guide, sent with bootstrap.
 - `slice_compare.py`: four process-only variants of a supplied bundle and the estimates read from their verified slices.
 - `slicer.py`: local Bambu Studio CLI preparation, execution and output verification.
 - `studio_project.py`, `studio_sources.py`: bounded project inspection/composition and immutable verified originals.

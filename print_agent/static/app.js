@@ -3,7 +3,7 @@
 
   const $ = (id) => document.getElementById(id);
   const state = { offersResult: null, historyFilter: "all", downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
-  const pageNames = { models: "모델 만들기", imports: "가진 모델 점검", inventory: "필라멘트 재고", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
+  const pageNames = { models: "모델 만들기", imports: "가진 모델 점검", inventory: "필라멘트 재고", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록", guide: "용어·안내" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
     depth: { label: "세로", min: 10, max: 500, step: 0.1 },
@@ -322,6 +322,8 @@
     if (name === "models") viewer.requestDraw();
     if (name === "imports") { importViewer.requestDraw(); loadRecentImports(); }
     if (name === "inventory") loadInventory();
+    if (name === "guide") renderGlossary();
+    closeTerm(false);
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
@@ -5825,6 +5827,204 @@
     showNotice("slice-feedback", "새 저장 위치에서 현재 치수의 모델을 생성한 뒤 슬라이싱 설정을 다시 검토해 주세요.", "info");
   }
 
+  // Glossary and first-run guide. The words come from the server; nothing here is fetched elsewhere.
+
+  function setGlossary(glossary) {
+    const valid = glossary && Array.isArray(glossary.terms) && glossary.categories && Array.isArray(glossary.onboarding);
+    state.glossary = valid ? glossary : null;
+    state.glossaryFilter = state.glossaryFilter || { category: "all", query: "" };
+    if (!valid) { renderWelcome(); return; }
+    const chip = (value, label) => {
+      const button = node("button", "purpose-button", label);
+      button.type = "button";
+      button.dataset.glossaryCategory = value;
+      button.setAttribute("role", "radio");
+      return button;
+    };
+    $("glossary-categories").replaceChildren(chip("all", "전체"), ...Object.entries(glossary.categories).map(([value, label]) => chip(value, label)));
+    $("glossary-scope").textContent = glossary.scope || "";
+    renderOnboarding();
+    renderGlossary();
+    enhanceTerms();
+    renderWelcome();
+  }
+
+  function glossaryTerm(id) {
+    return state.glossary?.terms.find((term) => term.id === id) || null;
+  }
+
+  function glossaryMatches(term, filter) {
+    if (filter.category !== "all" && term.category !== filter.category) return false;
+    const query = filter.query.trim().toLowerCase();
+    if (!query) return true;
+    return [term.term, term.aka, term.short, term.detail].join(" ").toLowerCase().includes(query);
+  }
+
+  function renderGlossary() {
+    const glossary = state.glossary;
+    if (!glossary) return;
+    const filter = state.glossaryFilter;
+    for (const button of document.querySelectorAll("[data-glossary-category]")) {
+      button.setAttribute("aria-checked", String(filter.category === button.dataset.glossaryCategory));
+    }
+    syncRadioGroup($("glossary-categories"));
+    const matches = glossary.terms.filter((term) => glossaryMatches(term, filter));
+    $("glossary-count").textContent = matches.length ? `${matches.length}개 · 전체 ${glossary.terms.length}개 중` : "찾는 말이 없습니다. 다른 말로 찾거나 분류를 ‘전체’로 바꿔 보세요.";
+    $("glossary-list").replaceChildren(...matches.map((term) => {
+      const item = node("div", "glossary-item");
+      item.id = `term-${term.id}`;
+      item.tabIndex = -1;
+      const title = node("dt", "");
+      title.append(node("strong", "", term.term));
+      if (term.aka && term.aka !== term.term) title.append(node("span", "glossary-aka", term.aka));
+      title.append(node("span", "store-tag", glossary.categories[term.category] || term.category));
+      item.append(title, node("dd", "glossary-short", term.short), node("dd", "glossary-detail", term.detail));
+      const parts = (term.related || []).map(glossaryTerm).filter(Boolean).map((related) => {
+        const button = node("button", "term-link", related.term);
+        button.type = "button";
+        button.dataset.glossaryShow = related.id;
+        return button;
+      });
+      if (parts.length) parts.unshift(node("span", "", "관련:"));
+      if (term.view && pageNames[term.view]) {
+        const open = node("button", "term-link term-view", `${pageNames[term.view]} 열기`);
+        open.type = "button";
+        open.dataset.glossaryView = term.view;
+        parts.push(open);
+      }
+      if (parts.length) {
+        const links = node("dd", "glossary-links");
+        links.append(...parts);
+        item.append(links);
+      }
+      return item;
+    }));
+  }
+
+  function renderOnboarding() {
+    const steps = state.glossary?.onboarding || [];
+    $("onboarding-steps").replaceChildren(...steps.map((step) => {
+      const item = node("li", "onboarding-step");
+      item.dataset.step = step.id;
+      const body = node("div", "");
+      body.append(node("strong", "", step.title), node("p", "", step.text));
+      item.append(body);
+      if (pageNames[step.view]) {
+        const open = node("button", "button button-secondary", `${pageNames[step.view]} 열기`);
+        open.type = "button";
+        open.dataset.glossaryView = step.view;
+        item.append(open);
+      }
+      return item;
+    }));
+  }
+
+  function showGlossaryTerm(id) {
+    if (!glossaryTerm(id)) return;
+    state.glossaryFilter = { category: "all", query: "" };
+    $("glossary-search").value = "";
+    changeView("guide");
+    const item = $(`term-${id}`);
+    if (!item) return;
+    for (const other of document.querySelectorAll(".glossary-item.is-highlighted")) other.classList.remove("is-highlighted");
+    item.classList.add("is-highlighted");
+    item.scrollIntoView({ block: "center", behavior: "auto" });
+    item.focus({ preventScroll: true });
+  }
+
+  // Each heading marked with data-term gets a small "…란?" button right after it.
+  function enhanceTerms() {
+    for (const heading of document.querySelectorAll("[data-term]")) {
+      const term = glossaryTerm(heading.dataset.term);
+      const existing = heading.nextElementSibling?.classList.contains("term-help") ? heading.nextElementSibling : null;
+      if (!term) { existing?.remove(); continue; }
+      const button = existing || node("button", "term-help", "");
+      button.type = "button";
+      button.textContent = `‘${term.term}’ 뜻`;
+      button.dataset.termOpen = term.id;
+      button.setAttribute("aria-haspopup", "dialog");
+      button.setAttribute("aria-controls", "term-popover");
+      button.setAttribute("aria-expanded", "false");
+      if (!existing) heading.after(button);
+    }
+  }
+
+  function openTerm(id, trigger) {
+    const term = glossaryTerm(id);
+    if (!term) return;
+    closeTerm(false);
+    const popover = $("term-popover");
+    $("term-popover-title").textContent = term.term;
+    $("term-popover-short").textContent = term.short;
+    $("term-popover-detail").textContent = term.detail;
+    $("term-popover-more").dataset.glossaryShow = term.id;
+    popover.hidden = false;
+    state.termTrigger = trigger || null;
+    state.termScrollY = window.scrollY;
+    if (trigger) {
+      trigger.setAttribute("aria-expanded", "true");
+      const rect = trigger.getBoundingClientRect();
+      const width = Math.min(340, window.innerWidth - 32);
+      popover.style.width = `${width}px`;
+      popover.style.left = `${Math.max(16, Math.min(rect.left, window.innerWidth - width - 16))}px`;
+      const below = rect.bottom + 6;
+      popover.style.top = `${below + popover.offsetHeight > window.innerHeight - 8 ? Math.max(8, rect.top - popover.offsetHeight - 6) : below}px`;
+    }
+    $("term-popover-close").focus();
+  }
+
+  function closeTerm(restoreFocus = true) {
+    const popover = $("term-popover");
+    if (popover.hidden) return;
+    popover.hidden = true;
+    const trigger = state.termTrigger;
+    state.termTrigger = null;
+    if (trigger) {
+      trigger.setAttribute("aria-expanded", "false");
+      if (restoreFocus && trigger.isConnected) trigger.focus();
+    }
+  }
+
+  // Remembering that the welcome was closed is a per-browser convenience; without storage it simply shows again.
+  function welcomeDismissed() {
+    try { return window.localStorage.getItem("printAgent.welcomeDismissed") === "1"; } catch { return false; }
+  }
+
+  function renderWelcome() {
+    $("welcome").hidden = !state.glossary || welcomeDismissed();
+  }
+
+  function dismissWelcome() {
+    try { window.localStorage.setItem("printAgent.welcomeDismissed", "1"); } catch { /* shown again next visit */ }
+    $("welcome").hidden = true;
+  }
+
+  document.addEventListener("click", (event) => {
+    const open = event.target.closest("[data-term-open]");
+    if (open) { openTerm(open.dataset.termOpen, open); return; }
+    const show = event.target.closest("[data-glossary-show]");
+    if (show) { closeTerm(false); showGlossaryTerm(show.dataset.glossaryShow); return; }
+    const view = event.target.closest("[data-glossary-view]");
+    if (view) { changeView(view.dataset.glossaryView); return; }
+    const category = event.target.closest("[data-glossary-category]");
+    if (category && state.glossaryFilter) { state.glossaryFilter.category = category.dataset.glossaryCategory; renderGlossary(); return; }
+    if (!$("term-popover").hidden && !event.target.closest("#term-popover")) closeTerm(false);
+  });
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !$("term-popover").hidden) closeTerm(); });
+  // The explanation is placed next to its button, so it closes rather than float away when the page scrolls.
+  // A small scroll (such as the one that brought the button into view) keeps it open.
+  window.addEventListener("scroll", () => {
+    if (!$("term-popover").hidden && Math.abs(window.scrollY - (state.termScrollY ?? window.scrollY)) > 40) closeTerm(false);
+  }, { passive: true });
+  $("term-popover-close").addEventListener("click", () => closeTerm());
+  $("glossary-search").addEventListener("input", (event) => {
+    if (!state.glossaryFilter) return;
+    state.glossaryFilter.query = event.target.value;
+    renderGlossary();
+  });
+  $("welcome-guide").addEventListener("click", () => changeView("guide"));
+  $("welcome-dismiss").addEventListener("click", dismissWelcome);
+
   async function bootstrap() {
     const request = ++state.bootstrapRequest;
     const previousStoragePath = state.storage?.path;
@@ -5879,6 +6079,7 @@
       else renderTemplates();
       setDiscoveryCatalog(data.discovery, Boolean(state.discovery));
       setStoreGuide(data.store_guide);
+      setGlossary(data.glossary);
       setFailureReasons(data.failure_reasons);
       ["plan-button", "review-profile", "compare-offers"].forEach((id) => { $(id).disabled = false; });
       updateWorkflowControls();

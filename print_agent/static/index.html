@@ -47,6 +47,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 3 8 M3 4v7h7 M12 7v5l3 2"/></svg>
         작업 기록
       </button>
+      <button class="nav-item" data-view="guide">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5 M12 17h.01"/></svg>
+        용어·안내
+      </button>
     </nav>
     <div class="sidebar-note">
       <span class="small-dot" aria-hidden="true"></span>
@@ -89,6 +93,10 @@
           <div><p class="eyebrow">FROM IDEA TO SOMETHING REAL</p><h1 id="models-heading">무엇을 만들어 볼까요?</h1><p class="page-description">쓸모 있는 시작점을 고르고, 내 치수에 맞는 모델로 만들어 보세요.</p></div>
           <span class="page-tag">치수 단위 · mm</span>
         </div>
+        <section id="welcome" class="welcome" aria-labelledby="welcome-heading" hidden>
+          <div><h2 id="welcome-heading">3D 프린팅이 처음이어도 괜찮아요</h2><p>만들 것 고르기부터 결과 기록까지 다섯 단계로 진행합니다. 모르는 말은 제목 아래 “○○ 뜻”을 누르거나 용어 사전에서 찾아보세요.</p></div>
+          <div class="button-row"><button id="welcome-guide" class="button button-primary" type="button">단계 안내 보기</button><button id="welcome-dismiss" class="button button-secondary" type="button">안내 닫기</button></div>
+        </section>
         <nav id="journey" class="journey" aria-label="만들기 진행 단계">
           <ol id="journey-steps" class="journey-steps"></ol>
           <div class="journey-next"><p id="journey-next-text" role="status"></p><button id="journey-next-button" class="button button-primary" type="button"></button></div>
@@ -211,7 +219,7 @@
               <div id="model-metrics" class="metric-grid"></div>
               <div id="model-checks" class="check-list"></div>
               <section id="printability-review" class="printability" aria-labelledby="printability-heading" hidden>
-                <div class="printability-heading"><h3 id="printability-heading">출력 전 형상 점검</h3><span id="printability-status" class="badge badge-neutral">확인 전</span></div>
+                <div class="printability-heading"><h3 id="printability-heading" data-term="wall_thickness">출력 전 형상 점검</h3><span id="printability-status" class="badge badge-neutral">확인 전</span></div>
                 <div class="printability-controls">
                   <label for="printability-nozzle">점검할 노즐<select id="printability-nozzle"><option value="0.2">0.2 mm</option><option value="0.4" selected>0.4 mm</option><option value="0.6">0.6 mm</option><option value="0.8">0.8 mm</option></select></label>
                   <button id="printability-use-printer" class="text-button" type="button" hidden></button>
@@ -239,7 +247,7 @@
         </div>
 
         <section class="card slicer-card" aria-labelledby="slicer-heading">
-          <div class="card-heading"><div><span class="step-label">다음 단계</span><h2 id="slicer-heading">Bambu Studio로 출력 준비</h2></div><span id="slicer-status" class="badge badge-neutral">환경 확인 중</span></div>
+          <div class="card-heading"><div><span class="step-label">다음 단계</span><h2 id="slicer-heading" data-term="slice">Bambu Studio로 출력 준비</h2></div><span id="slicer-status" class="badge badge-neutral">환경 확인 중</span></div>
           <p id="slicer-description" class="muted">이 컴퓨터의 Bambu Studio 설치와 명령줄 기능을 확인합니다.</p>
           <button id="probe-slicer" class="button button-secondary" type="button" disabled>설치된 슬라이서 확인</button>
           <div id="slicer-probe-feedback" class="notice slicer-probe-feedback" role="status" hidden></div>
@@ -293,7 +301,7 @@
           <details id="slicer-details" class="settings-details">
             <summary>고급 · 전체 설정 JSON으로 직접 준비하기</summary>
             <section class="slicer-file-helper" aria-labelledby="slicer-files-heading">
-              <h3 id="slicer-files-heading">설정 파일을 골라 묶음 만들기</h3>
+              <h3 id="slicer-files-heading" data-term="process_profile">설정 파일을 골라 묶음 만들기</h3>
               <p class="field-help">Bambu Studio CLI용 전체 machine·process·filament JSON을 선택하세요. 재료 검토 보고서나 상속이 남은 부분 프리셋은 전체 설정을 대신하지 않습니다. 파일의 상속 필드나 값을 지우거나 채우지 않습니다.</p>
               <div class="slicer-file-grid">
                 <label class="slicer-file-control" for="slicer-machine-file">프린터 전체 설정 · machine<input id="slicer-machine-file" type="file" accept=".json,application/json"><span id="slicer-machine-summary" class="field-help">선택한 파일 없음</span></label>
@@ -355,7 +363,7 @@
         <form id="profile-form">
           <div class="two-column-layout">
             <section class="card" aria-labelledby="profile-input-heading">
-              <div class="card-heading profile-input-heading"><div><span class="step-label">01 · 설정 파일</span><h2 id="profile-input-heading">필라멘트 프로필</h2></div><div class="profile-import-buttons"><label class="file-button">Studio 내보내기 가져오기<input id="profile-archive" type="file" accept=".bbsflmt,.bbscfg,.zip"></label><label class="file-button">JSON 파일 추가<input id="profile-file" type="file" accept=".json,application/json" multiple></label></div></div>
+              <div class="card-heading profile-input-heading"><div><span class="step-label">01 · 설정 파일</span><h2 id="profile-input-heading" data-term="filament_profile">필라멘트 프로필</h2></div><div class="profile-import-buttons"><label class="file-button">Studio 내보내기 가져오기<input id="profile-archive" type="file" accept=".bbsflmt,.bbscfg,.zip"></label><label class="file-button">JSON 파일 추가<input id="profile-file" type="file" accept=".json,application/json" multiple></label></div></div>
               <p class="field-help profile-import-help">Studio 내보내기(.bbsflmt·.bbscfg·.zip, 최대 4 MiB)에서 필라멘트 JSON을 읽거나 개별 JSON을 추가하세요. 빠진 부모 파일은 나중에 추가할 수 있습니다. 최대 64개이며, 원본 모음과 편집 문자열 모음은 파일 정보를 포함해 각각 2 MiB까지 지원합니다.</p>
               <details class="profile-howto"><summary>프로필 파일이 없나요? Bambu Studio에서 꺼내는 방법</summary>
                 <ol>
@@ -458,7 +466,7 @@
           <p id="inventory-scope" class="field-help"></p>
         </section>
         <section class="card" aria-labelledby="inventory-form-heading">
-          <div class="card-heading"><div><span class="step-label">02 · 스풀</span><h2 id="inventory-form-heading">스풀 추가</h2></div></div>
+          <div class="card-heading"><div><span class="step-label">02 · 스풀</span><h2 id="inventory-form-heading" data-term="spool">스풀 추가</h2></div></div>
           <form id="inventory-form" class="inventory-form" autocomplete="off">
             <label>브랜드<input id="spool-brand" maxlength="60" required placeholder="예: Bambu Lab"></label>
             <label>재료<input id="spool-material" maxlength="20" required pattern="[A-Za-z0-9+\-_. ]{1,20}" placeholder="예: PLA, PETG-CF"></label>
@@ -504,7 +512,7 @@
       <section id="view-imports" class="view" aria-labelledby="imports-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">IMPORTED MODEL CHECK</p><h1 id="imports-heading">가진 모델 파일 점검</h1><p class="page-description">MakerWorld·Printables 등에서 받은 STL·3MF를 불러와 오버행과 바닥 접촉을 보고, 서포트가 덜 필요한 출력 방향을 찾습니다. 원본은 바꾸지 않습니다.</p></div></div>
         <section class="card" aria-labelledby="import-file-heading">
-          <div class="card-heading"><div><span class="step-label">01 · 파일</span><h2 id="import-file-heading">모델 파일 불러오기</h2></div><span id="import-badge" class="badge badge-neutral">파일 선택 전</span></div>
+          <div class="card-heading"><div><span class="step-label">01 · 파일</span><h2 id="import-file-heading" data-term="stl">모델 파일 불러오기</h2></div><span id="import-badge" class="badge badge-neutral">파일 선택 전</span></div>
           <form id="import-form" class="import-form">
             <label for="import-file">STL 또는 3MF (32 MiB 이하)<input id="import-file" type="file" accept=".stl,.3mf"></label>
             <button id="import-submit" class="button button-primary" type="submit" disabled>불러와서 점검</button>
@@ -528,7 +536,7 @@
             <div class="preview-footer"><span id="import-caption"></span><span>드래그로 회전 · 붉은 면은 45° 넘는 돌출부</span></div>
           </section>
           <section class="card" aria-labelledby="import-orient-heading">
-            <div class="card-heading"><div><span class="step-label">03 · 출력 방향</span><h2 id="import-orient-heading">어느 면을 바닥에 둘까요</h2></div></div>
+            <div class="card-heading"><div><span class="step-label">03 · 출력 방향</span><h2 id="import-orient-heading" data-term="orientation">어느 면을 바닥에 둘까요</h2></div></div>
             <p class="field-help">서포트가 필요한 면(45° 넘는 돌출부)이 적고 바닥에 닿는 면이 넓은 순서입니다. 고르면 미리보기와 점검이 바뀝니다.</p>
             <div id="import-orientations" class="import-orientations" role="radiogroup" aria-labelledby="import-orient-heading"></div>
             <div id="import-review" class="import-review"></div>
@@ -542,7 +550,7 @@
       <section id="view-printers" class="view" aria-labelledby="printers-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">READ-ONLY LAN STATUS</p><h1 id="printers-heading">내 프린터 상태 확인</h1><p class="page-description">같은 네트워크의 Bambu 프린터를 찾고, LAN 액세스 코드로 현재 상태를 한 번 읽어 옵니다.</p></div><span class="badge badge-neutral">읽기 전용 · 명령 전송 없음</span></div>
         <section class="card" aria-labelledby="printer-find-heading">
-          <div class="card-heading"><div><span class="step-label">01 · 장비 찾기</span><h2 id="printer-find-heading">같은 네트워크의 프린터</h2></div><button id="printer-discover" class="button button-secondary" type="button" disabled>4초 동안 찾기</button></div>
+          <div class="card-heading"><div><span class="step-label">01 · 장비 찾기</span><h2 id="printer-find-heading" data-term="lan_mode">같은 네트워크의 프린터</h2></div><button id="printer-discover" class="button button-secondary" type="button" disabled>4초 동안 찾기</button></div>
           <p class="field-help">프린터가 보내는 알림을 이 PC에서 듣습니다. 다른 네트워크·게스트 Wi-Fi·멀티캐스트 차단 환경에서는 보이지 않을 수 있으니 프린터 화면의 IP와 시리얼을 직접 입력해도 됩니다.</p>
           <div id="printer-discover-feedback" class="notice" role="status" hidden></div>
           <div id="printer-devices" class="printer-devices"></div>
@@ -576,8 +584,30 @@
         <div id="history-list" class="history-list"></div>
         <div class="history-pagination"><button id="history-more" class="button button-secondary" type="button" hidden>이전 기록 더 보기</button></div>
       </section>
+      <section id="view-guide" class="view" aria-labelledby="guide-heading" hidden>
+        <div class="page-heading"><div><p class="eyebrow">LEARN AS YOU GO</p><h1 id="guide-heading">처음 쓰는 순서와 용어</h1><p class="page-description">무엇부터 하면 되는지, 화면에 나오는 말이 무슨 뜻인지 쉽게 풀었습니다.</p></div></div>
+        <section class="card" aria-labelledby="onboarding-heading">
+          <div class="card-heading"><div><span class="step-label">01 · 순서</span><h2 id="onboarding-heading">다섯 단계로 출력까지</h2></div></div>
+          <ol id="onboarding-steps" class="onboarding-steps"></ol>
+          <p class="field-help">단계마다 결과를 따로 기록합니다. 모델 파일 생성, 슬라이스 성공, 프린터 전송, 실제 출력 성공은 서로 다른 상태입니다.</p>
+        </section>
+        <section class="card" aria-labelledby="glossary-heading">
+          <div class="card-heading"><div><span class="step-label">02 · 용어</span><h2 id="glossary-heading">용어 사전</h2></div></div>
+          <label class="glossary-search" for="glossary-search">찾을 말<input id="glossary-search" type="search" placeholder="예: 서포트, PETG, 3MF" autocomplete="off"></label>
+          <div id="glossary-categories" class="chip-row" role="radiogroup" aria-label="분류로 좁히기"></div>
+          <p id="glossary-count" class="field-help" role="status"></p>
+          <dl id="glossary-list" class="glossary-list"></dl>
+          <p id="glossary-scope" class="field-help"></p>
+        </section>
+      </section>
       <footer class="main-footer"><span>아이디어에서 실제 파일까지, 확인한 만큼만.</span><span>3D Printer Agent · Local</span></footer>
     </main>
+  </div>
+  <div id="term-popover" class="term-popover" role="dialog" aria-labelledby="term-popover-title" hidden>
+    <div class="term-popover-head"><h2 id="term-popover-title"></h2><button id="term-popover-close" class="icon-button" type="button" aria-label="설명 닫기">×</button></div>
+    <p id="term-popover-short"></p>
+    <p id="term-popover-detail" class="field-help"></p>
+    <button id="term-popover-more" class="button button-secondary" type="button">용어 사전에서 보기</button>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
