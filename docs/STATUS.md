@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.35 adds a filament inventory ([inventory](INVENTORY.md)). Spools are entered by the person and updated by weigh-ins and by one deduction per sliced print, which uses the slicer's estimate. Records keep revisions and survive restart and backup restore. Slice results now also carry the slicer's time and filament estimates, which were previously always empty.
+Version 0.35 adds a filament inventory ([inventory](INVENTORY.md)). Spools are entered by the person and updated by weigh-ins and by one deduction per sliced print, which uses the slicer's estimate. Records keep revisions and survive restart and backup restore. Slice results now also carry the slicer's time and filament estimates, which were previously always empty. Published as [v0.35.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.35.0) on 2026-11-21 from `1d85d25`.
 
 Version 0.34 compares four process variants of the supplied settings: current, fine, fast and strong. Each variant is a real slice through the normal preparation, and only the slicer's estimates are kept; the current slice is left unchanged. A chosen variant is applied to the settings JSON for a normal review. The native workflow now slices all four variants ([slice comparison](SLICE_COMPARE.md)). Published as [v0.34.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.34.0) on 2026-11-21 from `1ce91b1`.
 

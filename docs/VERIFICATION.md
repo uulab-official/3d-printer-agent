@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-21 v0.35.0 공개 릴리스
+
+[v0.35.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.35.0)을 2026-11-21 06:55:25 UTC에 `1d85d25`에서 게시했습니다(PR #32, 필라멘트 재고와 슬라이스 예상치 수정).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/44877201141) Python **836개**·컨트롤러 **224개**·Chromium **120개**, [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/44877201115)
+세 OS 각 **406개**(스풀 무게 반영·작업만큼 차감, 실제 재시작 뒤 유지, 백업 복원 뒤 유지 포함), [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/44877201121)가 모두
+실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/44877775929)도 차수 1에 게시했습니다. 이번에는 main 실행 로그를 다시 읽을 수 있었습니다. 공개 자산 7개를
+인증 없이 내려받아 wheel(360,740바이트, `88c70188a4a55534…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이 내려받은 보고서·tag와
+같으며 보고서가 모두 통과 상태임을 확인했습니다. 재고 차감 값은 슬라이서 예상치이며 실제 사용량·AMS 슬롯 연결·실물 출력은 확인하지 않았습니다.
+
 ## 2026-11-21 v0.34.0 공개 릴리스
 
 [v0.34.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.34.0)을 2026-11-21 03:44:14 UTC에 `1ce91b1`에서 게시했습니다(PR #31, 품질별 슬라이스 4가지 비교).
