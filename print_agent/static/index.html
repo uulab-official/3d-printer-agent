@@ -31,6 +31,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg>
         재료 설정
       </button>
+      <button class="nav-item" data-view="inventory">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+        필라멘트 재고
+      </button>
       <button class="nav-item" data-view="offers">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l5 5-11 11-7-7L5 4Z"/><circle cx="10" cy="9" r="1.5"/></svg>
         구매 비교
@@ -342,6 +346,7 @@
           <div id="outcome-feedback" class="notice" role="status" hidden></div>
           <div id="outcome-recovery" class="outcome-recovery" hidden></div>
           <div id="outcome-attempts" class="outcome-attempts" hidden></div>
+          <div id="outcome-spool" class="outcome-spool" hidden><h3>재고에서 빼기</h3><p id="outcome-spool-help" class="field-help"></p><div class="outcome-spool-row"><label>스풀<select id="outcome-spool-select"></select></label><label>사용량(g)<input id="outcome-spool-grams" type="number" min="0.1" max="5000" step="0.1"></label><button id="outcome-spool-use" class="button button-secondary" type="button">재고에서 빼기</button></div><div id="outcome-spool-feedback" class="notice" role="status" hidden></div></div>
         </section>
       </section>
 
@@ -441,6 +446,34 @@
           <details class="help-details"><summary>상속 검토 보고서 JSON</summary><pre id="profile-resolution-report"></pre></details>
         </section>
         <section id="profile-result" class="card" aria-labelledby="profile-result-heading" hidden><div class="card-heading"><div><span class="step-label">검토 결과</span><h2 id="profile-result-heading">현재 조건의 확인 사항</h2></div><span id="profile-decision" class="badge"></span></div><div id="profile-summary" class="metric-grid"></div><div id="profile-reasons"></div><div id="profile-warnings" class="warning-list"></div><details class="settings-details"><summary>입력값과 적용 가능한 설정 확인</summary><div id="effective-settings" class="table-wrap"></div></details><details class="help-details"><summary>검토 결과 JSON</summary><pre id="profile-report"></pre></details></section>
+      </section>
+
+      <section id="view-inventory" class="view" aria-labelledby="inventory-heading" hidden>
+        <div class="page-heading"><div><p class="eyebrow">FILAMENT ON HAND</p><h1 id="inventory-heading">필라멘트 재고</h1><p class="page-description">가진 스풀과 남은 양을 기록합니다. 저울로 잰 무게나 출력에 쓴 양(슬라이서 예상치)을 빼면 남은 양이 바뀝니다.</p></div></div>
+        <section class="card" aria-labelledby="inventory-summary-heading">
+          <div class="card-heading"><div><span class="step-label">01 · 한눈에</span><h2 id="inventory-summary-heading">남은 필라멘트</h2></div><a id="inventory-csv" class="button button-secondary" href="/api/spools.csv" download>CSV 내려받기</a></div>
+          <div id="inventory-totals" class="inventory-totals"></div>
+          <div id="inventory-feedback" class="notice" role="status" hidden></div>
+          <div id="inventory-list" class="inventory-list"></div>
+          <p id="inventory-scope" class="field-help"></p>
+        </section>
+        <section class="card" aria-labelledby="inventory-form-heading">
+          <div class="card-heading"><div><span class="step-label">02 · 스풀</span><h2 id="inventory-form-heading">스풀 추가</h2></div></div>
+          <form id="inventory-form" class="inventory-form" autocomplete="off">
+            <label>브랜드<input id="spool-brand" maxlength="60" required placeholder="예: Bambu Lab"></label>
+            <label>재료<input id="spool-material" maxlength="20" required pattern="[A-Za-z0-9+\-_. ]{1,20}" placeholder="예: PLA, PETG-CF"></label>
+            <label>색 이름<input id="spool-color-name" maxlength="30" required placeholder="예: 검정"></label>
+            <label>색<input id="spool-color-hex" type="color" value="#232323"></label>
+            <label>새 스풀 필라멘트(g)<input id="spool-net" type="number" min="1" max="5000" step="1" value="1000" required></label>
+            <label>빈 스풀 무게(g)<input id="spool-empty" type="number" min="0" max="1000" step="1" value="250" required></label>
+            <label>남은 양(g)<input id="spool-remaining" type="number" min="0" max="5000" step="0.1" value="1000" required></label>
+            <label>상태<select id="spool-status"><option value="sealed">미개봉</option><option value="opened">개봉</option><option value="loaded">프린터에 장착</option><option value="drying">건조 중</option><option value="empty">다 씀</option></select></label>
+            <label>보관 위치<input id="spool-location" maxlength="60" placeholder="예: 책상 서랍"></label>
+            <label>가격(원, 선택)<input id="spool-price" type="number" min="0" max="10000000" step="1"></label>
+            <label class="inventory-notes">메모<input id="spool-notes" maxlength="500"></label>
+            <div class="button-row"><button id="spool-save" class="button button-primary" type="submit" disabled>스풀 추가</button><button id="spool-cancel" class="button button-secondary" type="button" hidden>편집 취소</button></div>
+          </form>
+        </section>
       </section>
 
       <section id="view-offers" class="view" aria-labelledby="offers-heading" hidden>

@@ -504,6 +504,17 @@ def qualify(args, report):
               and mesh_job['title'] == '불러온 모델 “overhanging-cap.stl” · 60.0 × 40.0 × 35.0 mm',
               json.dumps({'title': mesh_job['title'], 'layout': mesh_job_layout}, ensure_ascii=False))
 
+        # A filament spool weighed and deducted by a job; it must survive restart and backup/restore.
+        spool = get_json(server, '/api/spools', method='POST', token=token, expected=201, payload={
+            'brand': 'Qualification', 'material': 'pla', 'color_name': '검정', 'color_hex': '#232323',
+            'net_weight_g': 1000, 'empty_spool_g': 250, 'remaining_g': 1000, 'status': 'sealed'})
+        spool = get_json(server, f"/api/spools/{spool['id']}/weigh", method='POST', token=token,
+                         payload={'expected_revision': spool['revision'], 'gross_g': 1080})
+        spool = get_json(server, f"/api/spools/{spool['id']}/use", method='POST', token=token,
+                         payload={'expected_revision': spool['revision'], 'grams': 12.5, 'job_id': models[0]['id']})
+        check('filament_spool_weighed_and_deducted', spool['remaining_g'] == 817.5 and spool['status'] == 'opened'
+              and spool['revision'] == 3 and spool['history'][-1]['job_id'] == models[0]['id'], json.dumps(spool, ensure_ascii=False)[:300])
+
         # Sending to a printer: an installed server must refuse a job without a verified
         # slice, an unknown review and a missing bed confirmation, never echoing the code.
         unsliced = {'id': models[0]['id']}  # generated, not sliced (no native slicer runs here)
@@ -788,6 +799,7 @@ def qualify(args, report):
         get_json(restarted, '/api/discovery', method='POST', payload={}, token=refreshed['session_token'])
         restored = get_json(restarted, '/api/profile-workspaces/' + workspace['id'])
         check('workspace_survives_real_restart', restored == workspace and restored['snapshot'] == snapshot)
+        check('filament_spool_survives_real_restart', get_json(restarted, '/api/spools')['spools'] == [spool])
         source_reopened = get_json(restarted, '/api/studio-projects/' + imported['source_id'])
         project_reopened = get_json(restarted, '/api/jobs/' + models[1]['id'])
         code, reopened_bytes, _ = request(restarted.base, prepared_url)
@@ -880,6 +892,7 @@ def qualify(args, report):
         servers.append(restored_server)
         restored_bootstrap = restored_server.wait_ready()
         restored_workspace = get_json(restored_server, '/api/profile-workspaces/' + workspace['id'])
+        check('filament_spool_restored_from_backup', get_json(restored_server, '/api/spools')['spools'] == [spool])
         restored_job = get_json(restored_server, '/api/jobs/' + models[0]['id'])
         restored_interrupted = get_json(restored_server, '/api/jobs/' + interrupted_id)
         check('restored_job_and_workspace_identity', restored_workspace == workspace and restored_job == retained_job

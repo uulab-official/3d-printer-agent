@@ -3,7 +3,7 @@
 
   const $ = (id) => document.getElementById(id);
   const state = { offersResult: null, historyFilter: "all", downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
-  const pageNames = { models: "모델 만들기", imports: "가진 모델 점검", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
+  const pageNames = { models: "모델 만들기", imports: "가진 모델 점검", inventory: "필라멘트 재고", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
     depth: { label: "세로", min: 10, max: 500, step: 0.1 },
@@ -269,6 +269,7 @@
     $("outcome-card").hidden = true;
     $("download-links").replaceChildren();
     $("slice-result").replaceChildren();
+    $("outcome-spool").hidden = true;
     $("slice-compare").hidden = true;
     $("slice-compare").replaceChildren();
     setBadge("preview-status", "새 제작안 · 생성 전");
@@ -320,6 +321,7 @@
     if (name === "profiles") renderSetupPrinterFill();
     if (name === "models") viewer.requestDraw();
     if (name === "imports") { importViewer.requestDraw(); loadRecentImports(); }
+    if (name === "inventory") loadInventory();
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
@@ -1644,6 +1646,8 @@
     hideNotice("outcome-feedback");
     $("slice-result").replaceChildren();
     renderSliceComparison(job.slice_comparison);
+    hideNotice("outcome-spool-feedback");
+    renderOutcomeSpool();
     showNotice("slice-feedback", state.environment.available ? "전체 설정을 제공하고 실행 계획을 먼저 검토해 주세요." : "Bambu Studio를 사용할 수 없어 현재 환경에서는 슬라이싱을 실행할 수 없습니다.");
     if (job.latest_slice?.phase === "running") showNotice("slice-feedback", "이 기록의 슬라이싱 요청은 실행 중으로 저장되어 있습니다. 완료 여부는 작업 기록에서 다시 열어 확인해 주세요. 이전 슬라이스 파일을 현재 결과로 제공하지 않습니다.", "info");
     else if (job.latest_slice?.phase === "interrupted") showNotice("slice-feedback", "이전 슬라이싱은 완료 결과를 저장하기 전에 중단되었습니다. 설정을 다시 검토한 뒤 실행해 주세요. CAD 모델은 유지되며 이전 슬라이스 파일은 현재 결과로 제공하지 않습니다.", "warning");
@@ -2276,6 +2280,7 @@
           if (!studioContextCurrent(context)) return;
           state.job = full;
           renderDownloads(full);
+          renderOutcomeSpool();
           state.studioPreparedSignature = state.studioSlicePrepared ? studioContext() : null;
         } catch (error) { if (studioContextCurrent(context)) toast("준비 결과는 받았지만 파일 목록을 불러오지 못했습니다. 작업 기록에서 확인해 주세요."); }
       });
@@ -2317,6 +2322,7 @@
       renderDownloads(state.job);
     }
     $("slice-result").replaceChildren();
+    $("outcome-spool").hidden = true;  // the deduction offer belongs to the slice result being replaced
     if (message) showNotice("slice-feedback", message);
     updateSliceControls();
   }
@@ -2460,6 +2466,7 @@
           if (!current()) return;
           state.job = full;
           renderDownloads(full);
+          renderOutcomeSpool();
         } catch { if (current()) toast("검토 결과는 받았지만 파일 목록을 새로 불러오지 못했습니다. 작업 기록에서 다시 확인해 주세요."); }
       });
     } catch (error) {
@@ -5557,6 +5564,173 @@
   }
 
   $("import-make-job").addEventListener("click", makeImportJob);
+
+  // ---------------------------------------------------------------------------
+  // Filament inventory: entered spools, weigh-ins and the prints the person chose to deduct.
+
+  async function loadInventory() {
+    if (!state.token) return;
+    const request = state.inventoryRequest = (state.inventoryRequest || 0) + 1;
+    try {
+      const data = await api("/api/spools");
+      if (request !== state.inventoryRequest) return;
+      state.inventory = data;
+      renderInventory();
+      renderOutcomeSpool();
+    } catch (error) {
+      if (request === state.inventoryRequest) showNotice("inventory-feedback", error.message, "error");
+    }
+  }
+
+  function spoolLabel(spool) {
+    return `${spool.brand} ${spool.material} · ${spool.color_name}`;
+  }
+
+  function renderInventory() {
+    const SPOOL_STATUS = { sealed: "미개봉", opened: "개봉", loaded: "프린터에 장착", drying: "건조 중", empty: "다 씀" };
+    const data = state.inventory || { spools: [], totals: { spools: 0, remaining_g: 0, by_material: {}, low_stock_ids: [] } };
+    const totals = data.totals;
+    const chips = [node("span", "", `사용 중인 스풀 ${totals.spools}개`), node("span", "", `남은 양 ${numberFormat.format(totals.remaining_g / 1000)} kg`)];
+    if (totals.remaining_value_krw) chips.push(node("span", "", `남은 재료 가치 약 ${numberFormat.format(totals.remaining_value_krw)}원`));
+    for (const [material, grams] of Object.entries(totals.by_material || {})) chips.push(node("span", "", `${material} ${numberFormat.format(grams)} g`));
+    if (totals.low_stock_ids?.length) chips.push(node("span", "", `${data.low_stock_g ?? 150} g 미만 ${totals.low_stock_ids.length}개`));
+    $("inventory-totals").replaceChildren(...chips);
+    $("inventory-scope").textContent = data.unreadable ? `${data.scope} 읽을 수 없는 기록 ${data.unreadable}개는 원본을 보존하고 목록에서 뺐습니다.` : (data.scope || "");
+    const low = new Set(totals.low_stock_ids || []);
+    $("inventory-list").replaceChildren(...(data.spools.length ? data.spools.map((spool) => {
+      const card = node("article", `spool-card${spool.status === "empty" ? " is-empty" : ""}${low.has(spool.id) ? " is-low" : ""}`);
+      card.dataset.spool = spool.id;
+      const swatch = node("span", "spool-swatch");
+      swatch.style.background = spool.color_hex || "#d6dfec";
+      const meter = node("div", "spool-meter");
+      const fill = node("span", "");
+      fill.style.width = `${Math.max(0, Math.min(100, spool.remaining_g / spool.net_weight_g * 100))}%`;
+      meter.append(fill);
+      const actions = node("div", "spool-actions");
+      const scale = node("input", "");
+      scale.type = "number"; scale.min = "0"; scale.max = "6000"; scale.step = "1"; scale.placeholder = "저울 g";
+      scale.setAttribute("aria-label", `${spoolLabel(spool)} 저울 무게(스풀 포함)`);
+      const weigh = node("button", "button button-secondary", "무게 반영");
+      weigh.type = "button";
+      weigh.addEventListener("click", () => spoolAction(spool, "weigh", { gross_g: Number(scale.value) }, scale));
+      const edit = node("button", "text-button", "수정");
+      edit.type = "button";
+      edit.addEventListener("click", () => editSpool(spool));
+      const remove = node("button", "text-button", "삭제");
+      remove.type = "button";
+      remove.addEventListener("click", () => { if (window.confirm(`${spoolLabel(spool)} 스풀 기록을 삭제할까요? 되돌릴 수 없습니다.`)) spoolAction(spool, "delete"); });
+      actions.append(scale, weigh, edit, remove);
+      card.append(swatch, node("strong", "", spoolLabel(spool)),
+        node("span", "field-help", `${numberFormat.format(spool.remaining_g)} / ${numberFormat.format(spool.net_weight_g)} g · ${SPOOL_STATUS[spool.status] || spool.status}${spool.location ? ` · ${spool.location}` : ""}`),
+        meter, actions);
+      return card;
+    }) : [node("p", "field-help", "아직 기록한 스풀이 없습니다. 아래에서 추가하세요.")]));
+    $("spool-save").disabled = !state.token || Boolean(state.inventoryPending);
+  }
+
+  function spoolFormValues() {
+    const number = (id) => Number($(id).value);
+    const price = $("spool-price").value.trim();
+    return { brand: $("spool-brand").value.trim(), material: $("spool-material").value.trim(), color_name: $("spool-color-name").value.trim(),
+      color_hex: $("spool-color-hex").value.toUpperCase(), diameter_mm: 1.75, net_weight_g: number("spool-net"), empty_spool_g: number("spool-empty"),
+      remaining_g: number("spool-remaining"), status: $("spool-status").value, location: $("spool-location").value.trim(),
+      price_krw: price ? Math.round(Number(price)) : null, notes: $("spool-notes").value.trim() };
+  }
+
+  function editSpool(spool) {
+    state.inventoryEditing = spool;
+    for (const [id, key] of [["spool-brand", "brand"], ["spool-material", "material"], ["spool-color-name", "color_name"], ["spool-net", "net_weight_g"],
+      ["spool-empty", "empty_spool_g"], ["spool-remaining", "remaining_g"], ["spool-status", "status"], ["spool-location", "location"], ["spool-notes", "notes"]]) $(id).value = spool[key] ?? "";
+    $("spool-color-hex").value = spool.color_hex || "#232323";
+    $("spool-price").value = spool.price_krw ?? "";
+    $("inventory-form-heading").textContent = "스풀 수정";
+    $("spool-save").textContent = "수정 저장";
+    $("spool-cancel").hidden = false;
+    $("inventory-form").scrollIntoView?.({ block: "center" });
+  }
+
+  function resetSpoolForm() {
+    state.inventoryEditing = null;
+    $("inventory-form").reset();
+    $("inventory-form-heading").textContent = "스풀 추가";
+    $("spool-save").textContent = "스풀 추가";
+    $("spool-cancel").hidden = true;
+  }
+
+  async function saveSpool(event) {
+    event?.preventDefault();
+    if (state.inventoryPending) return;
+    state.inventoryPending = true;
+    $("spool-save").disabled = true;
+    try {
+      const editing = state.inventoryEditing;
+      const values = spoolFormValues();
+      if (editing) await api(`/api/spools/${editing.id}`, { ...values, expected_revision: editing.revision }, "PUT");
+      else await api("/api/spools", values);
+      showNotice("inventory-feedback", editing ? "스풀을 수정했습니다." : "스풀을 추가했습니다.", "success");
+      resetSpoolForm();
+    } catch (error) {
+      showNotice("inventory-feedback", error.code === "inventory_conflict" ? `${error.message}` : error.message, "error");
+    } finally {
+      state.inventoryPending = false;
+      await loadInventory();
+    }
+  }
+
+  async function spoolAction(spool, action, values = {}, input = null) {
+    try {
+      if (action === "weigh" && !(Number.isFinite(values.gross_g) && values.gross_g > 0)) throw new Error("저울에 스풀째 올린 무게를 g로 적어 주세요.");
+      if (action === "delete") await api(`/api/spools/${spool.id}`, { expected_revision: spool.revision }, "DELETE");
+      else await api(`/api/spools/${spool.id}/${action}`, { expected_revision: spool.revision, ...values });
+      if (input) input.value = "";
+      showNotice("inventory-feedback", action === "delete" ? "스풀 기록을 삭제했습니다." : "무게를 반영했습니다. 빈 스풀 무게를 뺀 값이 남은 양입니다.", "success");
+    } catch (error) {
+      showNotice("inventory-feedback", error.message, "error");
+    } finally {
+      await loadInventory();
+    }
+  }
+
+  function renderOutcomeSpool() {
+    // Offer a deduction only for a sliced job whose slicer estimate is known.
+    const area = $("outcome-spool");
+    const grams = state.job?.latest_slice?.execution?.status === "sliced" ? state.job.latest_slice.execution.filament_grams : null;
+    const spools = (state.inventory?.spools || []).filter((spool) => spool.status !== "empty");
+    if (!state.job || !Number.isFinite(grams)) { area.hidden = true; return; }
+    if (!state.inventory) { area.hidden = true; if (!state.inventoryRequest) loadInventory(); return; }  // shown once the list arrives
+    area.hidden = false;
+    const used = (state.inventory?.spools || []).find((spool) => [...(spool.deductions || []), ...(spool.history || [])]
+      .some((entry) => entry.job_id === state.job.id));
+    $("outcome-spool-help").textContent = used ? `이 출력은 이미 ${spoolLabel(used)}에서 뺐습니다.` : `슬라이서 예상 사용량은 ${numberFormat.format(grams)} g입니다. 출력에 쓴 스풀을 고르면 남은 양에서 뺍니다.`;
+    const select = $("outcome-spool-select");
+    const previous = select.value;
+    select.replaceChildren(...spools.map((spool) => { const option = node("option", "", `${spoolLabel(spool)} · ${numberFormat.format(spool.remaining_g)} g`); option.value = spool.id; return option; }));
+    if (spools.some((spool) => spool.id === previous)) select.value = previous;
+    if (!$("outcome-spool-grams").value || state.outcomeSpoolJob !== state.job.id) $("outcome-spool-grams").value = String(grams);
+    state.outcomeSpoolJob = state.job.id;
+    $("outcome-spool-use").disabled = !spools.length || Boolean(used);
+    if (!spools.length) $("outcome-spool-help").textContent += " 재고 화면에서 스풀을 먼저 추가하세요.";
+  }
+
+  async function useSpoolForJob() {
+    const spool = (state.inventory?.spools || []).find((item) => item.id === $("outcome-spool-select").value);
+    const grams = Number($("outcome-spool-grams").value);
+    try {
+      if (!spool || !state.job) throw new Error("스풀을 골라 주세요.");
+      if (!(grams > 0)) throw new Error("사용량을 g로 적어 주세요.");
+      await api(`/api/spools/${spool.id}/use`, { expected_revision: spool.revision, grams, job_id: state.job.id });
+      showNotice("outcome-spool-feedback", `${spoolLabel(spool)}에서 ${numberFormat.format(grams)} g을 뺐습니다.`, "success");
+    } catch (error) {
+      showNotice("outcome-spool-feedback", error.message, "error");
+    } finally {
+      await loadInventory();
+    }
+  }
+
+  $("inventory-form").addEventListener("submit", saveSpool);
+  $("spool-cancel").addEventListener("click", resetSpoolForm);
+  $("spool-net").addEventListener("change", () => { if (!state.inventoryEditing) $("spool-remaining").value = $("spool-net").value; });
+  $("outcome-spool-use").addEventListener("click", useSpoolForJob);
   $("import-file").addEventListener("change", updateImportControls);
   $("import-form").addEventListener("submit", submitImport);
 
@@ -5691,6 +5865,7 @@
       $("app-version").textContent = data.app?.version ? `Version ${data.app.version}` : "버전 정보 없음";
       renderSlicerEnvironment();
       updateImportControls();
+      $("spool-save").disabled = false;
       const editLlmOption = $("model-edit-mode").querySelector('option[value="llm"]');
       editLlmOption.disabled = !state.provider.configured;
       editLlmOption.textContent = state.provider.configured ? "LLM 모드 · 설정 있음" : "LLM 모드 · 미설정";
