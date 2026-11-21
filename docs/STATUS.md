@@ -2,9 +2,11 @@
 
 Date: 2026-11-21 (Asia/Seoul).
 
-Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.34 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
+Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab-official/3d-printer-agent). The initial local prototype is the open-source v0.1 baseline. Version 0.35 is a local single-user application; observed desktop, browser and native qualification is recorded per source below. Hosted multi-user operation and physical printing have separate qualification requirements.
 
 ## Implemented
+
+Version 0.35 adds a filament inventory ([inventory](INVENTORY.md)). Spools are entered by the person and updated by weigh-ins and by one deduction per sliced print, which uses the slicer's estimate. Records keep revisions and survive restart and backup restore. Slice results now also carry the slicer's time and filament estimates, which were previously always empty.
 
 Version 0.34 compares four process variants of the supplied settings: current, fine, fast and strong. Each variant is a real slice through the normal preparation, and only the slicer's estimates are kept; the current slice is left unchanged. A chosen variant is applied to the settings JSON for a normal review. The native workflow now slices all four variants ([slice comparison](SLICE_COMPARE.md)). Published as [v0.34.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.34.0) on 2026-11-21 from `1ce91b1`.
 
@@ -266,7 +268,7 @@ Development priorities set on 2026-11-16. Each item lands as its own verified re
 
 1. **Real Bambu printer integration:** v0.9 implements read-only identification, connection state and reported print status. Next: live qualification on one physical printer/firmware. (A saved printer list without access codes arrived in v0.17; linking a reported finish/failure to the stored job in v0.26.)
 2. **Natural-language CAD beyond the fixed templates** (eight templates as of v0.31, the latest a round cup): typed, validated new geometry families and edits; no LLM-generated code execution.
-3. **Filament automation:** check profile compatibility across printer, nozzle and material (the send review checks nozzle since v0.15, material type as a warning, and the printer model and abrasive filament on a soft nozzle since v0.29) (including AMS-reported slots as unverified input), then resolve full preset inheritance and show unknown/conflicting values.
+3. **Filament automation:** a spool inventory with recorded use arrived in v0.35; next is linking AMS-reported slots to spools. Check profile compatibility across printer, nozzle and material (the send review checks nozzle since v0.15, material type as a warning, and the printer model and abrasive filament on a soft nozzle since v0.29) (including AMS-reported slots as unverified input), then resolve full preset inheritance and show unknown/conflicting values.
 4. **Print failure recovery:** classify user-reported and printer-reported (HMS/error code) failures, keep setting-change history (model attempt history arrived in v0.27 and slicer-setting history in v0.28), and prepare a re-print with only the affected settings rechecked.
 5. **Operational completeness:** physical-device tests, install/update/recovery qualification on each desktop platform, and recorded native/printer evidence per version.
 

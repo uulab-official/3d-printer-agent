@@ -897,3 +897,23 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .slice-compare td.number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .slice-compare small { display: block; color: var(--muted); font-size: 0.78rem; }
 .slice-compare .text-button { font-size: 0.82rem; }
+
+/* Filament inventory */
+.inventory-totals { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.inventory-totals span { background: #f3f6fb; border-radius: 999px; padding: 6px 12px; font-size: 0.86rem; }
+.inventory-list { display: grid; gap: 10px; }
+.spool-card { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; padding: 12px; border: 1px solid #d6dfec; border-radius: 12px; background: #fff; }
+.spool-card.is-empty { opacity: 0.6; }
+.spool-swatch { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #e3e9f2; grid-row: 1 / span 3; }
+.spool-meter { height: 8px; border-radius: 999px; background: #e9eef5; overflow: hidden; }
+.spool-meter span { display: block; height: 100%; background: var(--blue); }
+.spool-card.is-low .spool-meter span { background: #d9822b; }
+.spool-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; grid-column: 2; }
+.spool-actions input { width: 110px; }
+.inventory-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 12px; }
+.inventory-form label { display: grid; gap: 6px; font-size: 0.88rem; }
+.inventory-form .inventory-notes, .inventory-form .button-row { grid-column: 1 / -1; }
+.outcome-spool { margin-top: 12px; display: grid; gap: 8px; }
+.outcome-spool h3 { margin: 0; font-size: 0.95rem; }
+.outcome-spool-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.outcome-spool-row label { display: grid; gap: 6px; font-size: 0.88rem; }

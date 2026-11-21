@@ -89,6 +89,7 @@ REQUIRED_CHECKS = frozenset({
     'cad_validated_keycap', 'printability_review_keycap', 'keycap_cross_stems_and_title',
     'cad_validated_cup', 'printability_review_cup', 'cup_drain_hole_cavity_and_title',
     'import_model_ranked_and_placed', 'import_placement_becomes_job',
+    'filament_spool_weighed_and_deducted', 'filament_spool_survives_real_restart', 'filament_spool_restored_from_backup',
     'printer_send_requires_verified_slice', 'printer_send_unknown_review_is_refused',
     'printer_send_requires_bed_confirmation_without_echo', 'printer_send_refusals_record_nothing',
 })

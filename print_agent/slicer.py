@@ -1006,12 +1006,33 @@ def _execute_project_slice(plan: dict, timeout_seconds: int) -> dict:
         result["project_settings_readback"] = readback
         result["checks"].append(_check("project_settings_snapshot", readback["unqualified_difference_count"] == 0,
             f"전체 설정 비교: 동일 {readback['unchanged_key_count']}개, 확인한 native 정규화 {readback['qualified_normalization_count']}개, 추가 검토 {readback['unqualified_difference_count']}개."))
+    result.update(_slice_estimates(output))
     result["status"] = "sliced" if all(check["passed"] for check in result["checks"]) else "needs_review"
     return result
 
 
 def _check(name: str, passed: bool, detail: str) -> dict:
     return {"name": name, "passed": passed, "detail": detail}
+
+
+def _slice_estimates(output) -> dict:
+    """The slicer's own time and filament estimates from a verified output; absent stays None."""
+    try:
+        with zipfile.ZipFile(output) as archive:
+            info = ET.fromstring(archive.read("Metadata/slice_info.config"))
+    except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError):
+        return {}
+    plate = info.find("plate")
+    values = {item.get("key"): item.get("value") for item in (plate.findall("metadata") if plate is not None else [])}
+    estimates = {}
+    for key, field, cast in (("prediction", "estimated_time_seconds", int), ("weight", "filament_grams", float)):
+        try:
+            number = cast(float(values[key]))
+        except (KeyError, TypeError, ValueError, OverflowError):
+            continue
+        if number >= 0 and math.isfinite(number):
+            estimates[field] = round(number, 2) if field == "filament_grams" else number
+    return estimates
 
 
 def _result(status="blocked", **values) -> dict:
@@ -1137,5 +1158,6 @@ def execute_slice(plan: dict, timeout_seconds: int = 180) -> dict:
             equal = present and _equivalent(expected, settings[key])
             detail = "요청값과 일치합니다." if equal else ("출력 설정이 요청값과 다릅니다." if present else "출력에서 이 설정을 확인할 수 없습니다.")
             result["checks"].append(_check(f"setting:{key}", equal, detail))
+    result.update(_slice_estimates(output))
     result["status"] = "sliced" if all(check["passed"] for check in result["checks"]) else "needs_review"
     return result

@@ -50,6 +50,7 @@ from .studio_revisions import StudioSettingsRevisionStore, StudioRevisionIntegri
 from .studio_settings import settings_editor, derive_settings
 from .studio_sources import StudioProjectStore, StudioSourceIntegrityError
 from .imports import ImportIntegrityError, ImportStore
+from .inventory import STATUSES as SPOOL_STATUSES, InventoryConflict, InventoryIntegrityError, InventoryStore
 from .model_import import MAX_MODEL_BYTES
 from .studio_workspaces import StudioWorkspaceStore, StudioWorkspaceIntegrityError
 from .workspaces import ProfileWorkspaceStore, WorkspaceConflict, WorkspaceIntegrityError
@@ -256,6 +257,38 @@ class SliceComparePayload(StrictPayload):
         default_factory=lambda: ['original', 'fine', 'fast', 'strong'], min_length=1, max_length=4)
 
 
+class SpoolPayload(StrictPayload):
+    brand: str = Field(min_length=1, max_length=60)
+    material: str = Field(pattern=r'^[A-Za-z0-9+\-_. ]{1,20}$')
+    color_name: str = Field(min_length=1, max_length=30)
+    color_hex: str | None = Field(default=None, pattern=r'^#[0-9A-Fa-f]{6}$')
+    diameter_mm: Literal[1.75, 2.85] = 1.75
+    net_weight_g: float = Field(gt=0, le=5000, allow_inf_nan=False)
+    empty_spool_g: float = Field(ge=0, le=1000, allow_inf_nan=False)
+    remaining_g: float = Field(ge=0, le=5000, allow_inf_nan=False)
+    status: Literal['sealed', 'opened', 'loaded', 'drying', 'empty'] = 'sealed'
+    location: str = Field(default='', max_length=60)
+    price_krw: int | None = Field(default=None, ge=0, le=10_000_000, strict=True)
+    notes: str = Field(default='', max_length=500)
+
+
+class SpoolUpdatePayload(SpoolPayload):
+    expected_revision: int = Field(ge=1, strict=True)
+
+
+class SpoolRevisionPayload(StrictPayload):
+    expected_revision: int = Field(ge=1, strict=True)
+
+
+class SpoolWeighPayload(SpoolRevisionPayload):
+    gross_g: float = Field(ge=0, le=6000, allow_inf_nan=False)
+
+
+class SpoolUsePayload(SpoolRevisionPayload):
+    grams: float = Field(gt=0, le=5000, allow_inf_nan=False)
+    job_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
+
+
 class ImportJobPayload(StrictPayload):
     orientation: int = Field(ge=0, le=64, strict=True)
 
@@ -337,10 +370,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     studio_revisions = StudioSettingsRevisionStore(data_root, studio_sources) if test_mode else None
     studio_workspaces = StudioWorkspaceStore(data_root, studio_sources, studio_revisions) if test_mode else None
     model_imports = ImportStore(data_root) if test_mode else None
+    inventory = InventoryStore(data_root) if test_mode else None
 
     @asynccontextmanager
     async def lifespan(application):
-        nonlocal store, workspaces, studio_sources, studio_revisions, studio_workspaces, model_imports, recovery
+        nonlocal store, workspaces, studio_sources, studio_revisions, studio_workspaces, model_imports, inventory, recovery
         if test_mode:
             yield
             return
@@ -352,6 +386,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             studio_revisions = StudioSettingsRevisionStore(data_root, studio_sources)
             studio_workspaces = StudioWorkspaceStore(data_root, studio_sources, studio_revisions)
             model_imports = ImportStore(data_root)
+            inventory = InventoryStore(data_root)
             recovery = store.recover()
             application.state.store = store
             application.state.workspaces = workspaces
@@ -359,6 +394,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             application.state.studio_revisions = studio_revisions
             application.state.studio_workspaces = studio_workspaces
             application.state.model_imports = model_imports
+            application.state.inventory = inventory
             yield
 
     token = secrets.token_urlsafe(32)
@@ -369,6 +405,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     app.state.studio_revisions = studio_revisions
     app.state.studio_workspaces = studio_workspaces
     app.state.model_imports = model_imports
+    app.state.inventory = inventory
     app.add_middleware(LocalSessionMiddleware, token=token)
     hosts = ['localhost','127.0.0.1'] + (['testserver'] if test_mode else [])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
@@ -388,6 +425,14 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.exception_handler(ImportIntegrityError)
     async def import_integrity(_request, exception):
         return JSONResponse({'detail': str(exception), 'code': 'import_integrity'}, status_code=409)
+
+    @app.exception_handler(InventoryIntegrityError)
+    async def inventory_integrity(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'inventory_integrity'}, status_code=409)
+
+    @app.exception_handler(InventoryConflict)
+    async def inventory_conflict(_request, exception):
+        return JSONResponse({'detail': str(exception), 'code': 'inventory_conflict', 'current': exception.current}, status_code=409)
 
     @app.exception_handler(StudioRevisionIntegrityError)
     async def studio_revision_integrity(_request, exception):
@@ -745,6 +790,38 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             raise
         finally:
             CAD_LOCK.release()
+
+    @app.get('/api/spools')
+    def list_spools():
+        return {**inventory.list(), 'statuses': SPOOL_STATUSES}
+
+    @app.get('/api/spools.csv')
+    def spools_csv():
+        return Response(inventory.csv(), media_type='text/csv; charset=utf-8',
+                        headers={'Content-Disposition': "attachment; filename*=utf-8''" + quote('필라멘트-재고.csv')})
+
+    @app.post('/api/spools', status_code=201)
+    def create_spool(payload: SpoolPayload):
+        return inventory.create(payload.model_dump())
+
+    @app.put('/api/spools/{spool_id}')
+    def update_spool(spool_id: str, payload: SpoolUpdatePayload):
+        return inventory.update(spool_id, payload.expected_revision, payload.model_dump(exclude={'expected_revision'}))
+
+    @app.post('/api/spools/{spool_id}/weigh')
+    def weigh_spool(spool_id: str, payload: SpoolWeighPayload):
+        return inventory.weigh(spool_id, payload.expected_revision, payload.gross_g)
+
+    @app.post('/api/spools/{spool_id}/use')
+    def use_spool(spool_id: str, payload: SpoolUsePayload):
+        if payload.job_id is not None:
+            store.get(payload.job_id)  # an unknown job is refused before the spool changes
+        return inventory.use(spool_id, payload.expected_revision, payload.grams, payload.job_id)
+
+    @app.delete('/api/spools/{spool_id}', status_code=204)
+    def delete_spool(spool_id: str, payload: SpoolRevisionPayload):
+        inventory.delete(spool_id, payload.expected_revision)
+        return Response(status_code=204)
 
     @app.get('/api/imports')
     def list_imports(limit: int = Query(default=20, ge=1, le=100)):

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.35.0 — 2026-11-21
+
+- **필라멘트 재고** (docs/INVENTORY.md). Spools record:
+  - brand, material, colour, diameter;
+  - new-spool filament weight, empty-spool weight and remaining amount;
+  - status, location, optional price and notes.
+
+  Each spool is one JSON file with a revision, written atomically, so a stale page gets 409 `inventory_conflict` with the current values instead of overwriting them.
+- **Changing the remaining amount:**
+  - **Weigh-ins:** subtract the empty-spool weight.
+  - **Deductions:** a sliced job's outcome card offers **재고에서 빼기**, prefilled with the slicer's estimate. Each print can be deducted from a spool only once, and the job is recorded in the history.
+  - **Status:** a sealed spool becomes opened when filament leaves it, and empty at 0 g.
+- **Overview and export:**
+  - Totals by material, an approximate remaining value and a low-stock mark below 150 g.
+  - Spreadsheet-safe CSV with a BOM and formula-looking cells prefixed with `'`.
+  - Unreadable records are preserved and counted, not repaired.
+- **Fix:** slice results now carry the slicer's estimated time and filament weight. The values are read from the verified output's `slice_info.config`. The slice summary always showed "no information" for both because nothing filled them.
+- **Installed-package qualification:** a spool is weighed and deducted by a job on every platform, then checked after a real restart and after a backup restore. Promotion requires these checks. A local macOS run passed 406/406.
+
 ## 0.34.0 — 2026-11-21
 
 - **Four-way slice comparison** (docs/SLICE_COMPARE.md). One click slices the current model four times from the supplied settings JSON. Only the process keys listed below change; the machine, filaments, plate and model stay as they are.
