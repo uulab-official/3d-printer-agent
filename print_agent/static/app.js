@@ -5242,6 +5242,7 @@
       this.maxs = maxs;
       this.frame();
       this.featureEdges = MeshViewer.featureEdges(mesh);
+      this.cornerNormals = MeshViewer.cornerNormals(mesh);
       this.renderPreviousControl(this.previous, bounds);
       this.canvas.hidden = false;
       this.canvas.setAttribute("aria-label", `${title || "생성한 모델"}. 방향키로 회전, 더하기와 빼기로 확대, 0으로 기본 시점.`);
@@ -5328,6 +5329,33 @@
     }
 
     reset() { this.setView("iso"); }
+
+    static cornerNormals(mesh, creaseDegrees = 30) {
+      // Smooth shading: each triangle corner averages the (area-weighted) normals of the
+      // triangles around that vertex that bend less than the crease angle, so curved
+      // surfaces shade evenly while real edges stay sharp.
+      const faceNormals = mesh.faces.map((face) => {
+        const [a, b, c] = face.map((index) => mesh.vertices[index]);
+        const u = b.map((value, axis) => value - a[axis]), v = c.map((value, axis) => value - a[axis]);
+        return [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      });
+      const unit = faceNormals.map((n) => { const length = Math.hypot(...n) || 1; return n.map((value) => value / length); });
+      const around = new Map();
+      mesh.faces.forEach((face, faceIndex) => face.forEach((vertex) => {
+        if (!around.has(vertex)) around.set(vertex, []);
+        around.get(vertex).push(faceIndex);
+      }));
+      const limit = Math.cos(creaseDegrees * Math.PI / 180);
+      return mesh.faces.map((face, faceIndex) => face.map((vertex) => {
+        const sum = [0, 0, 0];
+        for (const other of around.get(vertex)) {
+          if (unit[other].reduce((total, value, axis) => total + value * unit[faceIndex][axis], 0) < limit) continue;
+          faceNormals[other].forEach((value, axis) => { sum[axis] += value; });
+        }
+        const length = Math.hypot(...sum);
+        return length ? sum.map((value) => value / length) : unit[faceIndex];
+      }));
+    }
 
     static featureEdges(mesh) {
       // Draw only creases (> 25° between neighbouring triangles) and open
@@ -5423,6 +5451,17 @@
         const point = project(vertex);
         return [point[0] * dpr, point[1] * dpr, 1 / (distance - point[2])];
       });
+      // Camera-relative lighting: rotate the normal like project() does, then light
+      // from the viewer's upper left so every view keeps readable face contrast.
+      const light = (n) => {
+        const viewRight = cy * n[0] - sy * n[1], viewForward = -(sy * n[0] + cy * n[1]);
+        const viewUp = ce * n[2] - se * viewForward, viewDepth = se * n[2] + ce * viewForward;
+        const key = Math.max(0, -0.38 * viewRight + 0.52 * viewUp + 0.76 * viewDepth);
+        const rim = Math.max(0, 0.55 * viewRight + 0.25 * viewUp + 0.4 * viewDepth);
+        // A soft specular lift on faces turned toward the viewer reads as a moulded surface.
+        const glint = Math.pow(Math.max(0, viewDepth * 0.8 + viewUp * 0.35), 18) * 0.12;
+        return Math.min(1.16, 0.6 + key * 0.42 + rim * 0.12 + glint);
+      };
       const pixelWidth = this.canvas.width, pixelHeight = this.canvas.height;
       const raster = ctx.getImageData(0, 0, pixelWidth, pixelHeight);
       const pixels = raster.data;
@@ -5441,16 +5480,11 @@
         const normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
         const magnitude = Math.hypot(...normal) || 1;
         const n = normal.map((value) => value / magnitude);
-        // Camera-relative lighting: rotate the normal like project() does, then light
-        // from the viewer's upper left so every view keeps readable face contrast.
-        const viewRight = cy * n[0] - sy * n[1], viewForward = -(sy * n[0] + cy * n[1]);
-        const viewUp = ce * n[2] - se * viewForward, viewDepth = se * n[2] + ce * viewForward;
-        const key = Math.max(0, -0.38 * viewRight + 0.52 * viewUp + 0.76 * viewDepth);
-        const rim = Math.max(0, 0.55 * viewRight + 0.25 * viewUp + 0.4 * viewDepth);
-        const shade = Math.min(1.12, 0.6 + key * 0.42 + rim * 0.12);
         const overhangFace = this.showOverhangs && n[2] < -0.7072 && Math.min(pa[2], pb[2], pc[2]) > this.floor + 1e-6;
         const base = overhangFace ? [240, 128, 80] : this.faceColor(faceIndex);
-        const color = base.map((value) => Math.round(Math.min(255, value * shade)));
+        // Shade each corner from its smoothed normal and blend across the triangle.
+        const corners = this.cornerNormals?.[faceIndex] || [n, n, n];
+        const [shadeA, shadeB, shadeC] = corners.map(light);
         const inverse = 1 / denominator;
         for (let y = minY; y <= maxY; y += 1) {
           for (let x = minX; x <= maxX; x += 1) {
@@ -5462,8 +5496,10 @@
             const index = y * pixelWidth + x;
             if (depth <= depths[index]) continue;
             depths[index] = depth;
+            const shade = first * shadeA + second * shadeB + third * shadeC;
             const offset = index * 4;
-            pixels[offset] = color[0]; pixels[offset + 1] = color[1]; pixels[offset + 2] = color[2]; pixels[offset + 3] = 255;
+            pixels[offset] = Math.min(255, base[0] * shade); pixels[offset + 1] = Math.min(255, base[1] * shade);
+            pixels[offset + 2] = Math.min(255, base[2] * shade); pixels[offset + 3] = 255;
           }
         }
       }

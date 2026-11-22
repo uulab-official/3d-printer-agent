@@ -17,6 +17,10 @@ def keycap_layout(p: dict) -> dict:
     def inner(base, top):
         return base - (base - top) * cavity_top / p["height"] - 2 * p["wall"]
     return {"width": width, "depth": depth, "top_width": top_w, "top_depth": top_d,
+            # Sculpted shell: half way up the sides swell 0.4 mm past a straight taper, and the
+            # top edge rounds over a 0.9 mm shoulder that is 0.35 mm wider than the top on each side.
+            "sculpt_middle": ((width + top_w) / 2 + 0.4, (depth + top_d) / 2 + 0.4),
+            "sculpt_shoulder": (top_w + 0.7, top_d + 0.7), "shoulder_height": 0.9, "rim_radius": 0.4,
             "dish_radius": dish_radius, "dish_depth": dish, "cavity_top": cavity_top,
             "cavity_top_width": inner(width, top_w), "cavity_top_depth": inner(depth, top_d),
             "stem_diameter": stem, "cross_depth": cross_depth,

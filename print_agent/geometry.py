@@ -154,13 +154,27 @@ def _build_solid(p: dict) -> cq.Shape:
             return face.outerWire().translate(cq.Vector(0, 0, z))
         def frustum(base, top, z0, z1, r0, r1):
             return cq.Workplane("XY").add(cq.Solid.makeLoft([outline(*base, r0, z0), outline(*top, r1, z1)], True))
-        body = frustum((k["width"], k["depth"]), (k["top_width"], k["top_depth"]), 0, h, 1.0, 2.0)
-        body = body.cut(frustum((k["width"] - 2 * wall, k["depth"] - 2 * wall),
-                                (k["cavity_top_width"], k["cavity_top_depth"]), 0, k["cavity_top"], 0.5, 1.0))
+        # Sculpted shell: a smooth loft through the base, a slightly fuller middle and a
+        # rounded shoulder into the top, so the sides swell gently like moulded keycaps.
+        middle, shoulder = k["sculpt_middle"], k["sculpt_shoulder"]
+        sections = [outline(k["width"], k["depth"], 1.2, 0),
+                    outline(middle[0], middle[1], 2.0, h * 0.5),
+                    outline(shoulder[0], shoulder[1], 2.6, h - k["shoulder_height"]),
+                    outline(k["top_width"], k["top_depth"], 2.9, h)]
+        body = cq.Workplane("XY").add(cq.Solid.makeLoft(sections, False))
         # Cylindrical dish across the depth; it leaves a narrow flat on the long top edges.
         radius = k["dish_radius"]
-        dish = cq.Solid.makeCylinder(radius, k["width"] + 2, cq.Vector(-k["width"] / 2 - 1, 0, h - k["dish_depth"] + radius), cq.Vector(1, 0, 0))
+        dish = cq.Solid.makeCylinder(radius, k["width"] + 4, cq.Vector(-k["width"] / 2 - 2, 0, h - k["dish_depth"] + radius), cq.Vector(1, 0, 0))
         body = body.cut(dish)
+        # Soften the dish rim. Deterministic for given parameters; skipped only if the kernel refuses.
+        try:
+            rounded = body.edges(cq.selectors.BoxSelector((-k["width"], -k["depth"], h - k["dish_depth"] - 1), (k["width"], k["depth"], h + 1))).fillet(k["rim_radius"])
+            if rounded.val().isValid():
+                body = rounded
+        except Exception:  # noqa: BLE001 - OCC reports fillet failure as a generic error
+            pass
+        body = body.cut(frustum((k["width"] - 2 * wall, k["depth"] - 2 * wall),
+                                (k["cavity_top_width"], k["cavity_top_depth"]), 0, k["cavity_top"], 0.5, 1.0))
         offsets = [0.0] + ([-k["stabilizers"], k["stabilizers"]] if k["stabilizers"] else [])
         length, width = k["cross"]
         for x in offsets:

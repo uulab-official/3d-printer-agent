@@ -23,6 +23,18 @@ def inside(shape, x, y, z):
 
 
 class KeycapGeometryTests(unittest.TestCase):
+    def test_the_shell_is_sculpted_with_fuller_sides_and_a_rounded_shoulder(self):
+        parameters = GeometryRequest(**{**KEY, 'text': ''}).model_dump()
+        shape, k = _build_solid(parameters), keycap_layout(parameters)
+        straight = (k['width'] + k['top_width']) / 4  # half-width of a straight taper at half height
+        self.assertTrue(inside(shape, straight + 0.1, 0, 4.0))        # the side swells past the straight taper
+        self.assertFalse(inside(shape, straight + 0.45, 0, 4.0))
+        corner = (k['top_width'] / 2 - 0.15, k['top_depth'] / 2 - 0.15)
+        self.assertFalse(inside(shape, *corner, 7.95))                # the top corner is rounded away
+        self.assertTrue(inside(shape, 0, k['top_depth'] / 2 - 0.6, 7.4))  # the long top edge keeps material
+        self.assertTrue(shape.isValid())
+        self.assertEqual(len(shape.Solids()), 1)
+
     def test_sizes_follow_the_key_units(self):
         for units, width in ((1, 18.0), (1.5, 27.525), (2.25, 41.8125), (6.25, 118.0125)):
             with self.subTest(units=units), tempfile.TemporaryDirectory() as folder:
