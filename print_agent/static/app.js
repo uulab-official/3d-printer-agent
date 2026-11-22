@@ -4057,6 +4057,7 @@
         state.printerStatus = result;
         renderPrinterStatus(result);
         rememberPrinter({ host: body.host, serial: body.serial }, result);
+        if (result.connection?.state === "reporting" && typeof suggestBedForPrinter === "function") suggestBedForPrinter(result.identity?.product_name);
         if (typeof updatePrintabilityControls === "function") updatePrintabilityControls();
       });
     } catch (error) {
@@ -5159,6 +5160,8 @@
       this.showDimensions = true;
       this.showOverhangs = true;
       this.showPrevious = true;
+      this.bed = null;
+      this.afterMesh = null;
       this.previous = null;
       this.lastMesh = null;
       this.pending = false;
@@ -5245,6 +5248,25 @@
       this.element("empty").hidden = true;
       this.element("tools").hidden = false;
       this.reset();
+      if (typeof this.afterMesh === "function") this.afterMesh(this);
+    }
+
+    size() {
+      return this.mins && this.maxs ? this.maxs.map((value, axis) => value - this.mins[axis]) : null;
+    }
+
+    setBed(bed) {
+      this.bed = bed || null;
+      if (this.mesh) this.frame();
+      this.requestDraw();
+    }
+
+    bedBox() {
+      // The plate is centred under the model; Z starts at the model's floor.
+      if (!this.bed || !this.mins) return null;
+      const cx = (this.mins[0] + this.maxs[0]) / 2, cy = (this.mins[1] + this.maxs[1]) / 2;
+      const x0 = cx - this.bed.width / 2, y0 = cy - this.bed.depth / 2;
+      return { x0, y0, x1: x0 + this.bed.width, y1: y0 + this.bed.depth, z0: this.mins[2], z1: this.mins[2] + this.bed.height };
     }
 
     static signature(mesh) {
@@ -5267,6 +5289,13 @@
       if (this.previous && this.showPrevious) this.previous.bounds[0].forEach((value, axis) => {
         mins[axis] = Math.min(mins[axis], value); maxs[axis] = Math.max(maxs[axis], this.previous.bounds[1][axis]);
       });
+      const box = this.bedBox();
+      if (box) {
+        mins[0] = Math.min(mins[0], box.x0); mins[1] = Math.min(mins[1], box.y0);
+        maxs[0] = Math.max(maxs[0], box.x1); maxs[1] = Math.max(maxs[1], box.y1);
+        // Frame the plate and the model; the full build height would shrink small parts to dots.
+        maxs[2] = Math.max(maxs[2], box.z0 + Math.min(this.bed.height, Math.max(box.x1 - box.x0, box.y1 - box.y0) * 0.2));
+      }
       this.center = mins.map((value, axis) => (value + maxs[axis]) / 2);
       this.extents = mins.map((value, axis) => maxs[axis] - value);
       this.radius = Math.hypot(...this.extents) / 2 || 1;
@@ -5295,6 +5324,7 @@
       if (this.context) this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.element("empty").hidden = false;
       this.element("tools").hidden = true;
+      if (typeof this.afterMesh === "function") this.afterMesh(this);
     }
 
     reset() { this.setView("iso"); }
@@ -5362,7 +5392,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), ce = Math.cos(this.elevation), se = Math.sin(this.elevation);
-      const scale = Math.min(width, height) * 0.34 * this.zoom / this.radius;
+      const scale = Math.min(width, height) * (this.bed ? 0.44 : 0.34) * this.zoom / this.radius;
       const distance = this.radius * 4;
       const project = (point) => {
         const x = point[0] - this.center[0], y = point[1] - this.center[1], z = point[2] - this.center[2];
@@ -5373,10 +5403,12 @@
         const perspective = distance / (distance - depth);
         return [width / 2 + right * scale * perspective, height / 2 - vertical * scale * perspective, depth];
       };
+      const box = this.bedBox();
+      if (box) this.drawBed(ctx, project, box);
       const span = Math.max(this.extents[0], this.extents[1]) * 0.8;
       ctx.lineWidth = 0.6;
       ctx.strokeStyle = "#dfe7f2";
-      for (let index = -5; index <= 5; index += 1) {
+      for (let index = box ? 6 : -5; index <= 5; index += 1) {
         const offset = index * span / 5;
         const lines = [
           [[this.center[0] - span, this.center[1] + offset, this.floor], [this.center[0] + span, this.center[1] + offset, this.floor]],
@@ -5478,6 +5510,60 @@
     }
   }
 
+  MeshViewer.prototype.drawBed = function drawBed(ctx, project, box) {
+    const bed = this.bed;
+    const polygon = (corners) => { ctx.beginPath(); corners.map(project).forEach((point, index) => (index ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1]))); ctx.closePath(); };
+    const z = box.z0;
+    ctx.save();
+    polygon([[box.x0, box.y0, z], [box.x1, box.y0, z], [box.x1, box.y1, z], [box.x0, box.y1, z]]);
+    const size = this.size();
+    const overflow = size && (size[0] > bed.width || size[1] > bed.depth || size[2] > bed.height);
+    ctx.fillStyle = overflow ? "#f8e9e3" : "#e9eef6"; ctx.fill();
+    ctx.strokeStyle = overflow ? "#d0704a" : "#8ea0bb"; ctx.lineWidth = overflow ? 1.6 : 1.2; ctx.stroke();
+    // 8 × 8 grid over the plate.
+    ctx.strokeStyle = "#d3dbe8"; ctx.lineWidth = 0.6; ctx.beginPath();
+    for (let index = 1; index < 8; index += 1) {
+      const x = box.x0 + (box.x1 - box.x0) * index / 8, y = box.y0 + (box.y1 - box.y0) * index / 8;
+      for (const [start, end] of [[[x, box.y0, z], [x, box.y1, z]], [[box.x0, y, z], [box.x1, y, z]]]) {
+        const a = project(start), b = project(end); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+      }
+    }
+    ctx.stroke();
+    for (const [ex0, ey0, ex1, ey1] of bed.exclude || []) {
+      polygon([[box.x0 + ex0, box.y0 + ey0, z], [box.x0 + ex1, box.y0 + ey0, z], [box.x0 + ex1, box.y0 + ey1, z], [box.x0 + ex0, box.y0 + ey1, z]]);
+      ctx.fillStyle = "#f3c6b6"; ctx.fill();
+    }
+    if (Array.isArray(bed.shared_x)) {
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = "#7a8fb3"; ctx.lineWidth = 1; ctx.beginPath();
+      for (const x of bed.shared_x) {
+        const a = project([box.x0 + x, box.y0, z]), b = project([box.x0 + x, box.y1, z]); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    // Build-volume corners up to the framed height, drawn first so the model covers them.
+    // The full height is outlined only when it is inside the frame.
+    const top = Math.min(box.z1, this.center[2] + this.extents[2] / 2);
+    ctx.setLineDash([3, 5]); ctx.strokeStyle = "#b7c3d6"; ctx.lineWidth = 0.9; ctx.beginPath();
+    for (const [x, y] of [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]]) {
+      const a = project([x, y, z]), b = project([x, y, top]); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+    }
+    if (top >= box.z1) {
+      const ring = [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1], [box.x0, box.y0]].map(([x, y]) => project([x, y, top]));
+      ring.forEach((point, index) => (index ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1])));
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    // Name the plate at its far corner, away from the zoom tools at the bottom.
+    const corners = [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]].map(([x, y]) => project([x, y, z]));
+    const far = corners.reduce((best, point) => (point[1] < best[1] ? point : best));
+    ctx.font = "600 10px Pretendard, 'Apple SD Gothic Neo', sans-serif";
+    ctx.fillStyle = "#5b6f8f";
+    const text = `${bed.vendor} ${bed.name} · ${bed.width} × ${bed.depth} mm`;
+    const textWidth = ctx.measureText(text).width;
+    const canvasWidth = this.canvas.clientWidth || 0;
+    ctx.fillText(text, Math.max(6, Math.min(far[0] - textWidth / 2, canvasWidth - textWidth - 6)), Math.max(58, far[1] - 8));
+    ctx.restore();
+  };
+
   MeshViewer.prototype.drawDimensions = function drawDimensions(ctx, project) {
     const [x0, y0, z0] = this.mins, [x1, y1, z1] = this.maxs;
     const pad = this.radius * 0.12;
@@ -5542,6 +5628,9 @@
   $("zoom-in").addEventListener("click", () => viewer.changeZoom(1.15));
   $("zoom-out").addEventListener("click", () => viewer.changeZoom(1 / 1.15));
   $("reset-view").addEventListener("click", () => viewer.reset());
+  viewer.afterMesh = () => updateBedFit();
+  $("preview-bed").addEventListener("change", (event) => chooseBed(event.target.value));
+  $("preview-save").addEventListener("click", savePreviewImage);
 
   // ---------------------------------------------------------------------------
   // Imported model check: originals stay unchanged; a placement is a rotation and move only.
@@ -5551,6 +5640,7 @@
   $("import-zoom-in").addEventListener("click", () => importViewer.changeZoom(1.15));
   $("import-zoom-out").addEventListener("click", () => importViewer.changeZoom(1 / 1.15));
   $("import-reset-view").addEventListener("click", () => importViewer.reset());
+  importViewer.afterMesh = () => updateBedFit();
   const IMPORT_MAX_BYTES = 32 * 1024 * 1024;
   const importStatus = { ok: ["점검 통과", "success"], review: ["확인할 점 있음", "warning"], needs_change: ["바꿔야 할 점 있음", "error"] };
 
@@ -6021,6 +6111,138 @@
 
   // Glossary and first-run guide. The words come from the server; nothing here is fetched elsewhere.
 
+  // Build plates for the preview's "on the plate" view. A visual reference only:
+  // the slicer settings used for a real slice remain the authority.
+  const BED_STORAGE_KEY = "printAgent.previewBed";
+
+  function setPrinterBeds(data) {
+    state.printerBeds = Array.isArray(data?.beds) ? data.beds : [];
+    state.printerBedScope = typeof data?.scope === "string" ? data.scope : "";
+    renderBedOptions();
+    let remembered = "";
+    try { remembered = window.localStorage?.getItem(BED_STORAGE_KEY) || ""; } catch { remembered = ""; }
+    chooseBed(state.printerBeds.some((bed) => bed.id === remembered) ? remembered : "", { remember: false });
+  }
+
+  function renderBedOptions() {
+    const select = $("preview-bed");
+    select.replaceChildren();
+    const none = node("option", "", "출력판 표시 안 함");
+    none.value = "";
+    select.append(none);
+    const vendors = [];
+    for (const bed of state.printerBeds || []) if (!vendors.includes(bed.vendor)) vendors.push(bed.vendor);
+    for (const vendor of vendors) {
+      const group = node("optgroup", "");
+      group.label = vendor;
+      for (const bed of state.printerBeds.filter((item) => item.vendor === vendor)) {
+        const option = node("option", "", `${bed.name} · ${bed.width} × ${bed.depth} × ${bed.height} mm`);
+        option.value = bed.id;
+        group.append(option);
+      }
+      select.append(group);
+    }
+  }
+
+  function bedFit(size, bed) {
+    // Mirrors printer_beds.fit() on the server.
+    const [width, depth, height] = size.map((value) => Math.max(0, Number(value) || 0));
+    const round = (value) => Math.round(Math.max(0, value) * 10) / 10;
+    const over = [round(width - bed.width), round(depth - bed.depth), round(height - bed.height)];
+    const fits = !over.some(Boolean);
+    const turned = width <= bed.depth && depth <= bed.width && height <= bed.height;
+    let sharedOver = null;
+    if (Array.isArray(bed.shared_x)) {
+      const footprint = !fits && turned ? Math.min(width, depth) : width;
+      sharedOver = round(footprint - (bed.shared_x[1] - bed.shared_x[0]));
+    }
+    return { fits, rotate: !fits && turned, over, shared_over: sharedOver };
+  }
+
+  function bedFitMessage(size, bed) {
+    if (!size || !bed) return null;
+    const result = bedFit(size, bed);
+    const plate = `${bed.vendor} ${bed.name} 출력판(${bed.width} × ${bed.depth} × 높이 ${bed.height} mm)`;
+    const mm = (value) => `${numberFormat.format(value)} mm`;
+    let text, tone;
+    if (result.fits) {
+      const spare = [bed.width - size[0], bed.depth - size[1], bed.height - size[2]].map((value) => mm(Math.floor(value)));
+      text = `${plate}에 들어갑니다. 남는 공간: 가로 ${spare[0]} · 세로 ${spare[1]} · 높이 ${spare[2]}.`; tone = "success";
+    }
+    else if (result.rotate) { text = `${plate}에 그대로는 넘치지만, 바닥에서 90° 돌리면 들어갑니다.`; tone = "warning"; }
+    else {
+      const parts = ["가로", "세로", "높이"].map((label, axis) => (result.over[axis] ? `${label} ${mm(result.over[axis])}` : null)).filter(Boolean);
+      text = `${plate}보다 ${parts.join(", ")} 큽니다. 크기를 줄이거나 나눠서 출력하세요.`; tone = "error";
+    }
+    if (result.shared_over) text += ` 두 노즐을 함께 쓰려면 가로가 ${mm(bed.shared_x[1] - bed.shared_x[0])} 안이어야 하는데 ${mm(result.shared_over)} 넘습니다.`;
+    if ((bed.exclude || []).length && tone !== "error") text += " 왼쪽 앞 모서리의 제외 구역(빨간 부분)은 피해서 놓으세요.";
+    return { text, tone, result };
+  }
+
+  function bedLegend(bed) {
+    if (!bed) return "";
+    const parts = [];
+    if (Array.isArray(bed.shared_x)) parts.push(`세로 점선 사이: 두 노즐이 함께 닿는 영역(가로 ${numberFormat.format(bed.shared_x[1] - bed.shared_x[0])} mm)`);
+    if ((bed.exclude || []).length) parts.push("붉은 칸: 왼쪽 앞 출력 제외 구역");
+    parts.push(`출처: ${bed.source}`);
+    return parts.join(" · ");
+  }
+
+  function updateBedFit() {
+    const bed = (state.printerBeds || []).find((item) => item.id === $("preview-bed").value) || null;
+    $("preview-bed-legend").textContent = bedLegend(bed);
+    const message = bedFitMessage(viewer.mesh ? viewer.size() : null, bed);
+    const output = $("preview-bed-fit");
+    output.className = `preview-bed-fit${message ? ` is-${message.tone}` : ""}`;
+    output.textContent = message ? message.text : (bed ? "모델을 만들면 출력판에 들어가는지 알려 드립니다." : "");
+    output.title = bed ? `${bed.source}. ${state.printerBedScope || ""}` : "";
+    // The imported-model check uses the same plate for the chosen placement.
+    if (typeof importViewer !== "undefined") {
+      const placed = bedFitMessage(importViewer.mesh ? importViewer.size() : null, bed);
+      const importOutput = $("import-bed-fit");
+      importOutput.className = `preview-bed-fit preview-bed-fit-import${placed ? ` is-${placed.tone}` : ""}`;
+      importOutput.textContent = placed ? `이 방향으로 놓으면: ${placed.text}` : "";
+    }
+  }
+
+  function chooseBed(id, { remember = true } = {}) {
+    const bed = (state.printerBeds || []).find((item) => item.id === id) || null;
+    $("preview-bed").value = bed ? bed.id : "";
+    viewer.setBed(bed);
+    if (typeof importViewer !== "undefined") importViewer.setBed(bed);
+    if (remember) {
+      try { if (bed) window.localStorage?.setItem(BED_STORAGE_KEY, bed.id); else window.localStorage?.removeItem(BED_STORAGE_KEY); } catch { /* per-browser convenience only */ }
+    }
+    updateBedFit();
+  }
+
+  function suggestBedForPrinter(productName) {
+    // A printer that reported its product name fills an empty plate choice; a chosen plate is never replaced.
+    if (typeof productName !== "string" || $("preview-bed").value) return null;
+    const reported = productName.replace(/^\s*bambu\s*lab\s*/i, "").trim().toLowerCase();
+    const bed = (state.printerBeds || []).find((item) => item.vendor === "Bambu Lab" && item.name.toLowerCase() === reported);
+    if (!bed) return null;
+    chooseBed(bed.id);
+    toast(`프린터가 보고한 ${bed.name}의 출력판을 모델 미리보기에 표시합니다.`);
+    return bed.id;
+  }
+
+  function savePreviewImage() {
+    const canvas = $("model-canvas");
+    if (!viewer.mesh || canvas.hidden || typeof canvas.toBlob !== "function") return;
+    canvas.toBlob((blob) => {
+      if (!blob) { toast("이미지를 만들지 못했습니다."); return; }
+      const link = document.createElement("a");
+      const title = String(viewer.title || "모델").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 60) || "모델";
+      link.href = URL.createObjectURL(blob);
+      link.download = `${title} 미리보기.png`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+    }, "image/png");
+  }
+
   function setGlossary(glossary) {
     const valid = glossary && Array.isArray(glossary.terms) && glossary.categories && Array.isArray(glossary.onboarding);
     state.glossary = valid ? glossary : null;
@@ -6398,6 +6620,7 @@
       setDiscoveryCatalog(data.discovery, Boolean(state.discovery));
       setStoreGuide(data.store_guide);
       setGlossary(data.glossary);
+      setPrinterBeds(data.printer_beds);
       setFailureReasons(data.failure_reasons);
       ["plan-button", "review-profile", "compare-offers"].forEach((id) => { $(id).disabled = false; });
       updateWorkflowControls();
