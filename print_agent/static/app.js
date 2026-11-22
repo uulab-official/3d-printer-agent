@@ -25,6 +25,7 @@
     hole_diameter: { label: "고리 구멍 지름", min: 2, max: 10, step: 0.1 },
     key_units: { label: "키 크기", min: 1, max: 7, step: 0.25, unit: "u" },
     drain_hole: { label: "배수 구멍 지름", min: 0, max: 30, step: 0.5 },
+    top_tilt: { label: "윗면 기울기", min: -12, max: 12, step: 0.5, unit: "°" },
     color: { label: "모델 색", kind: "color", unit: "" },
     accent_color: { label: "글자 색", kind: "color", unit: "" },
   };
@@ -40,6 +41,9 @@
   // Fields read and sent as strings rather than numbers.
   const TEXT_PARAMETERS = new Set(["text"]);
   const STRING_PARAMETERS = new Set([...TEXT_PARAMETERS, ...COLOR_PARAMETERS]);
+  // Numbers added to an existing template; like colours they are absent from canonical
+  // parameters while neutral (see schemas.OPTIONAL_NUMBERS).
+  const OPTIONAL_NUMBERS = { top_tilt: 0 };
   // Editing panel: one-line explanations, the +/- step and the group of each field.
   const fieldDescriptions = {
     width: "바깥 가로 길이(좌우)", depth: "바깥 세로 길이(앞뒤)", height: "바닥에서 가장 높은 곳까지",
@@ -54,8 +58,8 @@
     color: "출력할 필라멘트 색. 화면 색은 비슷하게 보여 줄 뿐입니다",
     accent_color: "글자만 다른 색으로 뽑을 때 고릅니다(AMS 등 자동 교체 필요)",
   };
-  const templateFieldDescriptions = { cup: { width: "컵의 바깥 지름(가로·세로가 같음)", height: "바닥에서 컵 위 끝까지", wall: "원통 옆벽 두께", bottom: "컵 바닥 두께" }, phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" }, wall_hook: { width: "후크의 폭(벽에 붙는 면의 가로)", depth: "벽에서 앞으로 나온 걸이 길이", height: "등판 높이(나사 구멍 두 개가 들어감)", wall: "등판과 끝 턱의 두께", bottom: "물건이 걸리는 걸이 두께. 무거운 물건은 두껍게", hole_diameter: "벽 나사 구멍 지름. 위쪽이 뾰족한 물방울 모양이라 서포트 없이 출력됩니다", lip_height: "물건이 미끄러지지 않게 막는 끝 턱 높이" }, keycap: { text: "윗면에 새길 글자(6자 이하). 비워 두면 글자 없는 키캡입니다", text_size: "새긴 글자의 높이. 1u 윗면에는 5 mm 이하가 알맞습니다", text_depth: "윗면에 파이는 글자 깊이", height: "베드에서 키캡 윗면 가장자리까지", wall: "키캡 옆벽 두께", bottom: "오목한 윗면 가운데의 두께", fit_clearance: "체리 MX 십자 구멍(4.0 × 1.17 mm)에 더하는 여유. 빡빡하면 늘리고 헐거우면 줄이세요" } };
-  const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1, text_size: 0.5, text_depth: 0.2, hole_diameter: 0.5, key_units: 0.25, drain_hole: 0.5 };
+  const templateFieldDescriptions = { cup: { width: "컵의 바깥 지름(가로·세로가 같음)", height: "바닥에서 컵 위 끝까지", wall: "원통 옆벽 두께", bottom: "컵 바닥 두께" }, phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" }, wall_hook: { width: "후크의 폭(벽에 붙는 면의 가로)", depth: "벽에서 앞으로 나온 걸이 길이", height: "등판 높이(나사 구멍 두 개가 들어감)", wall: "등판과 끝 턱의 두께", bottom: "물건이 걸리는 걸이 두께. 무거운 물건은 두껍게", hole_diameter: "벽 나사 구멍 지름. 위쪽이 뾰족한 물방울 모양이라 서포트 없이 출력됩니다", lip_height: "물건이 미끄러지지 않게 막는 끝 턱 높이" }, keycap: { text: "윗면에 새길 글자(6자 이하). 비워 두면 글자 없는 키캡입니다", text_size: "새긴 글자의 높이. 1u 윗면에는 5 mm 이하가 알맞습니다", text_depth: "윗면에 파이는 글자 깊이", height: "베드에서 키캡 윗면 가장자리까지", wall: "키캡 옆벽 두께", bottom: "오목한 윗면 가운데의 두께", fit_clearance: "체리 MX 십자 구멍(4.0 × 1.17 mm)에 더하는 여유. 빡빡하면 늘리고 헐거우면 줄이세요", top_tilt: "열마다 다른 윗면 기울기(조각). 양수면 윗면이 앞(사용자 쪽)을, 음수면 뒤를 향합니다. 0이면 평평하고, 높이는 윗면 가운데 기준입니다" } };
+  const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1, text_size: 0.5, text_depth: 0.2, hole_diameter: 0.5, key_units: 0.25, drain_hole: 0.5, top_tilt: 1 };
   const fieldGroups = [["text", "글자", ["text", "text_size", "text_depth"]], ["size", "크기", ["key_units", "width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]], ["color", "색", ["color", "accent_color"]]];
   const PARAMETER_FORMAT = "3d-printer-agent/parameters";
 
@@ -622,12 +626,18 @@
     const laterFields = { phone_stand: { lean_angle: 65, device_thickness: 12, lip_height: 12 }, name_tag: { text: "", text_size: 12, text_depth: 2, hole_diameter: 4 }, wall_hook: { lip_height: 12, hole_diameter: 4 }, keycap: { text: "", text_size: 12, text_depth: 2, key_units: 1 }, cup: { drain_hole: 0 } };
     const applicable = { tray: ["width", "depth", "height", "wall", "bottom", "dividers"], cable_comb: ["width", "depth", "height", "wall", "bottom", "slots", "cable_diameter", "fit_clearance"], magnet_frame: ["width", "depth", "height", "wall", "bottom", "inset_diameter", "inset_depth", "fit_clearance"], phone_stand: ["width", "depth", "height", "wall", "bottom", "lean_angle", "device_thickness", "lip_height", "fit_clearance"], name_tag: ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"], wall_hook: ["width", "depth", "height", "wall", "bottom", "hole_diameter", "lip_height"], keycap: ["key_units", "text", "text_size", "text_depth", "height", "wall", "bottom", "fit_clearance"], cup: ["width", "height", "wall", "bottom", "drain_hole"] };
     const expected = { ...defaults, ...(laterFields[parameters?.template] || {}) };
+    // Optional numbers appear only when not neutral, and only where the template uses them.
+    const optionalKeys = parameters && typeof parameters === "object" ? Object.keys(parameters).filter((key) => Object.hasOwn(OPTIONAL_NUMBERS, key)) : [];
+    for (const key of optionalKeys) {
+      const value = parameters[key], definition = fields[key];
+      if (parameters.template !== "keycap" || typeof value !== "number" || !Number.isFinite(value) || value === OPTIONAL_NUMBERS[key] || value < definition.min || value > definition.max) throw new Error("수정 제안의 치수 응답이 올바르지 않습니다.");
+    }
     // Colours appear only when chosen (see schemas.COLOR_FIELDS); letters only on a name tag.
     const colorKeys = parameters && typeof parameters === "object" ? Object.keys(parameters).filter((key) => COLOR_PARAMETERS.has(key)) : [];
     for (const key of colorKeys) {
       if (!Object.hasOwn(PALETTE, parameters[key]) || (key === "accent_color" && parameters.template !== "name_tag")) throw new Error("수정 제안의 색 응답이 올바르지 않습니다.");
     }
-    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== Object.keys(expected).length + 1 + colorKeys.length || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
+    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || !Object.hasOwn(applicable, parameters.template) || Object.keys(parameters).length !== Object.keys(expected).length + 1 + colorKeys.length + optionalKeys.length || !Object.hasOwn(parameters, "template")) throw new Error("수정 제안의 전체 치수 응답을 확인할 수 없습니다.");
     for (const [key, neutral] of Object.entries(expected)) {
       const value = parameters[key];
       if (TEXT_PARAMETERS.has(key)) {
@@ -638,7 +648,7 @@
       const definition = fields[key];
       if (definition && (value < definition.min || value > definition.max)) throw new Error("수정 제안의 치수 범위를 확인해 주세요.");
     }
-    return [...applicable[parameters.template], ...colorKeys];
+    return [...applicable[parameters.template], ...(parameters.template === "keycap" ? Object.keys(OPTIONAL_NUMBERS) : []), ...colorKeys];
   }
 
   function parameterKeys(template) {
@@ -661,6 +671,7 @@
       const input = $(`parameter-${key}`);
       if (!parameterInputComplete(input)) throw new Error("현재 치수 입력을 완성한 뒤 수정 제안을 요청해 주세요.");
       if (COLOR_PARAMETERS.has(key)) { if (input.value) parameters[key] = input.value; continue; }
+      if (Object.hasOwn(OPTIONAL_NUMBERS, key)) { if (Number(input.value) !== OPTIONAL_NUMBERS[key]) parameters[key] = Number(input.value); continue; }
       parameters[key] = TEXT_PARAMETERS.has(key) ? input.value.trim() : Number(input.value);
     }
     validateEditParameters(parameters);
@@ -687,7 +698,8 @@
     try { editable = validateEditParameters(review.parameters); validateEditParameters(selection.base_parameters); } catch { fail(); }
     // Colour keys follow the numeric and text keys, in the server's field order.
     const colorKeys = ["color", "accent_color"].filter((key) => editable.includes(key) || Object.hasOwn(context.base, key));
-    const keys = [...parameterKeys(context.base.template), ...colorKeys];
+    const optionalKeys = Object.keys(OPTIONAL_NUMBERS).filter((key) => editable.includes(key) || Object.hasOwn(context.base, key));
+    const keys = [...parameterKeys(context.base.template), ...optionalKeys, ...colorKeys];
     if (review.parameters.template !== context.base.template || keys.some(key => selection.base_parameters[key] !== context.base[key])) fail();
     if (context.parent) {
       const parent = selection.parent;
@@ -713,10 +725,11 @@
       }
       if (typeof operation.value !== "number" || !Number.isFinite(operation.value) || (["dividers", "slots"].includes(operation.field) && (operation.op !== "set" || !Number.isSafeInteger(operation.value)))) fail();
       seen.add(operation.field);
-      if (operation.op === "set" && review.parameters[operation.field] !== operation.value) fail();
+      const after = Object.hasOwn(OPTIONAL_NUMBERS, operation.field) ? (review.parameters[operation.field] ?? OPTIONAL_NUMBERS[operation.field]) : review.parameters[operation.field];
+      if (operation.op === "set" && after !== operation.value) fail();
     }
     // Review consistency only: the server rederives operations and geometry before CAD.
-    const valueOf = (parameters, key) => COLOR_PARAMETERS.has(key) ? (parameters[key] ?? "") : parameters[key];
+    const valueOf = (parameters, key) => COLOR_PARAMETERS.has(key) ? (parameters[key] ?? "") : Object.hasOwn(OPTIONAL_NUMBERS, key) ? (parameters[key] ?? OPTIONAL_NUMBERS[key]) : parameters[key];
     const expectedChanges = keys.slice(1).filter(key => valueOf(context.base, key) !== valueOf(review.parameters, key)).map(field => ({ field, before: valueOf(context.base, field), after: valueOf(review.parameters, field) }));
     if (!expectedChanges.length || expectedChanges.some(change => !seen.has(change.field)) || !Array.isArray(review.changes) || review.changes.length !== expectedChanges.length) fail();
     for (const [index, change] of review.changes.entries()) {

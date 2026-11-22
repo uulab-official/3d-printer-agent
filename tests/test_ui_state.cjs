@@ -50,7 +50,7 @@ function fixture() {
   for (const name of ['printabilityStatus','printabilityMarks','templateFieldLabels']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   // Multi-line editing-panel constants are evaluated from their declaration to the closing brace.
   for (const name of ['fieldDescriptions','PALETTE']) { const start=source.indexOf('  const '+name+' = {'); vm.runInContext(source.slice(start, source.indexOf('\n  };', start)+5), context); }
-  for (const name of ['templateFieldDescriptions','fieldNudges','fieldGroups','PARAMETER_FORMAT','TEXT_PARAMETERS','COLOR_PARAMETERS','STRING_PARAMETERS']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
+  for (const name of ['templateFieldDescriptions','fieldNudges','fieldGroups','PARAMETER_FORMAT','TEXT_PARAMETERS','COLOR_PARAMETERS','STRING_PARAMETERS','OPTIONAL_NUMBERS']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if (!match) throw new Error('Missing controller function: '+name);
@@ -2355,7 +2355,13 @@ const printVolumeReport = (overrides={}) => ({
   await check('A keycap legend may be blank and the key size is a later field',()=>{
     const c=fixture();
     const key={template:'keycap',width:120,depth:80,height:8,wall:1.3,bottom:2,dividers:0,slots:5,cable_diameter:6,inset_diameter:52,inset_depth:2,fit_clearance:0.15,text:'',text_size:5,text_depth:0.8,key_units:1.5};
-    assert.deepEqual(plain(c.validateEditParameters(key)),['key_units','text','text_size','text_depth','height','wall','bottom','fit_clearance']);
+    assert.deepEqual(plain(c.validateEditParameters(key)),['key_units','text','text_size','text_depth','height','wall','bottom','fit_clearance','top_tilt']);
+    // A row tilt is present only when not flat (schemas.OPTIONAL_NUMBERS), and only on a keycap.
+    c.fields.top_tilt={min:-12,max:12};
+    assert.deepEqual(plain(c.validateEditParameters({...key,top_tilt:6})).slice(-1),['top_tilt']);
+    assert.throws(()=>c.validateEditParameters({...key,top_tilt:0}),/치수 응답/);
+    assert.throws(()=>c.validateEditParameters({...key,top_tilt:13}),/치수 응답/);
+    assert.throws(()=>c.validateEditParameters({template:'cup',width:70,depth:80,height:100,wall:2,bottom:2,dividers:0,slots:5,cable_diameter:6,inset_diameter:52,inset_depth:2,fit_clearance:0.3,drain_hole:0,top_tilt:4}),/치수 응답/);
     assert.equal(c.parameterKeys('keycap').slice(-4).join(),'text,text_size,text_depth,key_units');
     assert.throws(()=>c.validateEditParameters({...key,text:'Escape!'}),/글자 응답/);
     assert.throws(()=>c.validateEditParameters({...key,width:30}),/치수 응답/);

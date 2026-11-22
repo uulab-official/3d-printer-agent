@@ -13,7 +13,11 @@ def keycap_layout(p: dict) -> dict:
     top_w, top_d = width - 2 * inset, depth - 2 * inset
     half = top_d / 2 - dish_edge
     dish = dish_radius - math.sqrt(dish_radius ** 2 - half ** 2)
-    cavity_top = p["height"] - dish - p["bottom"]
+    # Row sculpt: the top and dish tilt about the X axis through the top centre, so the
+    # lower long edge drops by depth/2 · tan(tilt); the cavity stops below that edge.
+    tilt = math.radians(p.get("top_tilt", 0) or 0)
+    drop = top_d / 2 * abs(math.tan(tilt))
+    cavity_top = p["height"] - dish - p["bottom"] - drop
     def inner(base, top):
         return base - (base - top) * cavity_top / p["height"] - 2 * p["wall"]
     return {"width": width, "depth": depth, "top_width": top_w, "top_depth": top_d,
@@ -22,6 +26,7 @@ def keycap_layout(p: dict) -> dict:
             "sculpt_middle": ((width + top_w) / 2 + 0.4, (depth + top_d) / 2 + 0.4),
             "sculpt_shoulder": (top_w + 0.7, top_d + 0.7), "shoulder_height": 0.9, "rim_radius": 0.4,
             "dish_radius": dish_radius, "dish_depth": dish, "cavity_top": cavity_top,
+            "top_tilt": p.get("top_tilt", 0) or 0, "tilt_drop": drop,
             "cavity_top_width": inner(width, top_w), "cavity_top_depth": inner(depth, top_d),
             "stem_diameter": stem, "cross_depth": cross_depth,
             "cross": (round(cross_length + p["fit_clearance"], 6), round(cross_width + p["fit_clearance"], 6)),
@@ -75,13 +80,16 @@ def _validate_geometry(p: dict) -> None:
             raise ValueError("키캡 옆벽 두께는 0.8~3 mm로 정하세요.")
         if not 1 <= bottom <= 4:
             raise ValueError("키캡 윗면 두께는 1~4 mm로 정하세요.")
+        if not -12 <= p.get("top_tilt", 0) <= 12:
+            raise ValueError("키캡 윗면 기울기는 −12~12°로 정하세요.")
         if p["fit_clearance"] > 0.5:
             raise ValueError("스템 십자 여유는 0~0.5 mm로 정하세요.")
         if p["text_depth"] > bottom - 0.6:
             raise ValueError(f"새긴 글자 아래에 0.6 mm 이상 남아야 합니다. 글자 깊이를 {bottom - 0.6:g} mm 이하로 줄이거나 윗면을 두껍게 하세요.")
         layout = keycap_layout(p)
         if layout["cavity_top"] < layout["cross_depth"] + 0.6:
-            raise ValueError(f"스위치 스템이 들어갈 안쪽 높이({layout['cross_depth'] + 0.6:g} mm)가 부족합니다. 높이를 늘리거나 윗면 두께를 줄이세요.")
+            raise ValueError(f"스위치 스템이 들어갈 안쪽 높이({layout['cross_depth'] + 0.6:g} mm)가 부족합니다. 높이를 늘리거나 윗면 두께를 줄이세요"
+                             + ("(윗면을 기울이면 낮은 쪽 가장자리가 내려가므로 기울기를 줄여도 됩니다)." if layout["top_tilt"] else "."))
         if layout["cavity_top_depth"] < layout["stem_diameter"] + 1:
             raise ValueError("옆벽이 두꺼워 안쪽에 스템이 들어갈 자리가 없습니다. 옆벽 두께를 줄이세요.")
         if p["text"].strip() and p["text_size"] > layout["top_depth"] - 2:
