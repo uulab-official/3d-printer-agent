@@ -38,6 +38,7 @@ from .recovery import REASONS as FAILURE_REASONS, recovery_plan
 from .planner import plan_from_text, plan_with_llm, provider_config
 from .preset_archive import import_preset_archive
 from . import printer_lan, printer_send
+from . import printer_moonraker
 from .printability import review_mesh
 from .preset_library import resolve_profile_documents
 from .profiles import evaluate_profile, review_calibrations
@@ -332,6 +333,13 @@ class PrinterStatusPayload(StrictPayload):
     job_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
 
 
+class MoonrakerStatusPayload(StrictPayload):
+    """The optional API key is used for one read and is never stored or returned."""
+    host: str = Field(max_length=64)
+    port: int = Field(default=printer_moonraker.DEFAULT_PORT, ge=1, le=65535)
+    api_key: str | None = Field(default=None, max_length=128)
+
+
 class PrintReviewPayload(PrinterStatusPayload):
     """Review sending this job's verified slice. ``slots`` maps each sliced filament to an AMS tray or 'external'."""
     job_id: str = Field(pattern=r'^[a-f0-9]{32}$')
@@ -468,6 +476,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
         return JSONResponse({'detail': str(exception)}, status_code=409)
 
     @app.exception_handler(printer_lan.PrinterBusy)
+    @app.exception_handler(printer_moonraker.PrinterBusy)
     async def printer_busy(_request, exception):
         return JSONResponse({'detail': str(exception), 'code': 'printer_busy'}, status_code=409, headers={'Retry-After': '5'})
 
@@ -475,7 +484,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     async def request_validation(request, exception):
         if request.url.path.startswith('/api/printers/'):
             # Never echo submitted printer access codes back in validation details.
-            return JSONResponse({'detail': '프린터 주소·시리얼·액세스 코드 입력 형식을 확인하세요.'}, status_code=422)
+            return JSONResponse({'detail': '프린터 주소·포트·시리얼·액세스 코드·API 키 입력 형식을 확인하세요.'}, status_code=422)
         return await request_validation_exception_handler(request, exception)
 
     @app.exception_handler(ValueError)
@@ -528,6 +537,11 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
             status['job_link'] = store.record_printer_report(payload.job_id, status['target']['serial'], printing,
                                                              status['observed_at'])
         return status
+
+    @app.post('/api/printers/moonraker/status')
+    def moonraker_status(payload: MoonrakerStatusPayload):
+        """One read-only Moonraker status read (Klipper printers such as the Snapmaker U1)."""
+        return printer_moonraker.read_status(payload.host, payload.port, payload.api_key)
 
     print_reviews = printer_send.ReviewStore()
     app.state.print_reviews = print_reviews

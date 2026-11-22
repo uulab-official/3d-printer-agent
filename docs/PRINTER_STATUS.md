@@ -67,6 +67,27 @@ v0.9는 같은 네트워크의 Bambu 프린터를 **찾고**, LAN 액세스 코�
   기종)입니다. 모르는 코드는 코드 그대로 보여 줍니다. 보고된 연결 방식은 `lan`을 “LAN 전용”,
   `cloud`를 “클라우드”로 함께 표시합니다.
 
+## Klipper 프린터 (Moonraker)
+
+Snapmaker U1, Voron, Sovol, Elegoo Neptune 4, Qidi처럼 Klipper 펌웨어를 쓰는 프린터는 Moonraker 웹 API로
+상태를 읽습니다. 프린터 상태 화면 아래쪽 **Klipper 프린터** 카드에 IP, 포트(기본 7125), 필요하면 API 키를 넣고
+**현재 상태 읽기**를 누릅니다.
+
+- 보내는 요청은 `GET /server/info`, `/printer/info`, `/printer/objects/list`, `/printer/objects/query` 네 가지로
+  고정되어 있습니다. 출력·이동·온도·파일·G-code 요청을 만드는 경로는 없습니다.
+- 사설·링크 로컬·루프백 IP만 허용합니다. API 키는 한 번의 확인에만 쓰고 저장하거나 응답에 돌려주지 않습니다.
+- 표시: 프린터 보고 상태, 진행률, 레이어, 사용 중인 툴헤드와 툴헤드별 노즐 온도, 베드 온도, Klipper·Moonraker
+  버전. 남은 시간은 Moonraker가 직접 보고하지 않으므로 경과 시간과 진행률로 **추정**하고 그렇게 표시합니다.
+- Klipper는 필라멘트 종류·색을 보고하지 않으므로 재료 칸, 재고 연결, 출력 전송은 아직 Bambu 전용입니다.
+- 결과 상태: `reporting`, `klippy_not_ready`(Moonraker는 응답하지만 Klipper가 준비되지 않음), `access_rejected`
+  (401/403, API 키 필요), `not_moonraker`, `unreachable`, `protocol_error`. 상태를 받은 프린터는 2초 뒤에 다시
+  확인할 수 있고, 응답을 받지 못한 확인은 간격 제한에 넣지 않아 고친 주소나 키로 바로 다시 시도할 수 있습니다.
+- 프린터 없이 확인하려면 합성 서버를 쓰세요(실제 프린터가 아니며 값은 가짜입니다):
+  `python scripts/fake_moonraker.py --port 7125 [--api-key 키] [--state printing|standby|paused|complete|error] [--klippy ready|shutdown]`
+
+이 기능은 합성 Moonraker 서버로만 검증했습니다. Snapmaker U1을 포함한 실제 Klipper 프린터에서의 확인은
+[검증 기록](VERIFICATION.md)에 장비별로 따로 남기기 전까지 확인된 것으로 보지 않습니다.
+
 ## 실제 프린터의 보고 구조 기록하기(필드 점검)
 
 실제 프린터가 보내는 보고의 **구조**를 기록해, 앱이 그 펌웨어의 필드를 제대로 읽는지 확인할 때 씁니다.

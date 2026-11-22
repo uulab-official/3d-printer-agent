@@ -209,6 +209,22 @@ def qualify(args, report):
               and loopback.get('connection', {}).get('state') in ('unreachable', 'tls_failed')
               and loopback.get('print') is None and probe_code.encode() not in content,
               f"HTTP {status}; state {loopback.get('connection', {}).get('state')}")
+        # Read-only Klipper (Moonraker) status: the same refusal and stage separation.
+        probe_key = 'QUALIFY-ONLY-API-KEY'
+        status, content, _ = request(server.base, '/api/printers/moonraker/status', method='POST', token=token,
+                                     payload={'host': '8.8.8.8', 'port': 7125, 'api_key': probe_key})
+        check('klipper_status_rejects_public_host_without_echo', status == 422 and probe_key.encode() not in content,
+              f'HTTP {status}')
+        with socket.socket() as closed_probe:
+            closed_probe.bind(('127.0.0.1', 0))
+            closed_port = closed_probe.getsockname()[1]
+        status, content, _ = request(server.base, '/api/printers/moonraker/status', method='POST', token=token,
+                                     payload={'host': '127.0.0.1', 'port': closed_port, 'api_key': probe_key})
+        klipper = json.loads(content) if status == 200 else {}
+        check('klipper_status_reports_connection_state_without_print_claim', status == 200
+              and klipper.get('kind') == 'moonraker' and klipper.get('connection', {}).get('state') == 'unreachable'
+              and klipper.get('print') is None and probe_key.encode() not in content,
+              f"HTTP {status}; state {klipper.get('connection', {}).get('state')}")
 
         # This is a labeled synthetic source container, not an authenticated
         # user's GUI export. Its complete settings came from the separately
