@@ -284,6 +284,48 @@ class PrinterLanTests(unittest.TestCase):
         with patch.object(printer_lan.socket, 'socket', side_effect=OSError):
             self.assertEqual(printer_lan.discover(1)['state'], 'listen_unavailable')
 
+    def test_known_model_codes_follow_studio_machine_definitions(self):
+        # Bambu Studio 02.09.01.70 profiles/BBL/machine model_id values; N6 was observed
+        # from a real printer's search reply on 2026-11-22.
+        self.assertEqual(printer_lan.MODEL_NAMES['N6'], 'X2D')
+        self.assertEqual(len(printer_lan.MODEL_NAMES), 15)
+        self.assertEqual(len(set(printer_lan.MODEL_NAMES.values())), 15)
+        reply = (b'HTTP/1.1 200 OK\r\nServer: UPnP/1.0\r\nLocation: 192.168.0.206\r\n'
+                 b'ST: urn:bambulab-com:device:3dprinter:1\r\nUSN: 0948AB000001895\r\n'
+                 b'DevModel.bambu.com: N6\r\nDevName.bambu.com: 3DP-094-895\r\nDevConnect.bambu.com: cloud\r\n'
+                 b'DevBind.bambu.com: occupied\r\nDevseclink.bambu.com: secure\r\nDevVersion.bambu.com: 01.02.00.00\r\n\r\n')
+        device = printer_lan.parse_announcement(reply, '192.168.0.206')
+        self.assertEqual((device['model_name'], device['connection_mode'], device['firmware']), ('X2D', 'cloud', '01.02.00.00'))
+
+    def test_discovery_finds_search_replies_while_another_app_holds_the_announcement_port(self):
+        holder = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        printer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        printer.bind(('127.0.0.1', 0))
+        real_socket = socket.socket
+        sent = []
+
+        class Searcher(real_socket):
+            def sendto(self, data, address):
+                sent.append(address)
+                # Stand in for the printer: answer the search directly to the sender's port.
+                printer.sendto(b'HTTP/1.1 200 OK\r\nST: urn:bambulab-com:device:3dprinter:1\r\nUSN: 01S00TEST000001\r\n'
+                               b'Location: 127.0.0.1\r\nDevModel.bambu.com: C12\r\n\r\n',
+                               ('127.0.0.1', self.getsockname()[1]))
+                return len(data)
+
+        try:
+            with patch.object(printer_lan, '_announcement_listener', return_value=None), \
+                 patch.object(printer_lan.socket, 'socket', Searcher):
+                result = printer_lan.discover(1)
+        finally:
+            holder.close()
+            printer.close()
+        self.assertEqual(result['state'], 'listened')
+        self.assertEqual(result['receivers'], {'announcements': False, 'search_replies': True})
+        self.assertEqual([d['model_name'] for d in result['devices']], ['P1S'])
+        self.assertEqual(sent[0], (printer_lan.SSDP_GROUP, printer_lan.SSDP_SEARCH_PORT))
+        self.assertEqual(len(sent), 2)  # one repeat for a lost datagram
+
 
 if __name__ == '__main__':
     unittest.main()

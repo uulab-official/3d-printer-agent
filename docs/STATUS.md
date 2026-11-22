@@ -6,6 +6,8 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
+Version 0.38 brings the first changes from a real printer on the local network (Bambu Lab X2D, firmware 01.02.00.00, cloud connection mode, read-only search replies only). Printer search now works while Bambu Studio holds the announcement port, by also receiving direct replies to a search request, and the model-code table covers all 15 codes in Bambu Studio 02.09.01.70 (the printer reported `N6`, X2D). No status read, send or print has been made on real hardware yet.
+
 Version 0.37.3 changes only the test setup: every browser test run starts from an empty app data folder, so records left by an earlier local run cannot fail the checks. Published as [v0.37.3](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.37.3) on 2026-11-21 from `ba3e2c2`.
 
 Version 0.37.2 turns the model-file picker into a drop area: a dropped STL/3MF is selected exactly like a chosen file and read only on 불러와서 점검. Published as [v0.37.2](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.37.2) on 2026-11-21 from `41d2879`.

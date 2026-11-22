@@ -3907,16 +3907,23 @@
     $("printer-access-code").focus();
   }
 
+  function connectionModeLabel(mode) {
+    const labels = { lan: "LAN 전용", cloud: "클라우드" };
+    return labels[String(mode).toLowerCase()] ? `${labels[String(mode).toLowerCase()]}(${mode})` : String(mode);
+  }
+
   function renderPrinterDevices(result) {
     const area = $("printer-devices");
     const devices = Array.isArray(result?.devices) ? result.devices : [];
     area.replaceChildren();
     if (result?.state === "listen_unavailable") {
-      showNotice("printer-discover-feedback", "이 PC에서 프린터 알림을 들을 수 없습니다. 다른 앱(예: Bambu Studio)이 같은 포트를 사용 중일 수 있습니다. IP와 시리얼을 직접 입력하세요.", "warning");
+      showNotice("printer-discover-feedback", "이 PC에서 네트워크 검색을 시작하지 못했습니다. 방화벽이나 네트워크 권한을 확인하거나 IP와 시리얼을 직접 입력하세요.", "warning");
       return;
     }
     if (!devices.length) {
-      showNotice("printer-discover-feedback", `${result?.seconds ?? 4}초 동안 응답한 프린터가 없습니다. 같은 네트워크인지 확인하거나 IP와 시리얼을 직접 입력하세요.`, "info");
+      const sharedPortNote = result?.receivers?.announcements === false
+        ? " 다른 앱(예: Bambu Studio)이 알림 포트를 쓰고 있어 검색에 직접 답한 프린터만 찾을 수 있었습니다." : "";
+      showNotice("printer-discover-feedback", `${result?.seconds ?? 4}초 동안 응답한 프린터가 없습니다.${sharedPortNote} 같은 네트워크인지 확인하거나 IP와 시리얼을 직접 입력하세요.`, "info");
       return;
     }
     showNotice("printer-discover-feedback", `${devices.length}대의 프린터 알림을 받았습니다. 알림 내용은 프린터가 스스로 보낸 정보이며 아직 접속을 확인하지 않았습니다.`, "info");
@@ -3925,7 +3932,7 @@
       const model = device.model_name ? `${device.model_name} (${device.model_code})` : device.model_code ? `알 수 없는 기종 코드 ${device.model_code}` : "기종 미보고";
       item.append(node("strong", "", device.name || device.serial), node("span", "field-help", `${model} · ${device.host} · ${device.serial}`));
       const details = [];
-      if (device.connection_mode) details.push(`연결 방식 보고: ${device.connection_mode}`);
+      if (device.connection_mode) details.push(`연결 방식 보고: ${connectionModeLabel(device.connection_mode)}`);
       if (device.firmware) details.push(`펌웨어 보고: ${device.firmware}`);
       if (device.location_matches_sender === false) details.push("알림의 주소와 보낸 주소가 다릅니다");
       if (details.length) item.append(node("span", "field-help", details.join(" · ")));
