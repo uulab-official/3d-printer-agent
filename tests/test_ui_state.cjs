@@ -66,7 +66,7 @@ function printerFixture() {
   Object.assign(c.state,{printerPins:{},printerStatus:null,printerRequest:0});
   vm.runInContext(/^  const printerNozzleTypes = .*$/m.exec(source)[0],c);
   vm.runInContext(/^  const printerConnectionTones = .*$/m.exec(source)[0],c);
-  for(const name of ['printerTarget','printerPinKey','updatePrinterControls','selectPrinterDevice','renderPrinterDevices','printerNumber','printerTemperature','renderPrinterStatus','discoverPrinters','checkPrinterStatus','printerInputChanged','clearPrinterPin','metric','dateTime']) {
+  for(const name of ['printerTarget','printerPinKey','updatePrinterControls','selectPrinterDevice','connectionModeLabel','renderPrinterDevices','printerNumber','printerTemperature','renderPrinterStatus','discoverPrinters','checkPrinterStatus','printerInputChanged','clearPrinterPin','metric','dateTime']) {
     const match=new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if(!match)throw new Error('Missing printer controller function: '+name);
     const tail=source.slice(match.index),end=/\n  \}(?=\n|$)/.exec(tail);
@@ -1646,6 +1646,16 @@ const printVolumeReport = (overrides={}) => ({
     const area=c.$('printer-devices');assert.match(area.textContent,/P1S \(C12\)/);assert.match(area.textContent,/주소가 다릅니다/);
     findElement(area,element=>element.listeners?.click).listeners.click();
     assert.equal(c.$('printer-host').value,'10.0.0.9');assert.equal(c.$('printer-serial').value,'01P00ABCDEF0001');
+  });
+  await check('Printer discovery names the shared-port case and translates reported connection modes',()=>{
+    const c=printerFixture();
+    c.renderPrinterDevices({state:'listened',seconds:4,receivers:{announcements:false,search_replies:true},devices:[]});
+    assert.match(c.$('printer-discover-feedback').textContent,/Bambu Studio\)이 알림 포트를/);
+    c.renderPrinterDevices({state:'listened',seconds:4,receivers:{announcements:true,search_replies:true},devices:[]});
+    assert.doesNotMatch(c.$('printer-discover-feedback').textContent,/알림 포트/);
+    c.renderPrinterDevices({state:'listened',seconds:4,devices:[{host:'192.168.0.206',serial:'0948AB000001895',model_code:'N6',model_name:'X2D',name:'3DP',connection_mode:'cloud',firmware:'01.02.00.00'}]});
+    const area=c.$('printer-devices');assert.match(area.textContent,/X2D \(N6\)/);assert.match(area.textContent,/클라우드\(cloud\)/);
+    assert.equal(c.connectionModeLabel('weird'),'weird');assert.equal(c.connectionModeLabel('LAN'),'LAN 전용(LAN)');
   });
   await check('Printability review renders statuses, advice and a fix action only for actionable fields',()=>{
     const c=fixture();let focused=null;c.$('parameter-wall').focus=()=>{focused='wall';};c.$('parameter-wall').scrollIntoView=()=>{};

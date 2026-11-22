@@ -17,6 +17,7 @@ import ipaddress
 import json
 import math
 import re
+import selectors
 import secrets
 import socket
 import ssl
@@ -39,11 +40,13 @@ REPORT_WINDOW_SECONDS = 1.5
 _SERIAL = re.compile(r'[0-9A-Z]{8,32}')
 _ACCESS_CODE = re.compile(r'[!-~]{4,64}')
 _SHA256 = re.compile(r'[a-f0-9]{64}')
-# Codes observed in printer announcements. Names are a lookup for display only;
-# the raw reported code is always returned alongside.
+# Model codes from the ``model_id`` of the machine definitions shipped with Bambu Studio
+# 02.09.01.70 (profiles/BBL/machine). Names are a lookup for display and the send
+# review only; the raw reported code is always returned alongside.
 MODEL_NAMES = {
     'BL-P001': 'X1 Carbon', 'BL-P002': 'X1', 'C13': 'X1E', 'C11': 'P1P', 'C12': 'P1S',
-    'N1': 'A1 mini', 'N2S': 'A1', 'O1D': 'H2D',
+    'N1': 'A1 mini', 'N2S': 'A1', 'N6': 'X2D', 'N7': 'P2S', 'N9': 'A2L', 'N10': 'H3C',
+    'O1D': 'H2D', 'O1E': 'H2D Pro', 'O1S': 'H2S', 'O1C2': 'H2C',
 }
 PRINT_STATES = {
     'IDLE': '대기 중', 'PREPARE': '출력 준비 중', 'SLICING': '프린터에서 슬라이싱 중',
@@ -503,53 +506,118 @@ def parse_announcement(datagram, sender):
     }
 
 
+def _search_message():
+    return ('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1990\r\nMAN: "ssdp:discover"\r\n'
+            f'MX: 1\r\nST: {SSDP_TARGET}\r\n\r\n').encode()
+
+
+def _announcement_listener():
+    """Bind the shared announcement port, or None when another app holds it.
+
+    Bambu Studio binds the same port without sharing it, so while Studio runs this
+    commonly fails; the search socket below still receives direct replies.
+    """
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    except OSError:
+        return None
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, 'SO_REUSEPORT'):
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except OSError:
+                pass
+        sock.bind(('', SSDP_LISTEN_PORT))
+    except OSError:
+        sock.close()
+        return None
+    try:
+        membership = socket.inet_aton(SSDP_GROUP) + socket.inet_aton('0.0.0.0')
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
+    except OSError:
+        pass
+    return sock
+
+
+def _search_socket():
+    """An ephemeral-port socket whose search requests printers answer directly."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    except OSError:
+        return None
+    try:
+        sock.bind(('', 0))
+    except OSError:
+        sock.close()
+        return None
+    return sock
+
+
 def discover(seconds=4.0):
-    """Listen for printer announcements on this computer's local network."""
+    """Find printers on this computer's local network.
+
+    Two receivers run together: the shared announcement port (periodic printer
+    announcements) and a private port that sends a search request and receives
+    direct replies. Either one is enough; the result says which were available.
+    """
     seconds = float(seconds)
     if not 1 <= seconds <= 10:
         raise ValueError('찾기 시간은 1~10초여야 합니다.')
     started = _now()
+    sockets = [sock for sock in (_announcement_listener(), _search_socket()) if sock is not None]
+    listener = next((sock for sock in sockets if _bound_port(sock) == SSDP_LISTEN_PORT), None)
+    searcher = next((sock for sock in sockets if sock is not listener), None)
+    receivers = {'announcements': listener is not None, 'search_replies': False}
+    if not sockets:
+        return {'state': 'listen_unavailable', 'observed_at': started, 'devices': [], 'seconds': seconds,
+                'receivers': receivers}
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    except OSError:
-        return {'state': 'listen_unavailable', 'observed_at': started, 'devices': [], 'seconds': seconds}
-    with sock:
+        search = _search_message()
+        sender = searcher or listener
         try:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if hasattr(socket, 'SO_REUSEPORT'):
-                try:
-                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-                except OSError:
-                    pass
-            sock.bind(('', SSDP_LISTEN_PORT))
-        except OSError:
-            return {'state': 'listen_unavailable', 'observed_at': started, 'devices': [], 'seconds': seconds}
-        try:
-            membership = socket.inet_aton(SSDP_GROUP) + socket.inet_aton('0.0.0.0')
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
+            sender.sendto(search, (SSDP_GROUP, SSDP_SEARCH_PORT))
+            receivers['search_replies'] = searcher is not None
         except OSError:
             pass
-        search = ('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1990\r\nMAN: "ssdp:discover"\r\n'
-                  f'MX: 1\r\nST: {SSDP_TARGET}\r\n\r\n').encode()
-        try:
-            sock.sendto(search, (SSDP_GROUP, SSDP_SEARCH_PORT))
-        except OSError:
-            pass
+        if listener is None and not receivers['search_replies']:
+            return {'state': 'listen_unavailable', 'observed_at': started, 'devices': [], 'seconds': seconds,
+                    'receivers': receivers}
         devices = {}
         end = time.monotonic() + seconds
-        while len(devices) < MAX_DEVICES:
-            remaining = end - time.monotonic()
-            if remaining <= 0:
-                break
-            sock.settimeout(remaining)
-            try:
-                datagram, (sender, _port) = sock.recvfrom(4096)
-            except socket.timeout:
-                break
-            except OSError:
-                break
-            device = parse_announcement(datagram, sender)
-            if device:
-                devices[(device['host'], device['serial'])] = device
-    return {'state': 'listened', 'observed_at': started, 'seconds': seconds,
+        repeat_at = time.monotonic() + min(1.0, seconds / 2)  # one repeat covers a lost datagram
+        with selectors.DefaultSelector() as selector:
+            for sock in sockets:
+                sock.setblocking(False)
+                selector.register(sock, selectors.EVENT_READ)
+            while len(devices) < MAX_DEVICES:
+                now = time.monotonic()
+                if now >= end:
+                    break
+                if repeat_at and now >= repeat_at:
+                    repeat_at = None
+                    try:
+                        sender.sendto(search, (SSDP_GROUP, SSDP_SEARCH_PORT))
+                    except OSError:
+                        pass
+                wait = end - now if repeat_at is None else min(end, repeat_at) - now
+                for key, _events in selector.select(max(wait, 0)):
+                    try:
+                        datagram, (address, _port) = key.fileobj.recvfrom(4096)
+                    except OSError:
+                        continue
+                    device = parse_announcement(datagram, address)
+                    if device:
+                        devices[(device['host'], device['serial'])] = device
+    finally:
+        for sock in sockets:
+            sock.close()
+    return {'state': 'listened', 'observed_at': started, 'seconds': seconds, 'receivers': receivers,
             'devices': sorted(devices.values(), key=lambda d: (d['serial'], d['host']))}
+
+
+def _bound_port(sock):
+    try:
+        return sock.getsockname()[1]
+    except OSError:
+        return None

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.38.0 — 2026-11-22
+
+First changes from a real printer on the local network (a Bambu Lab X2D, firmware 01.02.00.00, cloud connection mode). Read-only search replies only; no connection, status read, send or print was made.
+
+- **Printer search works while Bambu Studio is open.** Studio binds the announcement port (UDP 2021) without sharing it, so 4초 동안 찾기 returned `listen_unavailable` on any computer running Studio. Discovery now also sends the search request from a private port and receives the printers' direct replies; either receiver is enough, and the result records which were available (`receivers`). Observed: with Studio holding port 2021, the real printer was found in one 4-second search.
+- **All 15 Bambu model codes.** The code table follows the `model_id` of the machine definitions shipped with Bambu Studio 02.09.01.70 (adds X2D `N6`, P2S `N7`, A2L `N9`, H3C `N10`, H2D Pro `O1E`, H2S `O1S`, H2C `O1C2`). The real printer reported `N6`, previously shown as an unknown code. The send review's model check uses the same table, so a slice for one of these models is now compared with the printer instead of only warning.
+- The reported connection mode is shown as LAN 전용/클라우드 next to the raw value, and the no-printer message names the shared-port case.
+
 ## 0.37.3 — 2026-11-21
 
 - **Browser tests start from empty app data.** `playwright.config.cjs` clears `qa-output/playwright/data` once per run before the test server starts (workers inherit a marker so they never clear it mid-run). Locally the folder had kept every earlier run, 3,028 jobs including interrupted ones from stopped runs, which made the connection-status check fail on one machine only. CI already started from a fresh checkout. No application behaviour changes.
