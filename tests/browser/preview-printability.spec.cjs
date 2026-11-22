@@ -517,6 +517,26 @@ test('a keycap from a request: key size, blank legend, the cross stem fit and a 
   expect(blank.dimensions_mm.x).toBeCloseTo(27.525, 3);
 });
 
+test('a keycap row tilt comes from a request, survives an edit round trip and returns to the flat shape', async ({ page }) => {
+  await page.locator('#request-text').fill('ESC 키캡 윗면 기울기 6도');
+  await page.locator('#plan-button').click();
+  await expect(page.locator('#parameter-top_tilt')).toHaveValue('6');
+  await expect(page.locator('[data-field="top_tilt"] label')).toHaveText('윗면 기울기 · °');
+  const tilted = await generate(page, {});
+  expect(tilted.parameters.top_tilt).toBe(6);
+  expect(tilted.dimensions_mm.z).toBeGreaterThan(8.3);
+  expect(tilted.checks.every(check => check.passed)).toBe(true);
+  await page.locator('#model-edit-text').fill('기울기 2도 줄여줘');
+  await page.locator('#model-edit-propose').click();
+  await expect(page.locator('#model-edit-changes')).toContainText('4');
+  await page.locator('#model-edit-apply').click();
+  await expect(page.locator('#parameter-top_tilt')).toHaveValue('4');
+  await page.locator('#parameter-top_tilt').fill('0');
+  const flat = await generate(page, {});
+  expect(Object.hasOwn(flat.parameters, 'top_tilt')).toBe(false);
+  expect(flat.dimensions_mm.z).toBeCloseTo(8, 5);
+});
+
 test('a planter from a request: diameter, drain hole, no depth field and a diameter edit', async ({ page }) => {
   await page.locator('#request-text').fill('화분 지름 10cm 높이 9cm 파란색');
   await page.locator('#plan-button').click();

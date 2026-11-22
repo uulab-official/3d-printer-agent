@@ -41,8 +41,8 @@ def template_catalog() -> list[dict]:
          "editable_fields": ["width", "depth", "height", "wall", "bottom", "hole_diameter", "lip_height"]},
         {"id": "keycap", "title": "키캡",
          "description": "체리 MX 호환 십자 스템의 키캡입니다. 윗면에 글자를 새기고, 2u 이상은 스태빌라이저 스템을 함께 만듭니다. 열린 바닥을 베드에 두고 출력합니다.",
-         "defaults": {"key_units": 1, "height": 8, "wall": 1.3, "bottom": 2, "text": "A", "text_size": 5, "text_depth": 0.8, "fit_clearance": 0.15},
-         "editable_fields": ["key_units", "text", "text_size", "text_depth", "height", "wall", "bottom", "fit_clearance"]},
+         "defaults": {"key_units": 1, "height": 8, "wall": 1.3, "bottom": 2, "text": "A", "text_size": 5, "text_depth": 0.8, "fit_clearance": 0.15, "top_tilt": 0},
+         "editable_fields": ["key_units", "text", "text_size", "text_depth", "height", "wall", "bottom", "fit_clearance", "top_tilt"]},
         {"id": "phone_stand", "title": "휴대폰 거치대",
          "description": "앞턱과 기울어진 등판 사이에 휴대폰을 세워 두는 거치대입니다.",
          "defaults": {"width": 70, "depth": 80, "height": 90, "wall": 4, "bottom": 4,
@@ -154,13 +154,35 @@ def _build_solid(p: dict) -> cq.Shape:
             return face.outerWire().translate(cq.Vector(0, 0, z))
         def frustum(base, top, z0, z1, r0, r1):
             return cq.Workplane("XY").add(cq.Solid.makeLoft([outline(*base, r0, z0), outline(*top, r1, z1)], True))
-        body = frustum((k["width"], k["depth"]), (k["top_width"], k["top_depth"]), 0, h, 1.0, 2.0)
-        body = body.cut(frustum((k["width"] - 2 * wall, k["depth"] - 2 * wall),
-                                (k["cavity_top_width"], k["cavity_top_depth"]), 0, k["cavity_top"], 0.5, 1.0))
+        # Sculpted shell: a smooth loft through the base, a slightly fuller middle and a
+        # rounded shoulder into the top, so the sides swell gently like moulded keycaps.
+        middle, shoulder = k["sculpt_middle"], k["sculpt_shoulder"]
+        tilt = k["top_tilt"]
+        def tilted(wire):
+            # Row sculpt: turn the upper sections about the X axis through the top centre.
+            return wire.rotate(cq.Vector(0, 0, h), cq.Vector(1, 0, h), tilt) if tilt else wire
+        # The middle turns half as far about its own centre so the side walls blend into the tilt.
+        mid = outline(middle[0], middle[1], 2.0, h * 0.5)
+        if tilt:
+            mid = mid.rotate(cq.Vector(0, 0, h * 0.5), cq.Vector(1, 0, h * 0.5), tilt / 2)
+        sections = [outline(k["width"], k["depth"], 1.2, 0),
+                    mid,
+                    tilted(outline(shoulder[0], shoulder[1], 2.6, h - k["shoulder_height"])),
+                    tilted(outline(k["top_width"], k["top_depth"], 2.9, h))]
+        body = cq.Workplane("XY").add(cq.Solid.makeLoft(sections, False))
         # Cylindrical dish across the depth; it leaves a narrow flat on the long top edges.
         radius = k["dish_radius"]
-        dish = cq.Solid.makeCylinder(radius, k["width"] + 2, cq.Vector(-k["width"] / 2 - 1, 0, h - k["dish_depth"] + radius), cq.Vector(1, 0, 0))
-        body = body.cut(dish)
+        dish = cq.Solid.makeCylinder(radius, k["width"] + 4, cq.Vector(-k["width"] / 2 - 2, 0, h - k["dish_depth"] + radius), cq.Vector(1, 0, 0))
+        body = body.cut(cq.Workplane("XY").add(dish).rotate((0, 0, h), (1, 0, h), tilt) if tilt else dish)
+        # Soften the dish rim. Deterministic for given parameters; skipped only if the kernel refuses.
+        try:
+            rounded = body.edges(cq.selectors.BoxSelector((-k["width"], -k["depth"], h - k["dish_depth"] - 1), (k["width"], k["depth"], h + 1))).fillet(k["rim_radius"])
+            if rounded.val().isValid():
+                body = rounded
+        except Exception:  # noqa: BLE001 - OCC reports fillet failure as a generic error
+            pass
+        body = body.cut(frustum((k["width"] - 2 * wall, k["depth"] - 2 * wall),
+                                (k["cavity_top_width"], k["cavity_top_depth"]), 0, k["cavity_top"], 0.5, 1.0))
         offsets = [0.0] + ([-k["stabilizers"], k["stabilizers"]] if k["stabilizers"] else [])
         length, width = k["cross"]
         for x in offsets:
@@ -180,7 +202,10 @@ def _build_solid(p: dict) -> cq.Shape:
                 raise ValueError(f"이 PC의 글꼴({font['label']})로 만든 글자 형상이 올바르지 않습니다. 글자를 바꿔 다시 시도하세요.")
             if box.xlen > k["top_width"] - 2 or box.ylen > k["top_depth"] - 2:
                 raise ValueError(f"글자가 윗면({k['top_width'] - 2:.1f} × {k['top_depth'] - 2:.1f} mm 안)보다 큽니다. 글자 크기를 줄이거나 글자 수를 줄이세요.")
-            body = body.cut(letters.translate((-(box.xmin + box.xmax) / 2, -(box.ymin + box.ymax) / 2, 0)))
+            letters = letters.translate((-(box.xmin + box.xmax) / 2, -(box.ymin + box.ymax) / 2, 0))
+            if k["top_tilt"]:
+                letters = letters.rotate((0, 0, h), (1, 0, h), k["top_tilt"])
+            body = body.cut(letters)
     elif p["template"] == "phone_stand":
         import math
         body = cq.Workplane("XY").box(w, d, bottom, centered=False)
@@ -206,6 +231,20 @@ def _build_solid(p: dict) -> cq.Shape:
     else:
         raise ValueError("지원하지 않는 모델 템플릿입니다.")
     return body.clean().val()
+
+
+def _keycap_size_matches(dimensions: dict, parameters: dict) -> bool:
+    """Width and depth follow the key size; height is the top at the tilt axis.
+
+    A tilted top raises one long edge by at most half the top depth times sin(tilt)."""
+    import math
+    layout = keycap_layout(parameters)
+    flat = all(math.isclose(dimensions[axis], expected, abs_tol=1e-6)
+               for axis, expected in zip("xy", (layout["width"], layout["depth"])))
+    rise = layout["top_depth"] / 2 * abs(math.sin(math.radians(layout["top_tilt"])))
+    if not layout["top_tilt"]:
+        return flat and math.isclose(dimensions["z"], parameters["height"], abs_tol=1e-6)
+    return flat and parameters["height"] - 1e-6 <= dimensions["z"] <= parameters["height"] + rise + 1e-6
 
 
 def _preview_mesh(shape: cq.Shape) -> dict:
@@ -366,9 +405,8 @@ def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
           "detail": "글자 길이로 정해지는 가로·세로 대신 받침+글자 높이를 비교"}
          if spec.template == "name_tag" else
          {"name": "requested_dimensions",
-          "passed": all(math.isclose(dimensions[axis], expected, abs_tol=1e-6)
-                        for axis, expected in zip("xyz", (keycap_layout(parameters)["width"], keycap_layout(parameters)["depth"], parameters["height"]))),
-          "detail": "키 크기(u)로 정해지는 가로·세로와 요청 높이를 비교"}
+          "passed": _keycap_size_matches(dimensions, parameters),
+          "detail": "키 크기(u)로 정해지는 가로·세로와 요청 높이를 비교(기울이면 위로 올라간 가장자리까지 허용)"}
          if spec.template == "keycap" else
          {"name": "requested_dimensions",
           "passed": all(math.isclose(dimensions[axis], expected, abs_tol=1e-6)

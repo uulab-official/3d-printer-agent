@@ -7,7 +7,7 @@ import math
 import re
 
 from .geometry_rules import _validate_geometry
-from .schemas import COLOR_FIELDS, PALETTE, TEXT_FIELDS, GeometryRequest, TEMPLATE_SPECIFIC_FIELDS
+from .schemas import COLOR_FIELDS, OPTIONAL_NUMBERS, PALETTE, TEXT_FIELDS, GeometryRequest, TEMPLATE_SPECIFIC_FIELDS
 
 _STRINGS = TEXT_FIELDS | COLOR_FIELDS
 from . import planner
@@ -52,12 +52,21 @@ def _required(template):
     common = (_COMMON - {'width', 'depth', 'height'} if template == 'name_tag'
               else _COMMON - {'width', 'depth'} if template == 'keycap'
               else _COMMON - {'depth'} if template == 'cup' else _COMMON)
-    return common | TEMPLATE_SPECIFIC_FIELDS[template]
+    return (common | TEMPLATE_SPECIFIC_FIELDS[template]) - OPTIONAL_NUMBERS
 
 
 def _editable(template):
-    # Colours are optional: an unchosen colour is absent from canonical parameters.
-    return _required(template) | {'color'} | ({'accent_color'} if template == 'name_tag' else set())
+    # Colours and optional numbers (keycap top tilt) are absent from canonical parameters
+    # while unset, so they are editable without being required.
+    return (_required(template) | {'color'} | ({'accent_color'} if template == 'name_tag' else set())
+            | (TEMPLATE_SPECIFIC_FIELDS[template] & OPTIONAL_NUMBERS))
+
+
+def _current(parameters, field):
+    """A field's current value; an omitted optional number is its neutral default."""
+    if field in OPTIONAL_NUMBERS:
+        return parameters.get(field, GeometryRequest.model_fields[field].default)
+    return parameters.get(field, '')
 
 
 def normalize_parameters(base: dict) -> dict:
@@ -153,12 +162,12 @@ def review_model_edit(selection: dict) -> dict:
     for operation in selection['operations']:
         field, value = operation['field'], operation['value']
         if operation['op'] == 'add':
-            value = float(Decimal(str(base[field])) + Decimal(str(value)))
+            value = float(Decimal(str(_current(base, field))) + Decimal(str(value)))
         proposed[field] = value
     parameters = normalize_parameters(proposed)
-    changes = [{'field':field, 'before':base.get(field, ''), 'after':parameters.get(field, '')}
+    changes = [{'field':field, 'before':_current(base, field), 'after':_current(parameters, field)}
                for field in GeometryRequest.model_fields
-               if (field in parameters or field in base) and base.get(field, '') != parameters.get(field, '')]
+               if (field in parameters or field in base) and _current(base, field) != _current(parameters, field)]
     if not changes:
         raise ValueError('실제로 달라지는 치수가 없습니다.')
     hashed = {'schema_version':1, 'selection':selection, 'base_sha256':_hash(base),
@@ -208,7 +217,7 @@ _ALIASES = {
     'device_thickness':r'(?:기기|폰|휴대폰|스마트폰|케이스)\s*(?:포함\s*)?두께|device\s*thickness',
     'lip_height':r'앞\s*턱(?:\s*높이)?|끝\s*턱(?:\s*높이)?|턱\s*높이|lip\s*height',
 }
-_ANGLES = {'lean_angle'}
+_ANGLES = {'lean_angle', 'top_tilt'}
 _NUMBER = r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)'
 _UNIT = r'mm|cm|밀리미터|센티미터|밀리|센티|도|°|u(?![a-z])'
 _ACTION = r'늘려(?:줘|주세요)?|늘려|증가(?:시켜)?(?:줘|주세요)?|줄여(?:줘|주세요)?|감소(?:시켜)?(?:줘|주세요)?|더해(?:줘|주세요)?|빼(?:줘|주세요)?'
@@ -229,6 +238,10 @@ def _rule_operations(text, template):
         aliases['width'] = r'(?:바깥\s*|컵\s*)?(?:지름|직경)|' + _ALIASES['width']
         aliases.pop('hole_diameter')
         aliases['drain_hole'] = r'(?:배수\s*)?구멍(?:\s*(?:지름|크기))?|drain\s*hole'
+    if template == 'keycap':
+        # On a keycap “기울기/각도” is the row tilt of the top, not a stand's lean.
+        aliases.pop('lean_angle')
+        aliases['top_tilt'] = r'(?:윗면\s*)?(?:기울기|각도)|top\s*tilt'
     alias = '|'.join('(?P<'+field+'>'+pattern+')' for field,pattern in sorted(aliases.items(),key=lambda item:-len(item[1])))
     pattern = re.compile(r'(?P<label>'+alias+r')\s*(?:는|은|을|를|만|:|=)?\s*(?P<value>'+_NUMBER+r')\s*(?P<unit>'+_UNIT+r')?\s*(?P<count_unit>개)?\s*(?P<action>'+_ACTION+r')?\s*'+_TAIL, re.I)
     operations = []
@@ -323,6 +336,7 @@ async def plan_model_edit_with_llm(text: str, base: dict, *, parent: dict | None
         'Propose edits to the current parameters only. Return JSON with exactly operations and questions. '
         'operations is an array of {field,op,value}; op is set or add, value is a finite number in mm. '
         'key_units is a keycap size in units (set only: 1, 1.25, 1.5, 1.75, 2, 2.25, 2.75, 6.25 or 7). '
+        'top_tilt is a keycap row tilt in degrees from -12 to 12 (positive faces the typist, 0 is flat). '
         'Exceptions use op set with a string: text is the new name-tag text or keycap legend; color (whole model) and accent_color '
         '(name-tag letters only) are one of: ' + ', '.join(PALETTE) + ', or an empty string to clear. '
         'Counts dividers and slots require set with an integer. N tray compartments means dividers=N-1. '

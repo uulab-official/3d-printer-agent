@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.41.0 — 2026-11-22
+
+- **Sculpted keycaps.** The keycap shell is now a smooth loft through the base, a slightly fuller middle (0.4 mm past a straight taper at half height) and a 0.9 mm rounded shoulder into the top, with 1.2 mm base and 2.9 mm top corner radii; the rim of the cylindrical dish is rounded to 0.4 mm (skipped only if the CAD kernel refuses the fillet). Outer size, stem, cross hole, stabilizers, legend and every rule are unchanged; earlier keycap jobs keep their stored files and reproduction source.
+- **Keycap row tilt (sculpt).** A new 윗면 기울기 field (−12 to 12°, 0 by default) tilts the top, dish and legend about the left-right axis through the top centre; positive faces the typist like upper-row keys, negative faces away. The height stays the height at that axis; the cavity stops below the lower edge, and a tilt too steep for the height is refused with the option to reduce it. Requests (“ESC 키캡 윗면 기울기 6도”, “뒤로 4도 기울여”) and edits (“기울기 2도 줄여줘”, “기울기 0도로”) set it. Like an unchosen colour, a flat 0° tilt is omitted from canonical parameters, so earlier keycap jobs, recipes and review hashes keep their exact shape. No specific profile's row angles are claimed.
+- **Smooth preview shading.** Each triangle corner is shaded from the averaged normal of neighbouring triangles that bend less than 30°, blended across the triangle, with a soft highlight; curved surfaces (keycap shoulders, cups, rounded tags) no longer look faceted, and sharp edges stay sharp.
+
 ## 0.40.0 — 2026-11-22
 
 - **Preview on a printer's plate.** Below the model preview, 출력판에 놓아 보기 places the model on a chosen plate: the 15 Bambu Lab models and the Snapmaker U1. The plate is drawn to scale under the model with a grid, the build-volume corners and, where they exist, the purge-chute exclusion corner (X1/P1) and the region both nozzles reach on two-nozzle models (X2D, H2D, H2D Pro, H2C). A line under the preview says whether the model fits, how much it exceeds the plate in width, depth or height, or that a 90° turn on the plate makes it fit; the plate outline turns red when it does not. The imported-model check uses the same plate for the chosen placement. The choice is remembered in this browser only.

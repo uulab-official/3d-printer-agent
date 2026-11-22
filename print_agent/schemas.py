@@ -9,7 +9,7 @@ TEMPLATE_SPECIFIC_FIELDS = {
     'phone_stand': {'lean_angle','device_thickness','lip_height','fit_clearance'},
     'name_tag': {'text','text_size','text_depth','hole_diameter'},
     'wall_hook': {'hole_diameter','lip_height'},
-    'keycap': {'text','text_size','text_depth','fit_clearance','key_units'},
+    'keycap': {'text','text_size','text_depth','fit_clearance','key_units','top_tilt'},
     'cup': {'drain_hole'},
 }
 # Filament colours a person can name. Keys are stored; hex values are display
@@ -33,7 +33,10 @@ KEY_UNITS = (1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.75, 6.25, 7.0)
 # Fields added after v0.10. They appear in canonical parameters only for the
 # templates that use them, so earlier jobs, recipes and review hashes keep the
 # exact same eleven-field shape.
-LATER_FIELDS = {'lean_angle','device_thickness','lip_height','text','text_size','text_depth','hole_diameter','key_units','drain_hole'}
+LATER_FIELDS = {'lean_angle','device_thickness','lip_height','text','text_size','text_depth','hole_diameter','key_units','drain_hole','top_tilt'}
+# Numbers added to an existing template. Like an unchosen colour, the neutral value (0) is
+# omitted from canonical parameters so earlier jobs of that template keep their exact shape.
+OPTIONAL_NUMBERS = {'top_tilt'}
 # Colours are optional for every template; an unchosen colour ('') is omitted from
 # canonical parameters, so models without colours keep their earlier shape and hashes.
 
@@ -61,6 +64,9 @@ class GeometryRequest(BaseModel):
     key_units: float = Field(default=1, ge=1, le=7)
     # A round cup's drain hole in the bottom; 0 means no hole.
     drain_hole: float = Field(default=0, ge=0, le=30)
+    # Keycap row sculpt: the top tilts about the left-right axis. Positive faces the typist
+    # (like upper-row keys), negative faces away (like lower rows). 0 is a flat top.
+    top_tilt: float = Field(default=0, ge=-12, le=12)
     color: str = Field(default="", max_length=16)
     accent_color: str = Field(default="", max_length=16)
 
@@ -96,5 +102,8 @@ class GeometryRequest(BaseModel):
             data.pop(name, None)
         for name in COLOR_FIELDS:
             if not data.get(name):
+                data.pop(name, None)
+        for name in OPTIONAL_NUMBERS:
+            if data.get(name) == 0:
                 data.pop(name, None)
         return data

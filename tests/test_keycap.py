@@ -23,6 +23,18 @@ def inside(shape, x, y, z):
 
 
 class KeycapGeometryTests(unittest.TestCase):
+    def test_the_shell_is_sculpted_with_fuller_sides_and_a_rounded_shoulder(self):
+        parameters = GeometryRequest(**{**KEY, 'text': ''}).model_dump()
+        shape, k = _build_solid(parameters), keycap_layout(parameters)
+        straight = (k['width'] + k['top_width']) / 4  # half-width of a straight taper at half height
+        self.assertTrue(inside(shape, straight + 0.1, 0, 4.0))        # the side swells past the straight taper
+        self.assertFalse(inside(shape, straight + 0.45, 0, 4.0))
+        corner = (k['top_width'] / 2 - 0.15, k['top_depth'] / 2 - 0.15)
+        self.assertFalse(inside(shape, *corner, 7.95))                # the top corner is rounded away
+        self.assertTrue(inside(shape, 0, k['top_depth'] / 2 - 0.6, 7.4))  # the long top edge keeps material
+        self.assertTrue(shape.isValid())
+        self.assertEqual(len(shape.Solids()), 1)
+
     def test_sizes_follow_the_key_units(self):
         for units, width in ((1, 18.0), (1.5, 27.525), (2.25, 41.8125), (6.25, 118.0125)):
             with self.subTest(units=units), tempfile.TemporaryDirectory() as folder:
@@ -97,6 +109,64 @@ class KeycapGeometryTests(unittest.TestCase):
         self.assertNotIn('hole_diameter', canonical)
         self.assertNotIn('key_units', GeometryRequest(template='tray').model_dump())
         self.assertNotIn('key_units', GeometryRequest(template='name_tag', text='MINSU').model_dump())
+
+
+class KeycapRowTiltTests(unittest.TestCase):
+    def test_a_tilted_top_keeps_its_size_and_stem_and_rises_on_one_edge(self):
+        for tilt in (6, -8):
+            with self.subTest(tilt=tilt), tempfile.TemporaryDirectory() as folder:
+                result = generate_model(GeometryRequest(**{**KEY, 'top_tilt': tilt}), Path(folder))
+                self.assertTrue(all(check['passed'] for check in result['checks']), result['checks'])
+                size = result['dimensions_mm']
+                self.assertAlmostEqual(size['x'], 18.0, places=5)
+                self.assertAlmostEqual(size['y'], 18.0, places=5)
+                self.assertGreater(size['z'], 8.3)
+                self.assertLess(size['z'], 8.0 + 6.3 * 0.14 + 1e-6)
+                self.assertEqual(result['parameters']['top_tilt'], float(tilt))
+                shape = _build_solid(result['parameters'])
+                self.assertFalse(inside(shape, 0, 0, 1))      # the cross hole is unchanged
+                self.assertTrue(inside(shape, 0, 2.5, 1))
+                # Positive tilt faces the typist (-Y): the back edge is the high one.
+                high, low = (5.5, -5.5) if tilt > 0 else (-5.5, 5.5)
+                self.assertTrue(inside(shape, 0, high, 8.2))
+                self.assertFalse(inside(shape, 0, low, 8.0))
+
+    def test_a_flat_top_keeps_the_earlier_canonical_shape(self):
+        flat = GeometryRequest(**KEY).model_dump()
+        self.assertNotIn('top_tilt', flat)
+        self.assertEqual(GeometryRequest(**{**KEY, 'top_tilt': 0}).model_dump(), flat)
+        self.assertEqual(GeometryRequest(**{**KEY, 'top_tilt': 4.5}).model_dump()['top_tilt'], 4.5)
+        self.assertNotIn('top_tilt', GeometryRequest(template='tray').model_dump())
+        with self.assertRaises(ValidationError):
+            GeometryRequest(template='tray', top_tilt=3)
+        with self.assertRaises(ValidationError):
+            GeometryRequest(**{**KEY, 'top_tilt': 13})
+        catalog = {item['id']: item for item in template_catalog()}
+        self.assertIn('top_tilt', catalog['keycap']['editable_fields'])
+
+    def test_too_steep_a_tilt_for_the_height_asks_for_less_tilt(self):
+        with self.assertRaisesRegex(ValueError, '기울기를 줄여도'):
+            _validate_geometry(GeometryRequest(**{**KEY, 'top_tilt': 12}).model_dump())
+        _validate_geometry(GeometryRequest(**{**KEY, 'top_tilt': 12, 'height': 10}).model_dump())
+
+    def test_requests_and_edits_set_the_tilt(self):
+        for text, tilt in (('ESC 키캡 윗면 기울기 6도', 6.0), ('"A" 키캡 뒤로 4도 기울여', -4.0), ('키캡 앞으로 3도 기울인 1u', 3.0)):
+            with self.subTest(text=text):
+                result = plan_from_text(text)
+                self.assertEqual(result['status'], 'ready', result)
+                self.assertEqual(result['parameters']['top_tilt'], tilt)
+        self.assertNotIn('top_tilt', plan_from_text('엔터 키캡')['parameters'])
+        self.assertEqual(plan_from_text('키캡 기울기 20도')['status'], 'needs_input')
+        base = normalize_parameters({**GeometryRequest(**KEY).model_dump()})
+        for text, before, after in (('윗면 기울기 6도로 바꿔줘', 0, 6.0), ('각도 -5도', 0, -5.0)):
+            with self.subTest(text=text):
+                review = plan_model_edit(text, base)
+                self.assertEqual(review['review']['changes'], [{'field': 'top_tilt', 'before': before, 'after': after}])
+        tilted = normalize_parameters({**base, 'top_tilt': 6.0})
+        back = plan_model_edit('기울기 0도로', tilted)['review']
+        self.assertNotIn('top_tilt', back['parameters'])
+        self.assertEqual(back['parameters'], base)
+        self.assertEqual(plan_model_edit('기울기 2도 줄여줘', tilted)['review']['parameters']['top_tilt'], 4.0)
 
 
 class KeycapLanguageTests(unittest.TestCase):

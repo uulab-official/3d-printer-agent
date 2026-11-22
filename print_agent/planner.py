@@ -154,7 +154,7 @@ FIELD_LABELS = {
     'width':'가로','depth':'세로','height':'높이','wall':'벽 두께','bottom':'바닥 두께','dividers':'칸막이',
     'slots':'케이블 홈','cable_diameter':'케이블 지름','inset_diameter':'원판 지름','inset_depth':'포켓 깊이',
     'fit_clearance':'여유','lean_angle':'등판 각도','device_thickness':'기기 두께','lip_height':'앞턱 높이',
-    'text':'글자','text_size':'글자 크기','text_depth':'글자 높이','hole_diameter':'고리 구멍 지름','key_units':'키 크기','drain_hole':'배수 구멍 지름',
+    'text':'글자','text_size':'글자 크기','text_depth':'글자 높이','hole_diameter':'고리 구멍 지름','key_units':'키 크기','drain_hole':'배수 구멍 지름','top_tilt':'윗면 기울기',
 }
 
 
@@ -581,6 +581,20 @@ def _plan_keycap(text: str) -> dict:
             values[field]=next(iter(found));explicit.add(field)
             for m in matches:
                 working=working[:m.start()]+' '*(m.end()-m.start())+working[m.end():]
+    # Row sculpt: “윗면 기울기 6도”, “기울기 -4도”, “앞으로 6도 기울인”, “뒤로 4도 기울여”.
+    tilts=set()
+    for match in re.finditer(r'(?:윗면\s*)?(?:기울기|각도)\s*(?:는|은|을|를|:|=)?\s*([+-]?\d+(?:\.\d+)?)\s*(?:도|°)',working):
+        tilts.add(float(match.group(1)))
+    for match in re.finditer(r'(앞|뒤)\s*(?:쪽\s*)?(?:으로|로)?\s*(\d+(?:\.\d+)?)\s*(?:도|°)\s*기울',working):
+        tilts.add(float(match.group(2))*(1 if match.group(1)=='앞' else -1))
+    if len(tilts)>1:
+        return _question('윗면 기울기 값이 여러 개입니다. 하나만 알려주세요.')
+    if tilts:
+        tilt=next(iter(tilts))
+        if not -12<=tilt<=12:
+            return _question('키캡 윗면 기울기는 −12~12°로 알려주세요(앞으로 기울면 양수).')
+        values['top_tilt']=tilt;explicit.add('top_tilt')
+        notes.append(f'윗면을 {"앞(사용자 쪽)으로" if tilt>0 else "뒤로"} {abs(tilt):g}° 기울입니다. 높이는 기울기 축(윗면 가운데) 기준입니다.' if tilt else '윗면을 평평하게 둡니다.')
     try:
         parameters=GeometryRequest(template='keycap',**values).model_dump()
         _validate_geometry(parameters)
@@ -651,7 +665,7 @@ async def plan_with_llm(text: str) -> dict:
     system=(
         'You plan parameterized 3D-printing models. Return only a JSON object with parameters, explanation in Korean, and questions (array). '
         'Never return code, commands, temperatures, prices or claims of printing success. '
-        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim), phone_stand (base, front lip and back plate leaning at lean_angle degrees from horizontal; device_thickness plus fit_clearance sets the slot; no tipping or charging-port guarantee), name_tag (raised text of 1-20 letters on a rounded plate with a ring hole; width and depth follow the text), wall_hook (back plate with two screw holes, arm and end lip; no load guarantee), keycap (Cherry MX-compatible cross stem; key_units sets width and depth, height is the keycap height, wall is the side wall, bottom is the top thickness, text is an engraved legend of 0-6 letters, fit_clearance widens the cross hole; no switch fit or feel guarantee), cup (round open-top cup such as a pen holder or plant pot; width is the outer diameter and depth is not used, height, wall is the side wall, bottom is the floor, drain_hole is a centred hole in the floor in mm, 0 for none or 3-30; no watertightness or food-safety guarantee). '
+        'Supported templates: tray (open-top, optional dividers), cable_comb (open U channels, not a clamp), magnet_frame (rectangular plate with circular blind inset, no magnet retention claim), phone_stand (base, front lip and back plate leaning at lean_angle degrees from horizontal; device_thickness plus fit_clearance sets the slot; no tipping or charging-port guarantee), name_tag (raised text of 1-20 letters on a rounded plate with a ring hole; width and depth follow the text), wall_hook (back plate with two screw holes, arm and end lip; no load guarantee), keycap (Cherry MX-compatible cross stem; key_units sets width and depth, height is the keycap height, wall is the side wall, bottom is the top thickness, text is an engraved legend of 0-6 letters, fit_clearance widens the cross hole, top_tilt is an optional row tilt of the top in degrees from -12 to 12 with positive facing the typist; no switch fit or feel guarantee), cup (round open-top cup such as a pen holder or plant pot; width is the outer diameter and depth is not used, height, wall is the side wall, bottom is the floor, drain_hole is a centred hole in the floor in mm, 0 for none or 3-30; no watertightness or food-safety guarantee). '
         'All dimensions in mm; convert units explicitly. If the user requests unsupported objects, moving joints, load/safety guarantees, lids or unsupported edits, ask a clarification in questions and do not generate parameters. '
         'For N tray compartments use dividers=N-1. fit_clearance adds to diameter. Missing dimensions must be described as assumptions in explanation. '
         'Allowed parameter schema: '+json.dumps(GeometryRequest.model_json_schema(),ensure_ascii=False)
