@@ -175,12 +175,14 @@ main { max-width: 1460px; padding: 37px 42px 24px; margin: 0 auto; }
 .icon-button:hover { background: #edf3ff; color: var(--blue); }
 .tool-separator { width: 1px; height: 16px; background: var(--line); margin: 0 3px; }
 .preview-bed { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; padding: 12px 20px 0; }
-.preview-bed label { display: flex; flex-direction: column; gap: 5px; flex: 1 1 220px; min-width: 0; font-size: 11px; font-weight: 600; color: #5b6f8f; }
+.preview-bed label { display: flex; flex-direction: column; gap: 5px; flex: 1 1 160px; min-width: 0; font-size: 11px; font-weight: 600; color: #5b6f8f; }
 .preview-bed select { width: 100%; min-width: 0; }
 .preview-bed .button { flex: 0 0 auto; }
 .preview-bed-fit { flex: 1 1 100%; margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
 .preview-bed-fit:empty { display: none; }
 .preview-bed-fit-import { padding: 12px 20px 0; }
+.preview-bed-legend { flex: 1 1 100%; margin: -4px 0 0; font-size: 10px; line-height: 1.6; color: #8796ad; }
+.preview-bed-legend:empty { display: none; }
 .preview-bed-fit.is-success { color: var(--green); }
 .preview-bed-fit.is-warning { color: #9a6200; }
 .preview-bed-fit.is-error { color: #b5481b; }

@@ -4057,6 +4057,7 @@
         state.printerStatus = result;
         renderPrinterStatus(result);
         rememberPrinter({ host: body.host, serial: body.serial }, result);
+        if (result.connection?.state === "reporting" && typeof suggestBedForPrinter === "function") suggestBedForPrinter(result.identity?.product_name);
         if (typeof updatePrintabilityControls === "function") updatePrintabilityControls();
       });
     } catch (error) {
@@ -5391,7 +5392,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), ce = Math.cos(this.elevation), se = Math.sin(this.elevation);
-      const scale = Math.min(width, height) * 0.34 * this.zoom / this.radius;
+      const scale = Math.min(width, height) * (this.bed ? 0.44 : 0.34) * this.zoom / this.radius;
       const distance = this.radius * 4;
       const project = (point) => {
         const x = point[0] - this.center[0], y = point[1] - this.center[1], z = point[2] - this.center[2];
@@ -5551,10 +5552,15 @@
       ring.forEach((point, index) => (index ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1])));
     }
     ctx.stroke(); ctx.setLineDash([]);
-    const label = project([box.x0, box.y0, z]);
+    // Name the plate at its far corner, away from the zoom tools at the bottom.
+    const corners = [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]].map(([x, y]) => project([x, y, z]));
+    const far = corners.reduce((best, point) => (point[1] < best[1] ? point : best));
     ctx.font = "600 10px Pretendard, 'Apple SD Gothic Neo', sans-serif";
     ctx.fillStyle = "#5b6f8f";
-    ctx.fillText(`${bed.vendor} ${bed.name} · ${bed.width} × ${bed.depth} mm`, label[0] + 4, label[1] + 14);
+    const text = `${bed.vendor} ${bed.name} · ${bed.width} × ${bed.depth} mm`;
+    const textWidth = ctx.measureText(text).width;
+    const canvasWidth = this.canvas.clientWidth || 0;
+    ctx.fillText(text, Math.max(6, Math.min(far[0] - textWidth / 2, canvasWidth - textWidth - 6)), Math.max(58, far[1] - 8));
     ctx.restore();
   };
 
@@ -6159,7 +6165,10 @@
     const plate = `${bed.vendor} ${bed.name} 출력판(${bed.width} × ${bed.depth} × 높이 ${bed.height} mm)`;
     const mm = (value) => `${numberFormat.format(value)} mm`;
     let text, tone;
-    if (result.fits) { text = `${plate}에 들어갑니다.`; tone = "success"; }
+    if (result.fits) {
+      const spare = [bed.width - size[0], bed.depth - size[1], bed.height - size[2]].map((value) => mm(Math.floor(value)));
+      text = `${plate}에 들어갑니다. 남는 공간: 가로 ${spare[0]} · 세로 ${spare[1]} · 높이 ${spare[2]}.`; tone = "success";
+    }
     else if (result.rotate) { text = `${plate}에 그대로는 넘치지만, 바닥에서 90° 돌리면 들어갑니다.`; tone = "warning"; }
     else {
       const parts = ["가로", "세로", "높이"].map((label, axis) => (result.over[axis] ? `${label} ${mm(result.over[axis])}` : null)).filter(Boolean);
@@ -6170,8 +6179,18 @@
     return { text, tone, result };
   }
 
+  function bedLegend(bed) {
+    if (!bed) return "";
+    const parts = [];
+    if (Array.isArray(bed.shared_x)) parts.push(`세로 점선 사이: 두 노즐이 함께 닿는 영역(가로 ${numberFormat.format(bed.shared_x[1] - bed.shared_x[0])} mm)`);
+    if ((bed.exclude || []).length) parts.push("붉은 칸: 왼쪽 앞 출력 제외 구역");
+    parts.push(`출처: ${bed.source}`);
+    return parts.join(" · ");
+  }
+
   function updateBedFit() {
     const bed = (state.printerBeds || []).find((item) => item.id === $("preview-bed").value) || null;
+    $("preview-bed-legend").textContent = bedLegend(bed);
     const message = bedFitMessage(viewer.mesh ? viewer.size() : null, bed);
     const output = $("preview-bed-fit");
     output.className = `preview-bed-fit${message ? ` is-${message.tone}` : ""}`;
@@ -6195,6 +6214,17 @@
       try { if (bed) window.localStorage?.setItem(BED_STORAGE_KEY, bed.id); else window.localStorage?.removeItem(BED_STORAGE_KEY); } catch { /* per-browser convenience only */ }
     }
     updateBedFit();
+  }
+
+  function suggestBedForPrinter(productName) {
+    // A printer that reported its product name fills an empty plate choice; a chosen plate is never replaced.
+    if (typeof productName !== "string" || $("preview-bed").value) return null;
+    const reported = productName.replace(/^\s*bambu\s*lab\s*/i, "").trim().toLowerCase();
+    const bed = (state.printerBeds || []).find((item) => item.vendor === "Bambu Lab" && item.name.toLowerCase() === reported);
+    if (!bed) return null;
+    chooseBed(bed.id);
+    toast(`프린터가 보고한 ${bed.name}의 출력판을 모델 미리보기에 표시합니다.`);
+    return bed.id;
   }
 
   function savePreviewImage() {
