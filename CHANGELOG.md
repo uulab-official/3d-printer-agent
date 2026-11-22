@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.40.0 — 2026-11-22
+
+- **Preview on a printer's plate.** Below the model preview, 출력판에 놓아 보기 places the model on a chosen plate: the 15 Bambu Lab models and the Snapmaker U1. The plate is drawn to scale under the model with a grid, the build-volume corners and, where they exist, the purge-chute exclusion corner (X1/P1) and the region both nozzles reach on two-nozzle models (X2D, H2D, H2D Pro, H2C). A line under the preview says whether the model fits, how much it exceeds the plate in width, depth or height, or that a 90° turn on the plate makes it fit; the plate outline turns red when it does not. The imported-model check uses the same plate for the chosen placement. The choice is remembered in this browser only.
+- Plate sizes come from `printable_area`, `printable_height`, `bed_exclude_area` and `extruder_printable_area` of the 0.4 mm machine definitions in Bambu Studio 02.09.01.70 (inheritance resolved), and from Snapmaker's U1 specification page (270 × 270 × 270 mm). `printer_beds.py` records the source of each entry; the view is a visual reference, and the slicer settings used for a real slice remain the authority (brim, supports and purge are not included).
+- **이미지 저장** saves the current preview view as a PNG.
+
 ## 0.39.0 — 2026-11-22
 
 - **Klipper printers through Moonraker (read-only).** The printer view has a new Klipper card (Snapmaker U1, Voron, Sovol, Elegoo Neptune 4, Qidi and other Klipper printers): IP, port (default 7125) and an optional API key that is used for one read and never stored or returned. `printer_moonraker.py` sends only four fixed `GET` requests (`/server/info`, `/printer/info`, `/printer/objects/list`, `/printer/objects/query`) to private IP literals and reports each stage separately: unreachable, access rejected (401/403), not Moonraker, Klipper not ready, reporting. The status uses the same print-state vocabulary as Bambu; it lists every reported toolhead with its temperature and marks the active one, and the remaining time is an estimate from elapsed time and progress, labelled as such. Klipper reports no filament types, so material slots, inventory links and sending stay Bambu-only. A changed address or port dims the previous result until it is read again. Reads that got no answer do not count toward the 2-second interval, so a corrected key can be tried at once.

@@ -208,6 +208,11 @@
                   <button id="reset-view" class="icon-button" type="button" aria-label="기본 시점으로">↺</button>
                 </div>
               </div>
+              <div class="preview-bed">
+                <label for="preview-bed">출력판에 놓아 보기<select id="preview-bed"><option value="">출력판 표시 안 함</option></select></label>
+                <button id="preview-save" class="button button-secondary" type="button">이미지 저장</button>
+                <p id="preview-bed-fit" class="preview-bed-fit" role="status"></p>
+              </div>
               <ul id="preview-colors" class="preview-colors" aria-label="모델 색" hidden></ul>
               <div class="preview-footer"><span id="preview-caption">생성된 메시만 표시합니다.</span><span>드래그로 회전 · 휠로 확대</span></div>
             </section>
@@ -533,6 +538,7 @@
                 <button id="import-reset-view" class="icon-button" type="button" aria-label="기본 시점으로">↺</button>
               </div>
             </div>
+            <p id="import-bed-fit" class="preview-bed-fit preview-bed-fit-import" role="status"></p>
             <div class="preview-footer"><span id="import-caption"></span><span>드래그로 회전 · 붉은 면은 45° 넘는 돌출부</span></div>
           </section>
           <section class="card" aria-labelledby="import-orient-heading">

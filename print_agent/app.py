@@ -32,6 +32,7 @@ from .model_edits import model_edit_record, normalize_parameters, plan_model_edi
 from .offers import compare_offers
 from .stores import store_guide
 from .glossary import glossary
+from .printer_beds import printer_beds
 from . import updates
 from . import printer_reports
 from .recovery import REASONS as FAILURE_REASONS, recovery_plan
@@ -498,7 +499,7 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
     @app.get('/api/bootstrap')
     def bootstrap():
         return {'app':{'name':'3D Printer Agent','version':__version__},'templates':template_catalog(),
-                'discovery':project_catalog(), 'store_guide':store_guide(), 'glossary':glossary(), 'failure_reasons':FAILURE_REASONS, 'environment':detect_environment(),
+                'discovery':project_catalog(), 'store_guide':store_guide(), 'glossary':glossary(), 'printer_beds':printer_beds(), 'failure_reasons':FAILURE_REASONS, 'environment':detect_environment(),
                 'provider':provider_config(),'session_token':token,
                 'storage': {**selection, 'recovery': dict(recovery)}}
 
