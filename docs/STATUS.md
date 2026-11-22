@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.40 places the model preview on a chosen printer plate (15 Bambu Lab models from Bambu Studio 02.09.01.70 machine definitions and the Snapmaker U1 from its specification page), says whether it fits or fits after a 90° turn, applies the same plate to imported models, and saves the view as a PNG. The plate view is a visual reference; the slicer settings remain the authority.
+Version 0.40 places the model preview on a chosen printer plate (15 Bambu Lab models from Bambu Studio 02.09.01.70 machine definitions and the Snapmaker U1 from its specification page), says whether it fits or fits after a 90° turn, applies the same plate to imported models, and saves the view as a PNG. The plate view is a visual reference; the slicer settings remain the authority. Published as [v0.40.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.40.0) on 2026-11-22 from `2a5c170`.
 
 Version 0.39 adds read-only status for Klipper printers through Moonraker (Snapmaker U1, Voron and others; see [printer status](PRINTER_STATUS.md)): toolhead temperatures with the active tool, state, progress, layers and an estimated remaining time. Sending, material slots and inventory links remain Bambu-only. Verified against a synthetic Moonraker server only; no real Klipper printer has been read yet. Published as [v0.39.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.39.0) on 2026-11-22 from `020f6bc`.
 

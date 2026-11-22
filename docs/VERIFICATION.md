@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-22 v0.40.0 공개 릴리스
+
+[v0.40.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.40.0)을 2026-11-22 12:23:08 UTC에 `2a5c170`에서 게시했습니다(PR #40, 출력판에 놓아 보기·PNG 저장).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/45021251923) Python **864개**·컨트롤러 **232개**·Chromium **134개**(실제 CAD를 U1·A1 mini 출력판에 놓아 판정·다시 불러온 뒤 선택 유지·PNG 저장·불러온 STL의 X2D 판정·합성 프린터 보고로 출력판 자동 선택을 보는 데스크톱·모바일 사례 포함),
+[설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/45021251956) 세 OS 각 **414개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/45021251931)가 모두 실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/45021964721)도 차수 1에
+게시했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(390,010바이트, `b2eba0262c229b7a…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이
+내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 출력판 크기는 Bambu Studio 02.09.01.70 기종 정의와 Snapmaker U1 공식 사양에서
+가져왔고, 실제 출력으로 맞는지 확인한 값은 아닙니다.
+
 ## 2026-11-22 v0.39.0 공개 릴리스
 
 [v0.39.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.39.0)을 2026-11-22 11:11:35 UTC에 `020f6bc`에서 게시했습니다(PR #39, Klipper·Moonraker 읽기 전용 상태).
