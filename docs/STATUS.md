@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.41 gives keycaps a sculpted shell (fuller sides, a rounded shoulder into the top and a softened dish rim; same outer size, stem and rules), adds an optional row tilt of the top (−12 to 12°, omitted from canonical parameters when flat) and shades curved surfaces smoothly in the preview.
+Version 0.41 gives keycaps a sculpted shell (fuller sides, a rounded shoulder into the top and a softened dish rim; same outer size, stem and rules), adds an optional row tilt of the top (−12 to 12°, omitted from canonical parameters when flat) and shades curved surfaces smoothly in the preview. Published as [v0.41.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.41.0) on 2026-11-22 from `2414b33`.
 
 Version 0.40 places the model preview on a chosen printer plate (15 Bambu Lab models from Bambu Studio 02.09.01.70 machine definitions and the Snapmaker U1 from its specification page), says whether it fits or fits after a 90° turn, applies the same plate to imported models, and saves the view as a PNG. The plate view is a visual reference; the slicer settings remain the authority. Published as [v0.40.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.40.0) on 2026-11-22 from `2a5c170`.
 

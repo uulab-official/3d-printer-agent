@@ -134,6 +134,14 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-22 v0.41.0 공개 릴리스
+
+[v0.41.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.41.0)을 2026-11-22 13:57:00 UTC에 `2414b33`에서 게시했습니다(PR #41, 다듬은 키캡 몸통·열별 윗면 기울기·부드러운 음영).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/45029355722) Python **869개**·컨트롤러 **232개**·Chromium **136개**(요청으로 6° 기울인 키캡 생성→“기울기 2도 줄여줘” 수정→0°로 되돌려 이전 형태 확인 사례 포함),
+[설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/45029355577) 세 OS 각 **414개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/45029355559)가 모두 실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/45030119243)도 차수 1에
+게시했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(393,113바이트, `35cc2ec07c7e9911…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이
+내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 다듬은 키캡과 기울인 키캡의 실물 출력·스위치 맞춤은 검증하지 않았습니다.
+
 ## 2026-11-22 v0.40.0 공개 릴리스
 
 [v0.40.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.40.0)을 2026-11-22 12:23:08 UTC에 `2a5c170`에서 게시했습니다(PR #40, 출력판에 놓아 보기·PNG 저장).
