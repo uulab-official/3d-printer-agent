@@ -1647,6 +1647,40 @@ const printVolumeReport = (overrides={}) => ({
     findElement(area,element=>element.listeners?.click).listeners.click();
     assert.equal(c.$('printer-host').value,'10.0.0.9');assert.equal(c.$('printer-serial').value,'01P00ABCDEF0001');
   });
+  await check('A Klipper printer reports four toolheads, an estimated remaining time and no material slots',async()=>{
+    const c=printerFixture();
+    Object.assign(c.state,{klipperStatus:null,klipperRequest:0});
+    vm.runInContext(/^  const klipperConnectionTones = .*$/m.exec(source)[0],c);
+    for(const name of ['klipperTarget','updateKlipperControls','klipperToolLabel','renderKlipperStatus','checkKlipperStatus','klipperInputChanged']){
+      const match=new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);if(!match)throw new Error('Missing '+name);
+      const tail=source.slice(match.index),end=/\n  \}(?=\n|$)/.exec(tail);vm.runInContext(tail.slice(0,end.index+4),c);
+    }
+    c.$('klipper-host').value='';c.$('klipper-port').value='7125';c.$('klipper-api-key').value='';
+    c.updateKlipperControls();assert.equal(c.$('klipper-check').disabled,true);
+    c.$('klipper-host').value=' 192.168.0.30 ';c.$('klipper-api-key').value='  ';
+    assert.equal(JSON.stringify(c.klipperTarget()),JSON.stringify({host:'192.168.0.30',port:7125}));
+    c.updateKlipperControls();assert.equal(c.$('klipper-check').disabled,false);
+    c.$('klipper-api-key').value='secret-key-1234';assert.equal(c.klipperTarget().api_key,'secret-key-1234');
+    const sent=[];c.withBusy=async(_b,_l,work)=>work();
+    const tools=[0,1,2,3].map(index=>({name:index?`extruder${index}`:'extruder',index,active:index===1,temperature_c:index===1?219.6:140,target_c:index===1?220:140}));
+    c.api=async(path,body)=>{sent.push([path,body]);return {kind:'moonraker',observed_at:'2026-11-22T00:00:00Z',target:{host:'192.168.0.30',port:7125},
+      connection:{state:'reporting',detail:'프린터가 현재 상태를 보고했습니다.'},identity:{hostname:'u1',klipper_version:'v0.13',moonraker_version:'v0.9',klippy_state_label:'준비됨'},
+      print:{state:'RUNNING',state_label:'출력 중',progress_percent:40,remaining_minutes:30,remaining_is_estimate:true,layer:42,total_layers:120,tools,active_tool:'extruder1',
+        temperatures_c:{nozzle:219.6,nozzle_target:220,bed:59.8,bed_target:60},file_name:'cube.gcode',material_slots:[]},scope:'읽기 전용'};};
+    await c.checkKlipperStatus();
+    assert.equal(sent[0][0],'/api/printers/moonraker/status');assert.equal(sent[0][1].api_key,'secret-key-1234');
+    const area=c.$('klipper-result');
+    assert.equal(area.hidden,false);
+    assert.match(area.textContent,/약 30분 \(진행률로 추정\)/);assert.match(area.textContent,/툴헤드 4/);assert.match(area.textContent,/사용 중인 툴헤드 2/);
+    assert.match(area.textContent,/재료 칸과 재고 연결은 표시하지 않습니다/);assert.doesNotMatch(area.textContent,/secret-key/);
+    assert.equal(c.$('klipper-status-badge').textContent,'출력 중');
+    c.$('klipper-host').value='192.168.0.31';c.klipperInputChanged();
+    assert.equal(c.state.klipperStatus,null);assert.equal(area.attributes['aria-hidden'],'true');assert.match(c.$('klipper-feedback').textContent,/다시 읽어/);
+    c.renderKlipperStatus({connection:{state:'klippy_not_ready',detail:'Klipper가 준비되지 않음'},identity:{klippy_state_label:'정지됨(재시작 필요)',state_message:'MCU shutdown'},print:null});
+    assert.match(area.textContent,/정지됨\(재시작 필요\)/);assert.match(area.textContent,/MCU shutdown/);
+    c.renderKlipperStatus({connection:{state:'unreachable',detail:'연결하지 못했습니다'},identity:null,print:null});
+    assert.equal(area.hidden,true);assert.match(c.$('klipper-feedback').textContent,/연결하지 못했습니다/);
+  });
   await check('Printer discovery names the shared-port case and translates reported connection modes',()=>{
     const c=printerFixture();
     c.renderPrinterDevices({state:'listened',seconds:4,receivers:{announcements:false,search_replies:true},devices:[]});

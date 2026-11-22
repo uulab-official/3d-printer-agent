@@ -92,6 +92,8 @@ REQUIRED_CHECKS = frozenset({
     'filament_spool_weighed_and_deducted', 'filament_spool_survives_real_restart', 'filament_spool_restored_from_backup',
     'filament_spool_linked_to_printer_slot',
     'glossary_and_onboarding_served',
+    'klipper_status_rejects_public_host_without_echo',
+    'klipper_status_reports_connection_state_without_print_claim',
     'printer_send_requires_verified_slice', 'printer_send_unknown_review_is_refused',
     'printer_send_requires_bed_confirmation_without_echo', 'printer_send_refusals_record_nothing',
 })

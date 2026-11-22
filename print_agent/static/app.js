@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const state = { offersResult: null, historyFilter: "all", downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
+  const state = { offersResult: null, historyFilter: "all", downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, klipperStatus: null, klipperRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
   const pageNames = { models: "모델 만들기", imports: "가진 모델 점검", inventory: "필라멘트 재고", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록", guide: "용어·안내" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
@@ -128,6 +128,7 @@
     $("review-profile").disabled = !state.token || Boolean($("review-profile").dataset.busy) || Object.keys(state.guidedEdits || {}).length > 0;
     $("compare-offers").disabled = !state.token || Boolean($("compare-offers").dataset.busy);
     if (typeof updatePrinterControls === "function") updatePrinterControls();
+    if (typeof updateKlipperControls === "function") updateKlipperControls();
   }
 
   function renderConnection() {
@@ -4063,6 +4064,121 @@
     } finally { updatePrinterControls(); }
   }
 
+  // Klipper printers through Moonraker (Snapmaker U1, Voron, Sovol and others). Read-only.
+  const klipperConnectionTones = { reporting: "success", klippy_not_ready: "warning", access_rejected: "warning", not_moonraker: "warning" };
+
+  function klipperTarget() {
+    const port = Number.parseInt($("klipper-port").value, 10);
+    const key = $("klipper-api-key").value.trim();
+    return { host: $("klipper-host").value.trim(), port: Number.isFinite(port) ? port : 7125, ...(key ? { api_key: key } : {}) };
+  }
+
+  function updateKlipperControls() {
+    const target = klipperTarget();
+    $("klipper-check").disabled = !state.token || Boolean($("klipper-check").dataset.busy) || !target.host
+      || !(target.port >= 1 && target.port <= 65535);
+  }
+
+  function klipperToolLabel(tool) {
+    const number = Number(tool?.index) + 1;
+    return Number.isFinite(number) ? `툴헤드 ${number}` : String(tool?.name || "툴헤드");
+  }
+
+  function renderKlipperStatus(result) {
+    const connection = result?.connection || {};
+    const area = $("klipper-result");
+    area.replaceChildren();
+    area.classList.remove("is-stale");
+    area.removeAttribute("aria-hidden");
+    const reporting = connection.state === "reporting";
+    const tone = klipperConnectionTones[connection.state] || "neutral";
+    setBadge("klipper-status-badge", reporting ? (result.print?.state_label || "상태 보고됨") : "상태를 받지 못함", tone);
+    showNotice("klipper-feedback", connection.detail || "확인 결과를 해석하지 못했습니다.", reporting ? "info" : (tone === "neutral" ? "warning" : tone));
+    const identity = result?.identity || {};
+    const facts = [];
+    if (identity.hostname) facts.push(`호스트 이름 보고: ${identity.hostname}`);
+    if (identity.klipper_version) facts.push(`Klipper ${identity.klipper_version}`);
+    if (identity.moonraker_version) facts.push(`Moonraker ${identity.moonraker_version}`);
+    if (identity.klippy_state_label) facts.push(`Klipper 상태: ${identity.klippy_state_label}`);
+    if (!reporting) {
+      if (identity.state_message) facts.push(identity.state_message);
+      if (facts.length) area.append(node("p", "field-help", facts.join(" · ")));
+      area.hidden = !facts.length;
+      return;
+    }
+    const status = result.print || {};
+    if (typeof status.progress_percent === "number") {
+      const bar = node("progress", "printer-progress");
+      bar.max = 100;
+      bar.value = status.progress_percent;
+      bar.setAttribute("aria-label", `프린터 보고 진행률 ${status.progress_percent}%`);
+      area.append(bar);
+    }
+    const layers = typeof status.layer === "number" && typeof status.total_layers === "number" ? `${status.layer} / ${status.total_layers}` : "보고되지 않음";
+    const remaining = typeof status.remaining_minutes === "number"
+      ? `약 ${status.remaining_minutes}분 (진행률로 추정)` : "보고되지 않음";
+    const grid = node("div", "metric-grid printer-metrics");
+    grid.append(
+      metric("프린터 보고 상태", status.state_label || "보고되지 않음"),
+      metric("진행률", typeof status.progress_percent === "number" ? `${status.progress_percent}%` : "보고되지 않음"),
+      metric("남은 시간", remaining),
+      metric("레이어", layers),
+      metric(status.active_tool ? `노즐 (사용 중인 ${klipperToolLabel((status.tools || []).find((tool) => tool.active))})` : "노즐",
+        printerTemperature(status.temperatures_c?.nozzle, status.temperatures_c?.nozzle_target)),
+      metric("베드", printerTemperature(status.temperatures_c?.bed, status.temperatures_c?.bed_target)),
+    );
+    area.append(grid);
+    const tools = Array.isArray(status.tools) ? status.tools : [];
+    if (tools.length > 1) {
+      const list = node("ul", "klipper-tools");
+      list.setAttribute("aria-label", "툴헤드별 노즐 온도");
+      for (const tool of tools) {
+        const item = node("li", tool.active ? "is-active" : "");
+        item.append(node("strong", "", klipperToolLabel(tool)), node("span", "", printerTemperature(tool.temperature_c, tool.target_c)));
+        if (tool.active) item.append(node("span", "badge badge-success", "사용 중"));
+        list.append(item);
+      }
+      area.append(list);
+    }
+    if (status.error_message) area.append(node("p", "notice notice-warning", `프린터가 보고한 오류: ${status.error_message}`));
+    if (status.file_name) facts.push(`파일: ${status.file_name}`);
+    if (facts.length) area.append(node("p", "field-help", facts.join(" · ")));
+    area.append(node("p", "field-help", "Klipper는 필라멘트 종류·색을 보고하지 않아 재료 칸과 재고 연결은 표시하지 않습니다."));
+    area.append(node("p", "field-help", `확인 시각 ${dateTime(result.observed_at)} · ${result.scope || ""}`));
+    area.hidden = false;
+  }
+
+  async function checkKlipperStatus() {
+    const target = klipperTarget();
+    if (!target.host) return;
+    const signature = JSON.stringify([target.host, target.port]);
+    const request = ++state.klipperRequest;
+    try {
+      await withBusy($("klipper-check"), "상태 읽는 중", async () => {
+        updateKlipperControls();
+        const result = await api("/api/printers/moonraker/status", target);
+        const current = klipperTarget();
+        if (request !== state.klipperRequest || JSON.stringify([current.host, current.port]) !== signature) return;
+        state.klipperStatus = result;
+        renderKlipperStatus(result);
+      });
+    } catch (error) {
+      if (request === state.klipperRequest) showNotice("klipper-feedback", error.message, error.code === "printer_busy" ? "warning" : "error");
+    } finally { updateKlipperControls(); }
+  }
+
+  function klipperInputChanged() {
+    state.klipperRequest += 1;
+    if (state.klipperStatus) {
+      state.klipperStatus = null;
+      $("klipper-result").classList.add("is-stale");
+      $("klipper-result").setAttribute("aria-hidden", "true");
+      showNotice("klipper-feedback", "입력이 바뀌었습니다. 흐리게 표시한 아래 값은 이전 대상의 확인 결과입니다. 다시 읽어 주세요.", "warning");
+      setBadge("klipper-status-badge", "입력이 바뀌어 다시 확인 필요");
+    }
+    updateKlipperControls();
+  }
+
   function printerInputChanged() {
     state.printerRequest += 1;
     if (state.printerStatus) {
@@ -4602,6 +4718,8 @@
   restoreSavedPrinter();
   $("printer-form").addEventListener("submit", (event) => { event.preventDefault(); return checkPrinterStatus(); });
   $("printer-form").addEventListener("input", printerInputChanged);
+  $("klipper-form").addEventListener("submit", (event) => { event.preventDefault(); return checkKlipperStatus(); });
+  $("klipper-form").addEventListener("input", klipperInputChanged);
   $("printer-unpin").addEventListener("click", clearPrinterPin);
 
   function renderOfferRows() {

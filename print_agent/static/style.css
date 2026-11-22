@@ -336,6 +336,10 @@ td small { display: block; font-size: 9px; color: #9aa7b8; margin-top: 3px; }
 .printer-result { margin-top: 14px; }
 .printer-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .printer-result.is-stale { opacity: .4; filter: grayscale(1); pointer-events: none; user-select: none; }
+.klipper-tools { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 12px 0 0; padding: 0; }
+.klipper-tools li { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.klipper-tools li span:not(.badge) { white-space: nowrap; }
+.klipper-tools li.is-active { border-color: var(--green); }
 .printer-progress { display: block; width: 100%; height: 8px; margin: 12px 0 4px; accent-color: #3b5bdb; }
 .printer-swatch { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; border: 1px solid #c9d3e0; border-radius: 3px; }
 .printer-slots { margin: 6px 0 0; padding-left: 0; list-style: none; line-height: 2; font-size: 12px; color: #4c5e76; overflow-wrap: anywhere; }

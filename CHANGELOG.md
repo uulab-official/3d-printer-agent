@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.39.0 — 2026-11-22
+
+- **Klipper printers through Moonraker (read-only).** The printer view has a new Klipper card (Snapmaker U1, Voron, Sovol, Elegoo Neptune 4, Qidi and other Klipper printers): IP, port (default 7125) and an optional API key that is used for one read and never stored or returned. `printer_moonraker.py` sends only four fixed `GET` requests (`/server/info`, `/printer/info`, `/printer/objects/list`, `/printer/objects/query`) to private IP literals and reports each stage separately: unreachable, access rejected (401/403), not Moonraker, Klipper not ready, reporting. The status uses the same print-state vocabulary as Bambu; it lists every reported toolhead with its temperature and marks the active one, and the remaining time is an estimate from elapsed time and progress, labelled as such. Klipper reports no filament types, so material slots, inventory links and sending stay Bambu-only. A changed address or port dims the previous result until it is read again. Reads that got no answer do not count toward the 2-second interval, so a corrected key can be tried at once.
+- `scripts/fake_moonraker.py`: a synthetic four-toolhead Moonraker server for demos and tests (labelled synthetic; nothing is printed).
+- Glossary: Klipper·Moonraker (36 terms).
+- Verified against the synthetic server only. On 2026-11-22 no host on the local network (192.168.0.0/24) had port 7125 open, so a real Snapmaker U1 has not been read yet.
+
 ## 0.38.0 — 2026-11-22
 
 First changes from a real printer on the local network (a Bambu Lab X2D, firmware 01.02.00.00, cloud connection mode). Read-only search replies only; no connection, status read, send or print was made.

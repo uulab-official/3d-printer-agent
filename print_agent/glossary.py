@@ -152,7 +152,11 @@ TERMS = [
     {'id': 'lan_mode', 'term': 'LAN 연결', 'aka': 'LAN, access code', 'category': 'printer',
      'short': '같은 공유기에 연결된 프린터와 클라우드를 거치지 않고 직접 주고받는 방식입니다.',
      'detail': '프린터 화면에 표시된 IP 주소와 액세스 코드가 필요합니다. 이 앱은 액세스 코드를 저장하지 않고, 상태를 읽거나 사람이 확인한 파일만 보냅니다.',
-     'related': ['ams'], 'view': 'printers'},
+     'related': ['ams', 'klipper'], 'view': 'printers'},
+    {'id': 'klipper', 'term': 'Klipper·Moonraker', 'aka': 'Klipper, Moonraker, Fluidd, Mainsail', 'category': 'printer',
+     'short': 'Snapmaker U1·Voron 등 많은 프린터가 쓰는 펌웨어(Klipper)와 그 상태를 알려 주는 웹 API(Moonraker)입니다.',
+     'detail': '같은 네트워크에서 프린터 IP와 포트(보통 7125)로 연결합니다. 인증을 켠 프린터는 API 키가 필요합니다. 이 앱은 상태만 읽고 API 키를 저장하지 않습니다.',
+     'related': ['lan_mode'], 'view': 'printers'},
 
     # --- Files ------------------------------------------------------------------------
     {'id': 'stl', 'term': 'STL', 'aka': 'STL file', 'category': 'file',
