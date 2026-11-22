@@ -349,20 +349,23 @@ def _reserve(host, serial):
 
 
 def read_status(host, serial, access_code, *, pinned_sha256=None, timeout=STATUS_TIMEOUT_SECONDS,
-                report_window=REPORT_WINDOW_SECONDS, port=None, include_version=True):
+                report_window=REPORT_WINDOW_SECONDS, port=None, include_version=True, keep_raw=False):
     """Connect once, ask for the current state, and disconnect. Never raises for network outcomes.
 
-    ``include_version=False`` skips the module/firmware query for repeated progress reads."""
+    ``include_version=False`` skips the module/firmware query for repeated progress reads.
+    ``keep_raw=True`` adds the merged raw report under ``raw`` for the local field probe
+    only; the web API never sets it."""
     host, serial, pinned_sha256 = validate_target(host, serial, access_code, pinned_sha256)
     _reserve(host, serial)
     try:
         return _read_status(host, serial, access_code, pinned_sha256, timeout, report_window, port or MQTT_PORT,
-                            include_version)
+                            include_version, keep_raw)
     finally:
         _STATUS_LOCK.release()
 
 
-def _read_status(host, serial, access_code, pinned, timeout, report_window, port, include_version=True):
+def _read_status(host, serial, access_code, pinned, timeout, report_window, port, include_version=True,
+                 keep_raw=False):
     deadline = time.monotonic() + timeout
     certificate = None
     try:
@@ -392,14 +395,16 @@ def _read_status(host, serial, access_code, pinned, timeout, report_window, port
                     return _result(host, serial, 'tls_failed', certificate=certificate)
                 if pinned is not None and fingerprint != pinned:
                     return _result(host, serial, 'certificate_changed', certificate=certificate)
-                return _session(sock, host, serial, access_code, certificate, deadline, report_window, include_version)
+                return _session(sock, host, serial, access_code, certificate, deadline, report_window, include_version,
+                                keep_raw)
     except _Stop as stop:
         return _result(host, serial, stop.state, certificate=certificate)
     except (OSError, ssl.SSLError):
         return _result(host, serial, 'protocol_error' if certificate else 'tls_failed', certificate=certificate)
 
 
-def _session(sock, host, serial, access_code, certificate, deadline, report_window, include_version=True):
+def _session(sock, host, serial, access_code, certificate, deadline, report_window, include_version=True,
+             keep_raw=False):
     client_id = 'print-agent-' + secrets.token_hex(6)
     sock.sendall(_connect_packet(client_id, MQTT_USERNAME, access_code))
     try:
@@ -461,7 +466,10 @@ def _session(sock, host, serial, access_code, certificate, deadline, report_wind
         return _result(host, serial, 'no_report' if subscribed else 'protocol_error', certificate=certificate)
     printing, identity = normalize_report(merged, info)
     identity['report_topic_serial'] = serial
-    return _result(host, serial, 'reporting', certificate=certificate, printing=printing, identity=identity)
+    result = _result(host, serial, 'reporting', certificate=certificate, printing=printing, identity=identity)
+    if keep_raw:
+        result['raw'] = {'print': merged, 'info': info}
+    return result
 
 
 # ---------------------------------------------------------------------------
