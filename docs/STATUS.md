@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.39 adds read-only status for Klipper printers through Moonraker (Snapmaker U1, Voron and others; see [printer status](PRINTER_STATUS.md)): toolhead temperatures with the active tool, state, progress, layers and an estimated remaining time. Sending, material slots and inventory links remain Bambu-only. Verified against a synthetic Moonraker server only; no real Klipper printer has been read yet.
+Version 0.39 adds read-only status for Klipper printers through Moonraker (Snapmaker U1, Voron and others; see [printer status](PRINTER_STATUS.md)): toolhead temperatures with the active tool, state, progress, layers and an estimated remaining time. Sending, material slots and inventory links remain Bambu-only. Verified against a synthetic Moonraker server only; no real Klipper printer has been read yet. Published as [v0.39.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.39.0) on 2026-11-22 from `020f6bc`.
 
 Version 0.38 brings the first changes from a real printer on the local network (Bambu Lab X2D, firmware 01.02.00.00, cloud connection mode, read-only search replies only). Printer search now works while Bambu Studio holds the announcement port, by also receiving direct replies to a search request, and the model-code table covers all 15 codes in Bambu Studio 02.09.01.70 (the printer reported `N6`, X2D). No status read, send or print has been made on real hardware yet. It also adds `scripts/printer_field_probe.py`, which records a real printer's report layout without identifying values. Published as [v0.38.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.38.0) on 2026-11-22 from `65ece68`.
 

@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-22 v0.39.0 공개 릴리스
+
+[v0.39.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.39.0)을 2026-11-22 11:11:35 UTC에 `020f6bc`에서 게시했습니다(PR #39, Klipper·Moonraker 읽기 전용 상태).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/45015387839) Python **859개**·컨트롤러 **229개**·Chromium **128개**(합성 Moonraker 서버로 API 키 거부·툴헤드 4개·입력 변경 후 재확인을 보는 데스크톱·모바일 사례 포함),
+[설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/45015387903) 세 OS 각 **413개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/45015387834)가 모두 실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/45016060741)도
+차수 1에 게시했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(383,778바이트, `b422431cf1f4a6c1…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스
+커밋이 내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 같은 날 로컬 네트워크(192.168.0.0/24)에 7125 포트가 열린 기기가 없어 실제
+Klipper 프린터(Snapmaker U1 포함)는 아직 읽지 않았습니다.
+
 ## 2026-11-22 v0.38.0 공개 릴리스
 
 [v0.38.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.38.0)을 2026-11-22 10:23:31 UTC에 `65ece68`에서 게시했습니다(PR #38, Studio 실행 중 프린터 찾기·15개 기종 코드·필드 점검 도구).
