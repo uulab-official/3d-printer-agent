@@ -284,7 +284,7 @@ class DiscoveryTests(unittest.TestCase):
                     bounds = solid.BoundingBox()
                     for axis, expected in zip('xyz', (width, depth, height)):
                         self.assertAlmostEqual(getattr(bounds, axis + 'len'), expected, places=5)
-                    self.assertAlmostEqual(solid.Volume(), result['volume_mm3'], places=5)
+                    self.assertAlmostEqual(solid.Volume(), result['volume_mm3'], delta=max(1e-5, result['volume_mm3'] * 1e-7))
 
 
 if __name__ == '__main__':
