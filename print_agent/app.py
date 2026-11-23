@@ -27,7 +27,7 @@ from .discovery import (
     DiscoveryRequest, ProjectSelection, StaleProjectSelection,
     project_catalog, recommend_projects, resolve_project_selection,
 )
-from .geometry import generate_model, template_catalog
+from .geometry import generate_model, preview_model, template_catalog
 from .model_edits import model_edit_record, normalize_parameters, plan_model_edit, plan_model_edit_with_llm
 from .offers import compare_offers
 from .stores import store_guide
@@ -677,6 +677,21 @@ def create_app(data_dir: Path | None = None, *, test_mode=False):
                 store.fail(job_id,'CAD 생성 중 오류가 발생했습니다. 치수를 줄이거나 다른 템플릿으로 다시 시도해주세요.')
             LOGGER.error('CAD generation failed: job=%s, exception=%s',job_id,type(exc).__name__)
             raise HTTPException(500,'CAD 생성에 실패했습니다. 작업 기록에서 상태를 확인할 수 있습니다.') from exc
+        finally:
+            CAD_LOCK.release()
+
+    @app.post('/api/models/preview')
+    def models_preview(payload: GeometryRequest):
+        """Studio live preview: mesh only, nothing stored. Never waits for the CAD lock."""
+        if not CAD_LOCK.acquire(blocking=False):
+            return resource_busy()
+        try:
+            return preview_model(payload)
+        except ValueError:
+            raise
+        except Exception as exc:
+            LOGGER.error('CAD preview failed: exception=%s', type(exc).__name__)
+            raise HTTPException(500, '미리보기 형상을 만들지 못했습니다. 치수를 조정해 주세요.') from exc
         finally:
             CAD_LOCK.release()
 

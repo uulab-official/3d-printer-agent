@@ -371,6 +371,30 @@ def _safe_printability(shape, parameters, mesh):
         return None
 
 
+def preview_model(spec: GeometryRequest) -> dict:
+    """Studio live preview: the same validated solid as generation, as a mesh only.
+
+    Nothing is written or stored; the result is marked as a preview so it is never
+    taken for a generated, downloadable model."""
+    spec = GeometryRequest.model_validate(spec.model_dump())
+    parameters = spec.model_dump(mode="json")
+    _validate_geometry(parameters)
+    shape = _build_solid(parameters)
+    if not shape.isValid() or len(shape.Solids()) != 1:
+        raise ValueError("이 치수로는 올바른 하나의 형상을 만들 수 없습니다. 치수를 조정해 주세요.")
+    bounds = shape.BoundingBox()
+    mesh = _preview_mesh(shape)
+    parts = color_parts(parameters)
+    if parts:
+        mesh["parts"] = [{key: part[key] for key in ("key", "label", "name", "hex")} for part in parts]
+        face_parts = _face_parts(mesh, parameters, parts)
+        if face_parts is not None:
+            mesh["face_parts"] = face_parts
+    return {"template": spec.template, "parameters": parameters, "preview_only": True,
+            "dimensions_mm": {axis: round(getattr(bounds, axis + "len"), 9) for axis in "xyz"},
+            "volume_mm3": shape.Volume(), "mesh": mesh}
+
+
 def generate_model(spec: GeometryRequest, output_dir: Path) -> dict:
     spec = GeometryRequest.model_validate(spec.model_dump())
     parameters = spec.model_dump(mode="json")

@@ -142,6 +142,9 @@ test('recorded printer volume blocks an oversized CAD and a new selected source 
 });
 
 test('a visible model-ready toast does not intercept a real overlapping download click or tap', async ({ page, isMobile }, testInfo) => {
+  // In the three-column studio the downloads sit under the centre view, away from the
+  // bottom-right toast; one column puts a real download under it.
+  if (!isMobile) await page.setViewportSize({ width: 900, height: 900 });
   await generateTray(page);
   await expect(page.locator('#toast')).toBeVisible();
   // Move the page with ordinary scrolling so an existing download lies behind
