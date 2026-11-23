@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.42.0 — 2026-11-23
+
+- **Tilted keycaps keep the full side wall.** In 0.41.0 the lower long wall of a tilted keycap was thinner than the chosen wall (1.12 mm at 6°, 0.90 mm at −10°, 0.78 mm at ±12° for a 1.3 mm wall) and its outside bent into a ledge above a hollow. The shell is now lofted through six sections that follow one wall profile (each side moves in 2.7 mm · s^1.25 at height fraction s, the corner radius grows from 1.2 to 2.9 mm, and a tilted key turns each section by tilt · s about its own centre), so the wall leans in smoothly all the way up; on tilted keys the cavity also narrows so the lower wall keeps the chosen thickness (measured 1.31 mm at 6°, −10° and ±12°). Flat keys keep the same cavity, outer size and rules; the outer shell differs slightly from 0.41.0. Earlier jobs keep their stored files and reproduction source.
+- **Chamfered stem entry.** The cross hole opens 0.3 mm wider on each side at the bed and narrows to its size 0.3 mm up, so first-layer spread does not close the opening; the cross size above it, the clearance rule and the stem fit review are unchanged.
+
 ## 0.41.0 — 2026-11-22
 
 - **Sculpted keycaps.** The keycap shell is now a smooth loft through the base, a slightly fuller middle (0.4 mm past a straight taper at half height) and a 0.9 mm rounded shoulder into the top, with 1.2 mm base and 2.9 mm top corner radii; the rim of the cylindrical dish is rounded to 0.4 mm (skipped only if the CAD kernel refuses the fillet). Outer size, stem, cross hole, stabilizers, legend and every rule are unchanged; earlier keycap jobs keep their stored files and reproduction source.

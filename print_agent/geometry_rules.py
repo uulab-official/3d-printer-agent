@@ -18,17 +18,33 @@ def keycap_layout(p: dict) -> dict:
     tilt = math.radians(p.get("top_tilt", 0) or 0)
     drop = top_d / 2 * abs(math.tan(tilt))
     cavity_top = p["height"] - dish - p["bottom"] - drop
+    # Sculpted shell: at height fraction s each side has moved in inset · s^1.25 (a wall that
+    # swells past a straight taper and rounds into the top) and the section has turned
+    # tilt · s about its own centre, so a tilted top bends the whole wall smoothly.
+    power, levels = 1.25, (0.0, 0.25, 0.5, 0.7, 0.85, 1.0)
+    sections = [(s, width - 2 * inset * s ** power, depth - 2 * inset * s ** power, 1.2 + 1.7 * s, math.degrees(tilt) * s)
+                for s in levels]
+    def low_side(z):
+        # Half-depth of the outer wall on the lower long side at height z (exact for the profile).
+        lo, hi = 0.0, 1.0
+        for _ in range(48):
+            s = (lo + hi) / 2
+            half = depth / 2 - inset * s ** power
+            if s * p["height"] - half * math.sin(abs(tilt) * s) < z:
+                lo = s
+            else:
+                hi = s
+        return (depth / 2 - inset * lo ** power) * math.cos(tilt * lo)
     def inner(base, top):
         return base - (base - top) * cavity_top / p["height"] - 2 * p["wall"]
+    # The cavity follows a straight taper; on a tilted key it also keeps the full wall on the lower side.
+    cavity_depth = min(inner(depth, top_d), 2 * (low_side(max(cavity_top, 0)) - p["wall"]))
     return {"width": width, "depth": depth, "top_width": top_w, "top_depth": top_d,
-            # Sculpted shell: half way up the sides swell 0.4 mm past a straight taper, and the
-            # top edge rounds over a 0.9 mm shoulder that is 0.35 mm wider than the top on each side.
-            "sculpt_middle": ((width + top_w) / 2 + 0.4, (depth + top_d) / 2 + 0.4),
-            "sculpt_shoulder": (top_w + 0.7, top_d + 0.7), "shoulder_height": 0.9, "rim_radius": 0.4,
+            "sections": sections, "rim_radius": 0.4,
             "dish_radius": dish_radius, "dish_depth": dish, "cavity_top": cavity_top,
             "top_tilt": p.get("top_tilt", 0) or 0, "tilt_drop": drop,
-            "cavity_top_width": inner(width, top_w), "cavity_top_depth": inner(depth, top_d),
-            "stem_diameter": stem, "cross_depth": cross_depth,
+            "cavity_top_width": inner(width, top_w), "cavity_top_depth": cavity_depth,
+            "stem_diameter": stem, "cross_depth": cross_depth, "entry_chamfer": 0.3,
             "cross": (round(cross_length + p["fit_clearance"], 6), round(cross_width + p["fit_clearance"], 6)),
             "stem_ring": (stem - cross_length - p["fit_clearance"]) / 2,
             # Cherry plate-mounted stabilizer offsets from the centre stem.

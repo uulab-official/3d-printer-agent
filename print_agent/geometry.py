@@ -154,22 +154,13 @@ def _build_solid(p: dict) -> cq.Shape:
             return face.outerWire().translate(cq.Vector(0, 0, z))
         def frustum(base, top, z0, z1, r0, r1):
             return cq.Workplane("XY").add(cq.Solid.makeLoft([outline(*base, r0, z0), outline(*top, r1, z1)], True))
-        # Sculpted shell: a smooth loft through the base, a slightly fuller middle and a
-        # rounded shoulder into the top, so the sides swell gently like moulded keycaps.
-        middle, shoulder = k["sculpt_middle"], k["sculpt_shoulder"]
+        # Sculpted shell: a smooth loft through sections that follow one wall profile, so the
+        # sides swell gently like moulded keycaps and a row tilt bends the wall without a kink.
         tilt = k["top_tilt"]
-        def tilted(wire):
-            # Row sculpt: turn the upper sections about the X axis through the top centre.
-            return wire.rotate(cq.Vector(0, 0, h), cq.Vector(1, 0, h), tilt) if tilt else wire
-        # The middle turns half as far about its own centre so the side walls blend into the tilt.
-        mid = outline(middle[0], middle[1], 2.0, h * 0.5)
-        if tilt:
-            mid = mid.rotate(cq.Vector(0, 0, h * 0.5), cq.Vector(1, 0, h * 0.5), tilt / 2)
-        sections = [outline(k["width"], k["depth"], 1.2, 0),
-                    mid,
-                    tilted(outline(shoulder[0], shoulder[1], 2.6, h - k["shoulder_height"])),
-                    tilted(outline(k["top_width"], k["top_depth"], 2.9, h))]
-        body = cq.Workplane("XY").add(cq.Solid.makeLoft(sections, False))
+        def section(s, width, depth, radius, angle):
+            wire = outline(width, depth, radius, s * h)
+            return wire.rotate(cq.Vector(0, 0, s * h), cq.Vector(1, 0, s * h), angle) if angle else wire
+        body = cq.Workplane("XY").add(cq.Solid.makeLoft([section(*level) for level in k["sections"]], False))
         # Cylindrical dish across the depth; it leaves a narrow flat on the long top edges.
         radius = k["dish_radius"]
         dish = cq.Solid.makeCylinder(radius, k["width"] + 4, cq.Vector(-k["width"] / 2 - 2, 0, h - k["dish_depth"] + radius), cq.Vector(1, 0, 0))
@@ -189,6 +180,12 @@ def _build_solid(p: dict) -> cq.Shape:
             stem = cq.Workplane("XY").center(x, 0).circle(k["stem_diameter"] / 2).extrude(k["cavity_top"] + 0.5)
             cross = (cq.Workplane("XY").center(x, 0).rect(length, width).extrude(k["cross_depth"])
                      .union(cq.Workplane("XY").center(x, 0).rect(width, length).extrude(k["cross_depth"])))
+            # Chamfered entry: the first layers spread on the bed, so the cross opens 0.3 mm
+            # wider at the bottom and narrows to its size 0.3 mm up.
+            entry = k["entry_chamfer"]
+            for a, b in ((length, width), (width, length)):
+                cross = cross.union(cq.Workplane("XY").center(x, 0).rect(a + 2 * entry, b + 2 * entry)
+                                    .workplane(offset=entry).rect(a, b).loft())
             body = body.union(stem.cut(cross))
         legend = p["text"].strip()
         if legend:
