@@ -51,6 +51,8 @@ class KeycapGeometryTests(unittest.TestCase):
         self.assertFalse(inside(one, 0, 2.0, 1))      # end of the vertical arm (4.15 mm long)
         self.assertTrue(inside(one, 0, 2.5, 1))       # stem ring beyond the arm
         self.assertTrue(inside(one, 1.0, 1.0, 1))     # between the arms
+        self.assertFalse(inside(one, 0, 2.2, 0.05))   # the cross opens wider on the bed (entry chamfer)
+        self.assertTrue(inside(one, 0, 2.2, 0.5))     # and is back to size above it
         self.assertFalse(inside(one, 6, 0, 1))        # open cavity beside the stem
         self.assertTrue(inside(one, 0, 0, 7.0))       # the top above the stem
         self.assertFalse(inside(one, 11.938, 0, 4.5))  # a 1u key has no stabilizer stem
@@ -130,6 +132,32 @@ class KeycapRowTiltTests(unittest.TestCase):
                 high, low = (5.5, -5.5) if tilt > 0 else (-5.5, 5.5)
                 self.assertTrue(inside(shape, 0, high, 8.2))
                 self.assertFalse(inside(shape, 0, low, 8.0))
+
+    def test_the_lower_side_keeps_the_full_wall_and_bends_without_a_ledge(self):
+        # v0.41.0 thinned the lower wall to 0.78 mm at 12° and left a ledge above a hollow wall.
+        for tilt in (12, -10):
+            with self.subTest(tilt=tilt):
+                parameters = GeometryRequest(**{**KEY, 'text': '', 'top_tilt': tilt}).model_dump()
+                shape, k = _build_solid(parameters), keycap_layout(parameters)
+                walls, outer = [], []
+                for i in range(1, 7):
+                    z = k['cavity_top'] * i / 6 - 0.02
+                    bar = cq.Solid.makeBox(0.02, 30, 0.02, cq.Vector(-0.01, -15, z))
+                    sides = [b for b in (piece.BoundingBox() for piece in shape.intersect(bar).Solids()) if abs(b.ymin + b.ymax) > 10]
+                    walls.append(min(b.ylen for b in sides))
+                    low = min(sides, key=lambda b: b.ymin if tilt > 0 else -b.ymax)
+                    outer.append(-low.ymin if tilt > 0 else low.ymax)
+                self.assertGreaterEqual(min(walls), parameters['wall'] - 0.02)
+                steps = [a - b for a, b in zip(outer, outer[1:])]
+                self.assertTrue(all(step > 0 for step in steps), outer)   # the lower wall leans in all the way up
+                self.assertTrue(shape.isValid())
+
+    def test_wide_tilted_keys_build_as_one_valid_solid(self):
+        for units in (2.25, 6.25):
+            with self.subTest(units=units):
+                shape = _build_solid(GeometryRequest(**{**KEY, 'key_units': units, 'text': 'Ent', 'top_tilt': -8}).model_dump())
+                self.assertTrue(shape.isValid())
+                self.assertEqual(len(shape.Solids()), 1)
 
     def test_a_flat_top_keeps_the_earlier_canonical_shape(self):
         flat = GeometryRequest(**KEY).model_dump()
