@@ -3,7 +3,7 @@
 
   const $ = (id) => document.getElementById(id);
   const state = { offersResult: null, historyFilter: "all", downloadedJobId: null, printabilityReview: null, printabilityRequest: 0, printabilityPending: false, printabilityNozzle: 0.4, printabilityShown: false, printerPins: {}, printerStatus: null, printerRequest: 0, klipperStatus: null, klipperRequest: 0, modelEditCandidate: null, modelEditApplied: null, modelEditAppliedSignature: null, modelEditRequest: 0, modelEditPending: false, modelEditBusyRequest: null, studioWorkspaceId: null, studioWorkspaceRevision: null, studioWorkspaceSavedSignature: null, studioWorkspaceCandidate: null, studioWorkspaceEpoch: 0, studioWorkspaceRequest: 0, studioWorkspaceBusy: false, studioLibraryItems: [], studioLibraryCursor: null, studioLibraryRequest: 0, studioLibraryPending: false, studioSettingsOpen: false, studioSettingsDescriptor: null, studioSettingsDraft: null, studioSettingsReview: null, studioSettingsReviewContext: null, studioSettingsPending: false, studioSettingsApplied: null, studioSettingsCandidate: null, studioSettingsRecorded: null, studioSettingsRecordedReview: null, studioRequest: 0, studioRevision: 0, studioPending: false, studioPendingName: "", studioCandidate: null, studioCandidateEpoch: null, studioCandidateStorage: null, studioApplied: null, studioAppliedEpoch: null, studioAppliedStorage: null, studioRecorded: null, studioSlicePrepared: false, studioPreparedSignature: null, studioSavedIdentity: null, offersRevision: 0, offersPending: false, retainedOutcomeDrafts: [], connectionState: "connecting", connectionEpoch: 0, bootstrapPending: false, storage: null, modelCleanSignature: null, modelReplacement: null, modelTransitionRequest: 0, slicerSavedText: "", historyItems: [], historyLoaded: false, historyRequest: 0, historyPending: false, historyCursor: null, discovery: null, discoveryPurpose: "all", discoveryMatches: [], discoveryBrowsed: null, discoveryPending: false, discoveryStale: false, discoveryRequest: 0, discoveryEpoch: 0, discoveryRevision: 0, projectSource: null, projectReplacement: null, bootstrapRequest: 0, token: null, templates: [], template: null, parameters: {}, environment: {}, provider: {}, job: null, slicePrepared: false, workflowBusy: false, slicerFiles: { machine: null, process: null, filaments: [] }, slicerStaged: false, slicerContext: 0, slicerRequests: {}, slicerPending: {}, profileDocuments: [], profileTarget: 0, profileRevision: 0, profileImport: 0, profileReport: null, profileDownloadUrl: null, guidedEdits: {}, guidedSources: {}, workspaceId: null, workspaceRevision: null, workspaceSavedSignature: null, workspaceEpoch: 0, workspaceEdits: 0, workspaceListRequest: 0, workspaceBusy: false, workspaces: [] };
-  const pageNames = { models: "모델 만들기", imports: "가진 모델 점검", inventory: "필라멘트 재고", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록", guide: "용어·안내" };
+  const pageNames = { models: "모델링 스튜디오", imports: "가진 모델 점검", inventory: "필라멘트 재고", profiles: "재료 설정", offers: "구매 비교", printers: "프린터 상태", history: "작업 기록", guide: "용어·안내" };
   const fields = {
     width: { label: "가로", min: 10, max: 500, step: 0.1 },
     depth: { label: "세로", min: 10, max: 500, step: 0.1 },
@@ -776,6 +776,7 @@
     state.modelEditAppliedSignature = null;
     cancelModelEdit();
     invalidateCurrentJob("치수가 바뀌었습니다. 새 모델을 생성하면 변경한 형상을 확인할 수 있습니다.");
+    if (typeof livePreviewDraftChanged === "function") livePreviewDraftChanged();
   }
 
   async function planModelEdit() {
@@ -1298,6 +1299,7 @@
     }
     renderTemplates();
     updateWorkflowControls();
+    if (typeof livePreviewDraftChanged === "function") livePreviewDraftChanged();
   }
 
   $("model-form").addEventListener("input", (event) => {
@@ -1363,9 +1365,86 @@
       : "템플릿 모드는 지원하는 물건과 치수를 정해진 규칙으로 해석합니다.";
   });
 
+  // Studio live preview: while the draft changes, the same validated solid is drawn as a mesh.
+  // Nothing is written or stored, it never replaces a generated job, and it is labelled as
+  // not yet generated so no file or slice looks current for it.
+  const LIVE_PREVIEW_KEY = "printAgent.livePreview";
+  const livePreview = { timer: null, seq: 0, inflight: null };
+
+  function livePreviewOn() { return Boolean($("preview-live")?.checked); }
+
+  function livePreviewDraftChanged() {
+    clearTimeout(livePreview.timer);
+    livePreview.seq += 1;
+    if (state.job || !state.template) return;
+    if (viewer.liveMode && viewer.mesh) {
+      $("preview-stage").classList.add("is-stale");
+      setBadge("preview-status", "변경 반영 중", "neutral");
+    }
+    if (livePreviewOn()) livePreview.timer = setTimeout(runLivePreview, 450);
+  }
+
+  async function runLivePreview() {
+    if (state.job || !state.template || !livePreviewOn() || !state.token) return;
+    if (state.workflowBusy) { livePreview.timer = setTimeout(runLivePreview, 800); return; }
+    if (!$("model-form").checkValidity()) { setBadge("preview-status", "치수 확인 필요", "warning"); return; }
+    const parameters = { template: state.template };
+    for (const input of document.querySelectorAll("[data-parameter]")) parameters[input.dataset.parameter] = readParameter(input);
+    const seq = ++livePreview.seq, signature = modelDraftSignature();
+    const current = () => seq === livePreview.seq && signature === modelDraftSignature() && !state.job;
+    setBadge("preview-status", "미리보기 계산 중", "neutral");
+    const request = api("/api/models/preview", parameters, undefined, { current });
+    livePreview.inflight = request.catch(() => null);
+    try {
+      const result = await request;
+      if (!current()) return;
+      viewer.setMesh(result.mesh, "실시간 미리보기", result.template, { live: true });
+      renderColorLegend(null);
+      $("preview-stage").classList.remove("is-stale");
+      setBadge("preview-status", "실시간 미리보기 · 파일 생성 전", "info");
+      const size = result.dimensions_mm || {};
+      $("preview-caption").textContent = `${["x", "y", "z"].map((axis) => numberFormat.format(size[axis])).join(" × ")} mm · 형상만 미리 본 것으로, 파일과 검증은 ‘CAD 모델 생성하기’에서 만듭니다.`;
+    } catch (error) {
+      if (!current()) return;
+      if (error.code === "resource_busy") { livePreview.timer = setTimeout(runLivePreview, 1500); return; }
+      setBadge("preview-status", "미리보기 불가", "warning");
+      $("preview-caption").textContent = error.message;
+    } finally {
+      if (seq === livePreview.seq) livePreview.inflight = null;
+    }
+  }
+
+  function stopLivePreview() {
+    clearTimeout(livePreview.timer);
+    livePreview.seq += 1;
+    return livePreview.inflight;
+  }
+
+  function setLivePreview(on) {
+    try { localStorage.setItem(LIVE_PREVIEW_KEY, on ? "on" : "off"); } catch { /* browser storage unavailable */ }
+    if (on) { livePreviewDraftChanged(); return; }
+    clearTimeout(livePreview.timer);
+    livePreview.seq += 1;
+    if (!state.job && viewer.liveMode) {
+      viewer.clear();
+      viewer.liveMode = false;
+      $("preview-stage").classList.remove("is-stale");
+      setBadge("preview-status", "아직 생성 전", "neutral");
+      $("preview-caption").textContent = "생성된 메시만 표시합니다.";
+    }
+  }
+
+  if ($("preview-live")) {
+    try { $("preview-live").checked = localStorage.getItem(LIVE_PREVIEW_KEY) !== "off"; } catch { /* default on */ }
+    $("preview-live").addEventListener("change", () => setLivePreview($("preview-live").checked));
+  }
+
   async function generateModel() {
     if (state.workflowBusy) return;
     if (!$("model-form").reportValidity()) return;
+    // A pending live preview never races the generated model for the CAD lock.
+    const pendingPreview = typeof stopLivePreview === "function" ? stopLivePreview() : null;
+    if (pendingPreview) { await pendingPreview; if (state.workflowBusy) return; }
     hideNotice("model-feedback");
     const signature = modelDraftSignature();
     const parameters = { template: state.template };
@@ -1620,6 +1699,7 @@
     if (state.job?.id !== job.id) retainOutcomeDraft();
     cancelSlicerReads();
     state.job = job;
+    $("preview-stage").classList.remove("is-stale");
     state.studioRecorded = job.latest_slice?.plan?.kind === "studio_project" ? job.latest_slice.plan.project_source || null : null;
     state.studioSettingsRecorded = job.latest_slice?.plan?.settings_revision ?? null;
     state.studioSettingsRecordedReview = job.latest_slice?.plan?.settings_review ?? null;
@@ -5229,7 +5309,7 @@
       return [0, 2, 4].map((offset) => Math.min(225, Math.max(48, parseInt(match[1].slice(offset, offset + 2), 16))));
     }
 
-    setMesh(mesh, title, template = null) {
+    setMesh(mesh, title, template = null, options = {}) {
       if (!mesh?.vertices?.length || !mesh.faces?.length || !this.context) {
         this.element("empty").hidden = false;
         this.canvas.hidden = true;
@@ -5239,8 +5319,14 @@
       // Keep the model shown just before as a labelled outline for comparison.
       const earlier = this.mesh || this.lastMesh;
       const bounds = MeshViewer.bounds(mesh);
-      // Compare only with the same kind of object; another template is not "the previous version".
-      if (earlier && earlier !== mesh && template && template === this.template && MeshViewer.signature(earlier) !== MeshViewer.signature(mesh)) {
+      const shown = !this.canvas.hidden && Boolean(this.mesh);
+      // Live previews keep comparing with the model shown before the edits started, and the
+      // generated model of the same shape keeps that comparison too.
+      const keepPrevious = this.liveMode && (options.live || (earlier && MeshViewer.signature(earlier) === MeshViewer.signature(mesh)));
+      this.liveMode = Boolean(options.live);
+      if (keepPrevious) {
+        // unchanged
+      } else if (earlier && earlier !== mesh && template && template === this.template && MeshViewer.signature(earlier) !== MeshViewer.signature(mesh)) {
         this.previous = { mesh: earlier, edges: MeshViewer.featureEdges(earlier), bounds: MeshViewer.bounds(earlier), title: this.title };
       } else if (earlier !== mesh) {
         this.previous = null;
@@ -5261,7 +5347,9 @@
       this.canvas.setAttribute("aria-label", `${title || "생성한 모델"}. 방향키로 회전, 더하기와 빼기로 확대, 0으로 기본 시점.`);
       this.element("empty").hidden = true;
       this.element("tools").hidden = false;
-      this.reset();
+      // A live update keeps the person's camera; a new model starts from the default view.
+      if (options.live && shown) this.requestDraw();
+      else this.reset();
       if (typeof this.afterMesh === "function") this.afterMesh(this);
     }
 
@@ -5851,7 +5939,7 @@
       requestModelReplacement({ kind: "history", job, title: job.title, button: $("import-make-job") });
       // Unsaved model work asks first; that question is on the model screen.
       if (state.modelReplacement) changeView("models");
-      showNotice("import-feedback", "작업을 만들었습니다. 모델 만들기 화면의 슬라이싱·프린터로 보내기·결과 기록을 이어서 쓸 수 있습니다.", "success");
+      showNotice("import-feedback", "작업을 만들었습니다. 모델링 스튜디오 화면의 슬라이싱·프린터로 보내기·결과 기록을 이어서 쓸 수 있습니다.", "success");
     } catch (error) {
       showNotice("import-feedback", error.message, "error");
     } finally {
