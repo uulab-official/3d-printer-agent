@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.43 turns the model page into a modeling studio (a large central 3D view between a template list and the dimension panel) with a live mesh preview while the draft changes; the preview stores no job or file, and generating still produces and checks the real files. Not yet published.
+Version 0.43 turns the model page into a modeling studio (a large central 3D view between a template list and the dimension panel) with a live mesh preview while the draft changes; the preview stores no job or file, and generating still produces and checks the real files. Published as [v0.43.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.43.0) on 2026-11-23 from `0ab1ef4`.
 
 Version 0.42 keeps the chosen side wall on the lower side of tilted keycaps (0.41.0 thinned it to as little as 0.78 mm at ±12°), bends the tilted wall smoothly instead of into a ledge, and chamfers the stem's cross entry by 0.3 mm against first-layer spread. Published as [v0.42.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.42.0) on 2026-11-23 from `55272b8`.
 
