@@ -134,6 +134,15 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-23 v0.42.0 공개 릴리스
+
+[v0.42.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.42.0)을 2026-11-23 02:33:09 UTC에 `55272b8`에서 게시했습니다(PR #42, 기울인 키캡 옆벽 두께·매끈한 옆벽·스템 입구 모따기).
+수정 전후를 같은 방법(x=0 단면, 안쪽 공간 높이까지 12개 높이)으로 재면 1.3 mm 옆벽의 최소 두께가 6°에서 1.12→1.31 mm, −10°에서 0.90→1.31 mm, ±12°에서 0.78→1.31 mm이며 평평한 키는 1.37 mm로 같습니다.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/45099916657) Python **871개**(낮은 쪽 벽 두께·단조로운 옆벽, 기울인 2.25u·6.25u 단일 솔리드 사례 포함)·컨트롤러 **232개**·Chromium **136개**,
+[설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/45099916655) 세 OS 각 **414개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/45099916683)가 모두 실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/45100815102)도 차수 1에
+게시했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(393,423바이트, `b3048ea394665a60…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이
+내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 실물 출력과 스위치 맞춤(모따기한 입구 포함)은 검증하지 않았습니다.
+
 ## 2026-11-22 v0.41.0 공개 릴리스
 
 [v0.41.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.41.0)을 2026-11-22 13:57:00 UTC에 `2414b33`에서 게시했습니다(PR #41, 다듬은 키캡 몸통·열별 윗면 기울기·부드러운 음영).

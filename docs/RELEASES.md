@@ -1,27 +1,34 @@
 # 검증된 패키지의 릴리스 배포
 
-**[v0.41.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.41.0)**가
-2026-11-22 **13:57:00 UTC**에 게시됐습니다. 소스와 tag는
-[`2414b33612a6a473c62bf1024e882035908e82bf`](https://github.com/uulab-official/3d-printer-agent/commit/2414b33612a6a473c62bf1024e882035908e82bf)이며,
+**[v0.42.0 공개 릴리스](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.42.0)**가
+2026-11-23 **02:33:09 UTC**에 게시됐습니다. 소스와 tag는
+[`55272b8312c0443775b9d4dc3e4c3e8aab600e62`](https://github.com/uulab-official/3d-printer-agent/commit/55272b8312c0443775b9d4dc3e4c3e8aab600e62)이며,
 아래 세 검증을 통과한 원본 wheel과 검증 보고서 등 **7개 자산**을 포함합니다.
-[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/45030119243)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
+[실제 승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/45100815102)과 [검증 기록](VERIFICATION.md)에서 결과와 범위를 확인할 수 있습니다.
 릴리스 파일은 Actions의 단기 보관 산출물과 구분합니다.
 
-배포 wheel은 `3d_printer_agent_local-0.41.0-py3-none-any.whl`, **393,113바이트**이며
-SHA-256은 `35cc2ec07c7e99114e283360fcb78aac5434f7df859b38c666b813973d86b139`입니다.
+배포 wheel은 `3d_printer_agent_local-0.42.0-py3-none-any.whl`, **393,423바이트**이며
+SHA-256은 `b3048ea394665a606606b94352d36076a23f4a9d26df2de6e84704c434b547a4`입니다.
 이 값은 릴리스 내부 wheel의 해시이며 Actions가 묶은 외부 ZIP의 해시와 다릅니다.
 
 | 같은 main 소스의 검증 | 관측 결과 |
 |---|---|
-| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/45029355722) | 성공(실행 차수 1). Python **869개**·컨트롤러 **232개**·Chromium **136개** 통과 |
-| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/45029355577) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **414개** 통과 |
-| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/45029355559) | Linux Studio `02.09.01.70`의 기존 경로와 품질별 비교 단계 통과 |
+| [앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/45099916657) | 성공(실행 차수 1). Python **871개**·컨트롤러 **232개**·Chromium **136개** 통과 |
+| [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/45099916655) | 같은 wheel을 설치한 Ubuntu 24.04·macOS 15·Windows 2025에서 각각 **414개** 통과 |
+| [Native Bambu](https://github.com/uulab-official/3d-printer-agent/actions/runs/45099916683) | Linux Studio `02.09.01.70`의 기존 경로와 품질별 비교 단계 통과 |
 
-v0.41.0은 키캡을 사출 키캡처럼 다듬은 릴리스입니다(PR #41). 몸통을 볼록한 옆면과 둥근 어깨로 잇는 로프트로 바꾸고 오목면 테두리를 둥글렸으며,
-열별 윗면 기울기(−12~12°, 0이면 정식 파라미터에서 빠져 이전 키캡 작업의 형태 유지)를 더했고, 미리보기 곡면을 부드러운 음영으로 그립니다.
+v0.42.0은 기울인 키캡의 옆벽을 바로잡은 릴리스입니다(PR #42). v0.41.0에서는 기울인 키캡의 낮은 쪽 긴 옆벽이 지정한 두께보다 얇았습니다(1.3 mm 지정 시 ±12°에서 0.78 mm).
+이제 하나의 벽 곡선을 따르는 여섯 단면으로 몸통을 이어 낮은 쪽 벽도 지정 두께를 지키며(실측 1.31 mm) S자 꺾임 없이 휘어지고, 스템 십자 입구를 0.3 mm 모따기합니다.
 세 workflow와 승격 모두 실행 차수 1로 통과했습니다(먼저 끝난 게이트가 부른 승격 실행은 게시 없이 끝났습니다). 공개 자산 7개를 인증 없이 다시
 내려받아 wheel·`SHA256SUMS`·영수증의 해시가 일치하고, 근거 JSON의 보고서 해시가 내려받은 세 보고서와 같으며, 근거·영수증·보고서의 소스 커밋이
 tag 커밋과 같고 보고서의 414개 검사가 모두 통과 상태임을 확인했습니다. 이후 문서 갱신은 릴리스 tag와 파일을 바꾸지 않습니다.
+
+### 이전 릴리스 v0.41.0
+
+[v0.41.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.41.0)은 2026-11-22 **13:57:00 UTC**에 [`2414b33`](https://github.com/uulab-official/3d-printer-agent/commit/2414b33612a6a473c62bf1024e882035908e82bf)에서
+게시됐습니다. wheel **393,113바이트**, SHA-256 `35cc2ec07c7e99114e283360fcb78aac5434f7df859b38c666b813973d86b139`.
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/45029355722)(Python 869·컨트롤러 232·Chromium 136), [설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/45029355577)(세 OS 각 414개),
+[Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/45029355559)가 같은 커밋에서 통과했습니다.
 
 ### 이전 릴리스 v0.40.0
 
