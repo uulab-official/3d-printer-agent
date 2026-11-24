@@ -50,7 +50,7 @@ function fixture() {
   for (const name of ['printabilityStatus','printabilityMarks','templateFieldLabels']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   // Multi-line editing-panel constants are evaluated from their declaration to the closing brace.
   for (const name of ['fieldDescriptions','PALETTE']) { const start=source.indexOf('  const '+name+' = {'); vm.runInContext(source.slice(start, source.indexOf('\n  };', start)+5), context); }
-  for (const name of ['templateFieldDescriptions','fieldNudges','fieldGroups','PARAMETER_FORMAT','TEXT_PARAMETERS','COLOR_PARAMETERS','STRING_PARAMETERS','OPTIONAL_NUMBERS']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
+  for (const name of ['templateFieldDescriptions','fieldNudges','fieldGroups','PARAMETER_FORMAT','TEXT_PARAMETERS','COLOR_PARAMETERS','STRING_PARAMETERS','OPTIONAL_NUMBERS','OPTIONAL_NUMBER_TEMPLATES']) vm.runInContext(new RegExp('^  const '+name+' = .*$','m').exec(source)[0],context);
   for (const name of names) {
     const match = new RegExp('^  (?:async )?function '+name+'\\(', 'm').exec(source);
     if (!match) throw new Error('Missing controller function: '+name);
@@ -2361,6 +2361,11 @@ const printVolumeReport = (overrides={}) => ({
     assert.deepEqual(plain(c.validateEditParameters({...key,top_tilt:6})).slice(-1),['top_tilt']);
     assert.throws(()=>c.validateEditParameters({...key,top_tilt:0}),/치수 응답/);
     assert.throws(()=>c.validateEditParameters({...key,top_tilt:13}),/치수 응답/);
+    // Rounded edges are optional on a tray, wall hook and phone stand only.
+    c.fields.corner_radius={min:0,max:20};
+    const tray={template:'tray',width:120,depth:80,height:35,wall:2,bottom:2,dividers:0,slots:5,cable_diameter:6,inset_diameter:52,inset_depth:2,fit_clearance:0.3};
+    assert.deepEqual(plain(c.validateEditParameters({...tray,corner_radius:4})),['width','depth','height','wall','bottom','dividers','corner_radius']);
+    assert.throws(()=>c.validateEditParameters({...key,corner_radius:2}),/치수 응답/);
     assert.throws(()=>c.validateEditParameters({template:'cup',width:70,depth:80,height:100,wall:2,bottom:2,dividers:0,slots:5,cable_diameter:6,inset_diameter:52,inset_depth:2,fit_clearance:0.3,drain_hole:0,top_tilt:4}),/치수 응답/);
     assert.equal(c.parameterKeys('keycap').slice(-4).join(),'text,text_size,text_depth,key_units');
     assert.throws(()=>c.validateEditParameters({...key,text:'Escape!'}),/글자 응답/);

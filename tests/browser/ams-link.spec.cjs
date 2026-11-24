@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // Real server and inventory storage. The printer report is a labelled synthetic response
 // (the browser CI has no printer); linking a spool writes only the person's own record.

@@ -4,6 +4,9 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 const { filamentArchive, printerArchive } = require('./archive-fixture.cjs');
 const { isolatedRuntime } = require('./runtime-server.cjs');
 const runFile = promisify(execFile);

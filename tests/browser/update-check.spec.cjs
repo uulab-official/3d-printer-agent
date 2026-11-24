@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // The check runs only on request; the response is synthetic so the test needs no network.
 test('the new-version check runs only when asked and links the release and update guide', async ({ page }) => {
@@ -14,6 +17,8 @@ test('the new-version check runs only when asked and links the release and updat
   await page.goto('/');
   await expect(page.locator('#generate-button')).toBeEnabled();
   expect(calls).toEqual([]);
+  // In the studio the local panel opens from the header.
+  if (await page.locator('#studio-health-toggle').isVisible()) await page.locator('#studio-health-toggle').click();
   await page.locator('#storage-details > summary').click();
   await page.locator('#update-check').click();
   await expect(page.locator('#update-result')).toContainText('최신 9.9.9');

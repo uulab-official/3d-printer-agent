@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // Real server: the welcome, the term help next to a heading and the glossary view.
 test('a first visit shows the welcome, term help explains a word and the glossary finds it', async ({ page }) => {

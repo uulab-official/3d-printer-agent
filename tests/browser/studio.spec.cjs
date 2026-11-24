@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // Modeling studio: the 3D view in the middle, a live mesh preview while the draft changes
 // (nothing stored; the API test checks the job list), and a generated CAD model only from the explicit generate button.
@@ -22,12 +25,24 @@ test('the studio opens on a live preview that stores nothing and follows the dim
   await expect(page.locator('#download-links a')).toHaveCount(0);
   await expect(page.locator('#preview-caption')).toContainText('120 × 80 × 35 mm');
   if (!isMobile) {
-    // The view sits beside the templates and the dimensions, and starts above the fold.
-    const [rail, stage, inspector] = await Promise.all(['.studio-rail', '#preview-stage', '.studio-inspector'].map(s => page.locator(s).boundingBox()));
-    expect(rail.x + rail.width).toBeLessThanOrEqual(stage.x);
-    expect(stage.x + stage.width).toBeLessThanOrEqual(inspector.x);
-    expect(stage.y).toBeLessThan(page.viewportSize().height / 2);
-    expect(stage.height).toBeGreaterThan(420);
+    // A full-window workspace: the settings panel on the left, the viewport filling the rest
+    // from just under the studio header to the bottom of the window, and the app menu folded
+    // into an icon rail.
+    const viewport = page.viewportSize();
+    const [panel, stage, header] = await Promise.all(['.studio-panel', '#preview-stage', '.studio-header'].map(s => page.locator(s).boundingBox()));
+    expect(panel.x + panel.width).toBeLessThanOrEqual(stage.x + 1);
+    expect(stage.y).toBeLessThanOrEqual(header.y + header.height + 1);
+    // The viewport reaches the status bar at the bottom of the window.
+    const bar = await page.locator('.studio-statusbar').boundingBox();
+    expect(stage.y + stage.height).toBeGreaterThanOrEqual(bar.y - 1);
+    expect(bar.y + bar.height).toBeGreaterThanOrEqual(viewport.height - 1);
+    expect(stage.x + stage.width).toBeGreaterThanOrEqual(viewport.width - 2);
+    expect((await page.locator('.sidebar').boundingBox()).width).toBeLessThanOrEqual(72);
+    await expect(page.locator('.topbar')).toBeHidden();
+    // The viewport is dark, unlike the other screens.
+    const background = await page.locator('.studio-viewport').evaluate(element => getComputedStyle(element).backgroundColor);
+    const [r, g, b] = background.match(/\d+/g).map(Number);
+    expect(r + g + b).toBeLessThan(300);
   }
 
   const previewed = page.waitForResponse(r => r.url().endsWith('/api/models/preview') && r.request().method() === 'POST');
@@ -52,6 +67,11 @@ test('the studio opens on a live preview that stores nothing and follows the dim
   await expect(status).toHaveText('실제 CAD 메시');
   await expect(page.locator('#model-result')).toBeVisible();
   await expect(page.locator('#download-links a').first()).toBeVisible();
+  if (!isMobile && page.viewportSize().width > 1180) {
+    // The file result opens as a panel on the right of the viewport.
+    const [stage, result] = await Promise.all(['#preview-stage', '#model-result'].map(s => page.locator(s).boundingBox()));
+    expect(stage.x + stage.width).toBeLessThanOrEqual(result.x + 1);
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
@@ -77,3 +97,22 @@ test('live preview can be turned off, is remembered, and template changes redraw
   await expect(status).toHaveText('실시간 미리보기 · 파일 생성 전', { timeout: 20_000 });
   await expect(page.locator('#preview-caption')).toContainText('18 × 18 × 8 mm');
 });
+
+test('studio tabs swap the workspace and links to another tab open it', async ({ page, isMobile }) => {
+  await expect(page.locator('#studio-panel-prepare')).toBeVisible();
+  await expect(page.locator('#studio-panel-print')).toBeHidden();
+  await page.locator('#studio-tab-discover').click();
+  await expect(page.locator('#studio-tab-discover')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#discovery-cards')).toBeVisible();
+  await expect(page.locator('#studio-panel-prepare')).toBeHidden();
+  // Keyboard: arrows move between tabs.
+  await page.locator('#studio-tab-discover').press('ArrowRight');
+  await expect(page.locator('#studio-tab-print')).toBeFocused();
+  await expect(page.locator('#slicer-heading')).toBeVisible();
+  await page.locator('#studio-tab-prepare').click();
+  // A link into another tab opens it (the template list links to the starting points).
+  await page.getByRole('link', { name: '시작점 둘러보기' }).click();
+  await expect(page.locator('#studio-panel-discover')).toBeVisible();
+  if (!isMobile) expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
+});
+

@@ -9,7 +9,7 @@ import zipfile
 import cadquery as cq
 
 from .schemas import PALETTE, GeometryRequest
-from .geometry_rules import _validate_geometry, keycap_layout
+from .geometry_rules import _edge_rounding_fits, _validate_geometry, keycap_layout
 from .printability import assess_printability
 
 
@@ -17,8 +17,8 @@ def template_catalog() -> list[dict]:
     catalog = [
         {"id": "tray", "title": "칸막이 수납함",
          "description": "위가 열린 수납함. 폭 방향을 같은 크기의 칸으로 나눕니다.",
-         "defaults": {"width": 120, "depth": 80, "height": 35, "wall": 2, "bottom": 2, "dividers": 0},
-         "editable_fields": ["width", "depth", "height", "wall", "bottom", "dividers"]},
+         "defaults": {"width": 120, "depth": 80, "height": 35, "wall": 2, "bottom": 2, "dividers": 0, "corner_radius": 0},
+         "editable_fields": ["width", "depth", "height", "wall", "bottom", "dividers", "corner_radius"]},
         {"id": "cable_comb", "title": "열린 케이블 받침",
          "description": "깊이 방향으로 열린 U형 홈에 케이블을 올려놓는 받침입니다.",
          "defaults": {"width": 80, "depth": 18, "height": 12, "wall": 2, "bottom": 2,
@@ -37,8 +37,8 @@ def template_catalog() -> list[dict]:
          "editable_fields": ["text", "text_size", "text_depth", "wall", "bottom", "hole_diameter"]},
         {"id": "wall_hook", "title": "벽걸이 후크",
          "description": "나사 구멍 두 개가 있는 등판과 앞으로 나온 걸이, 끝 턱으로 된 후크입니다. 놓인 방향 그대로 서포트 없이 출력합니다.",
-         "defaults": {"width": 20, "depth": 35, "height": 50, "wall": 4, "bottom": 4, "hole_diameter": 4, "lip_height": 10},
-         "editable_fields": ["width", "depth", "height", "wall", "bottom", "hole_diameter", "lip_height"]},
+         "defaults": {"width": 20, "depth": 35, "height": 50, "wall": 4, "bottom": 4, "hole_diameter": 4, "lip_height": 10, "corner_radius": 0},
+         "editable_fields": ["width", "depth", "height", "wall", "bottom", "hole_diameter", "lip_height", "corner_radius"]},
         {"id": "keycap", "title": "키캡",
          "description": "체리 MX 호환 십자 스템의 키캡입니다. 윗면에 글자를 새기고, 2u 이상은 스태빌라이저 스템을 함께 만듭니다. 열린 바닥을 베드에 두고 출력합니다.",
          "defaults": {"key_units": 1, "height": 8, "wall": 1.3, "bottom": 2, "text": "A", "text_size": 5, "text_depth": 0.8, "fit_clearance": 0.15, "top_tilt": 0},
@@ -46,9 +46,9 @@ def template_catalog() -> list[dict]:
         {"id": "phone_stand", "title": "휴대폰 거치대",
          "description": "앞턱과 기울어진 등판 사이에 휴대폰을 세워 두는 거치대입니다.",
          "defaults": {"width": 70, "depth": 80, "height": 90, "wall": 4, "bottom": 4,
-                      "lean_angle": 65, "device_thickness": 12, "lip_height": 12, "fit_clearance": 1},
+                      "lean_angle": 65, "device_thickness": 12, "lip_height": 12, "fit_clearance": 1, "corner_radius": 0},
          "editable_fields": ["width", "depth", "height", "wall", "bottom", "lean_angle",
-                             "device_thickness", "lip_height", "fit_clearance"]},
+                             "device_thickness", "lip_height", "fit_clearance", "corner_radius"]},
         {"id": "cup", "title": "원통 수납컵",
          "description": "연필꽂이·화분처럼 위가 열린 원통 컵입니다. 가로가 바깥 지름이고, 바닥 가운데에 배수 구멍을 낼 수 있습니다.",
          "defaults": {"width": 70, "height": 100, "wall": 2, "bottom": 2, "drain_hole": 0},
@@ -82,19 +82,42 @@ def _name_tag_font() -> dict:
     return {"font": "Arial", "label": "Arial(시스템 대체 글꼴)"}
 
 
+def _round_profile(body, p: dict):
+    """Round every edge of a side profile (edges running across the width, along X)."""
+    radius = p.get("corner_radius", 0) or 0
+    if not radius:
+        return body
+    try:
+        rounded = body.edges("|X").fillet(radius)
+        if rounded.val().isValid():
+            return rounded
+    except Exception:
+        pass
+    raise ValueError("이 형상에서는 모서리를 그만큼 둥글게 만들 수 없습니다. 모서리 둥글기를 줄여 주세요.")
+
+
 def _build_solid(p: dict) -> cq.Shape:
     """Build only fixed templates; p contains validated numeric parameters."""
     w, d, h, wall, bottom = (p[key] for key in ("width", "depth", "height", "wall", "bottom"))
     body = cq.Workplane("XY").box(w, d, h, centered=False)
     if p["template"] == "tray":
+        radius = p.get("corner_radius", 0) or 0
         cavity = cq.Workplane("XY").box(w - 2 * wall, d - 2 * wall, h, centered=False)
+        if radius:
+            # Rounded outer corners; the cavity keeps the wall thickness around each corner.
+            body = body.edges("|Z").fillet(radius)
+            if radius > wall + 0.05:
+                cavity = cavity.edges("|Z").fillet(radius - wall)
         body = body.cut(cavity.translate((wall, wall, bottom)))
         count = p["dividers"]
         cell_width = (w - 2 * wall - count * wall) / (count + 1)
+        outline = cq.Workplane("XY").box(w, d, h, centered=False)
+        if radius:
+            outline = outline.edges("|Z").fillet(radius)
         for index in range(count):
             x = wall + (index + 1) * cell_width + index * wall
             divider = cq.Workplane("XY").box(wall, d, h, centered=False).translate((x, 0, 0))
-            body = body.union(divider)
+            body = body.union(divider.intersect(outline) if radius else divider)
     elif p["template"] == "cable_comb":
         diameter = p["cable_diameter"] + p["fit_clearance"]
         radius = diameter / 2
@@ -145,6 +168,7 @@ def _build_solid(p: dict) -> cq.Shape:
             point = (cq.Workplane("XZ").workplane(offset=1).center(w / 2, z)
                      .polyline([(-tangent, tangent), (0, radius * math.sqrt(2)), (tangent, tangent)]).close().extrude(-(wall + 2)))
             body = body.cut(screw.union(point))
+        body = _round_profile(body, p)
     elif p["template"] == "keycap":
         # Printed as modelled: the open bottom on the bed, the top bridged over the cavity,
         # stems standing on the bed. Centred on X/Y with the base at z = 0.
@@ -214,6 +238,7 @@ def _build_solid(p: dict) -> cq.Shape:
                 .rotate((0, 0, 0), (1, 0, 0), -lean).translate((0, slot_front, bottom)))
         envelope = cq.Workplane("XY").box(w, d, h, centered=False)
         body = body.union(lip).union(back).intersect(envelope)
+        body = _round_profile(body, p)
     elif p["template"] == "cup":
         # A round, open-top cup centred on X/Y with its base at z = 0; width is the outer diameter.
         body = cq.Workplane("XY").circle(w / 2).extrude(h)
@@ -351,7 +376,7 @@ def _reproduction_source(parameters: dict) -> str:
     preamble = ("# Generated with CadQuery " + cq.__version__ + "; all lengths are millimetres.\n"
                 "# This source reproduces geometry, not slicer settings or print success.\n"
                 "from pathlib import Path\nimport sys\nimport cadquery as cq\n\n")
-    functions = "\n\n".join(inspect.getsource(fn) for fn in (keycap_layout, _validate_geometry, _name_tag_font, _build_solid, _export_cad))
+    functions = "\n\n".join(inspect.getsource(fn) for fn in (keycap_layout, _validate_geometry, _edge_rounding_fits, _name_tag_font, _round_profile, _build_solid, _export_cad))
     runner = (f"\n\nPARAMETERS = {parameters!r}\n\n"
               "if __name__ == '__main__':\n"
               "    destination = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / 'reproduced'\n"

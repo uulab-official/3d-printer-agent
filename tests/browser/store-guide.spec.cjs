@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // The where-to-buy directory is curated data; links open stores but nothing is fetched from them.
 test('store guide narrows by material and kind, keeps unconfirmed stores apart and links safely', async ({ page }) => {

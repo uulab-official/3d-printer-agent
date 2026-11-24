@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // Real server and real CAD generation. The printability review is advisory and
 // uses a stated 0.4 mm reference nozzle; it is not a slicer or physical result.

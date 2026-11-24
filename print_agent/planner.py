@@ -154,7 +154,7 @@ FIELD_LABELS = {
     'width':'가로','depth':'세로','height':'높이','wall':'벽 두께','bottom':'바닥 두께','dividers':'칸막이',
     'slots':'케이블 홈','cable_diameter':'케이블 지름','inset_diameter':'원판 지름','inset_depth':'포켓 깊이',
     'fit_clearance':'여유','lean_angle':'등판 각도','device_thickness':'기기 두께','lip_height':'앞턱 높이',
-    'text':'글자','text_size':'글자 크기','text_depth':'글자 높이','hole_diameter':'고리 구멍 지름','key_units':'키 크기','drain_hole':'배수 구멍 지름','top_tilt':'윗면 기울기',
+    'text':'글자','text_size':'글자 크기','text_depth':'글자 높이','hole_diameter':'고리 구멍 지름','key_units':'키 크기','drain_hole':'배수 구멍 지름','top_tilt':'윗면 기울기','corner_radius':'모서리 둥글기',
 }
 
 

@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -34,7 +37,7 @@ test('a model is placed on a chosen printer plate, the choice is remembered and 
   const tinted = await page.locator('#model-canvas').evaluate((canvas) => {
     const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
     let count = 0;
-    for (let index = 0; index < data.length; index += 4) if (data[index] === 0xe9 && data[index + 1] === 0xee && data[index + 2] === 0xf6) count += 1;
+    for (let index = 0; index < data.length; index += 4) if (data[index] === 0x2f && data[index + 1] === 0x32 && data[index + 2] === 0x37) count += 1;  // MeshViewer.DARK.bed
     return count;
   });
   expect(tinted).toBeGreaterThan(500);

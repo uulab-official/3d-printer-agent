@@ -58,6 +58,11 @@ def _validate_geometry(p: dict) -> None:
             raise ValueError("수납함의 벽과 바닥 안쪽에 양수 크기의 공간이 필요합니다.")
         if w - 2 * wall - p["dividers"] * wall <= 0:
             raise ValueError("분할벽을 넣고 나면 칸의 너비가 남지 않습니다.")
+        radius = p.get("corner_radius", 0) or 0
+        if radius and radius < 0.5:
+            raise ValueError("모서리 반경은 0(각진 모서리)이거나 0.5 mm 이상으로 정하세요.")
+        if radius > min(w, d) / 2 - 1:
+            raise ValueError(f"모서리 반경은 짧은 변의 절반보다 작아야 합니다. {min(w, d) / 2 - 1:g} mm 이하로 줄이세요.")
     elif p["template"] == "cable_comb":
         diameter = p["cable_diameter"] + p["fit_clearance"]
         if p["slots"] * diameter + (p["slots"] + 1) * wall > w:
@@ -69,6 +74,7 @@ def _validate_geometry(p: dict) -> None:
             raise ValueError("고리 구멍이 글자 높이보다 클 수 없습니다. 구멍 지름을 줄이거나 글자를 키우세요.")
     elif p["template"] == "wall_hook":
         hole = p["hole_diameter"]
+        _edge_rounding_fits(p)
         if bottom + p["lip_height"] >= h:
             raise ValueError("끝 턱 높이와 걸이 두께가 전체 높이보다 낮아야 합니다.")
         if d < 2 * wall + 5:
@@ -112,6 +118,7 @@ def _validate_geometry(p: dict) -> None:
             raise ValueError(f"글자 크기는 윗면에 맞도록 {layout['top_depth'] - 2:g} mm 이하로 정하세요.")
     elif p["template"] == "phone_stand":
         import math
+        _edge_rounding_fits(p)
         slot_front = wall + p["device_thickness"] + p["fit_clearance"]
         lean = math.radians(90 - p["lean_angle"])
         reach = slot_front + (h - bottom) * math.tan(lean) + wall / math.cos(lean)
@@ -125,3 +132,13 @@ def _validate_geometry(p: dict) -> None:
             raise ValueError("원형 포켓 바깥에 지정한 벽 두께가 남아야 합니다.")
         if h - p["inset_depth"] < bottom:
             raise ValueError("원형 포켓 아래에 지정한 바닥 두께가 남아야 합니다.")
+
+
+def _edge_rounding_fits(p: dict) -> None:
+    """A profile edge can be rounded by less than half of the thinner plate it sits on."""
+    radius = p.get("corner_radius", 0) or 0
+    limit = min(p["wall"], p["bottom"]) / 2 - 0.05
+    if radius and radius < 0.3:
+        raise ValueError("모서리 둥글기는 0(각진 모서리)이거나 0.3 mm 이상으로 정하세요.")
+    if radius > limit:
+        raise ValueError(f"모서리 둥글기는 얇은 판 두께의 절반보다 작아야 합니다. {max(limit, 0):.2f} mm 이하로 줄이거나 두께를 늘리세요.")
