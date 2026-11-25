@@ -26,6 +26,7 @@
     key_units: { label: "키 크기", min: 1, max: 7, step: 0.25, unit: "u" },
     drain_hole: { label: "배수 구멍 지름", min: 0, max: 30, step: 0.5 },
     top_tilt: { label: "윗면 기울기", min: -12, max: 12, step: 0.5, unit: "°" },
+    corner_radius: { label: "모서리 둥글기", min: 0, max: 20, step: 0.1 },
     color: { label: "모델 색", kind: "color", unit: "" },
     accent_color: { label: "글자 색", kind: "color", unit: "" },
   };
@@ -43,7 +44,9 @@
   const STRING_PARAMETERS = new Set([...TEXT_PARAMETERS, ...COLOR_PARAMETERS]);
   // Numbers added to an existing template; like colours they are absent from canonical
   // parameters while neutral (see schemas.OPTIONAL_NUMBERS).
-  const OPTIONAL_NUMBERS = { top_tilt: 0 };
+  const OPTIONAL_NUMBERS = { top_tilt: 0, corner_radius: 0 };
+  // Templates that use each optional number (schemas.TEMPLATE_SPECIFIC_FIELDS).
+  const OPTIONAL_NUMBER_TEMPLATES = { top_tilt: ["keycap"], corner_radius: ["tray", "wall_hook", "phone_stand"] };
   // Editing panel: one-line explanations, the +/- step and the group of each field.
   const fieldDescriptions = {
     width: "바깥 가로 길이(좌우)", depth: "바깥 세로 길이(앞뒤)", height: "바닥에서 가장 높은 곳까지",
@@ -57,9 +60,10 @@
     key_units: "1u = 19.05 mm 간격. 1·1.25·1.5·1.75·2·2.25·2.75·6.25·7u를 만들 수 있고, 2u 이상은 스태빌라이저 스템이 붙습니다",
     color: "출력할 필라멘트 색. 화면 색은 비슷하게 보여 줄 뿐입니다",
     accent_color: "글자만 다른 색으로 뽑을 때 고릅니다(AMS 등 자동 교체 필요)",
+    corner_radius: "모서리를 둥글게 깎는 반경. 0이면 각진 모서리입니다",
   };
-  const templateFieldDescriptions = { cup: { width: "컵의 바깥 지름(가로·세로가 같음)", height: "바닥에서 컵 위 끝까지", wall: "원통 옆벽 두께", bottom: "컵 바닥 두께" }, phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" }, wall_hook: { width: "후크의 폭(벽에 붙는 면의 가로)", depth: "벽에서 앞으로 나온 걸이 길이", height: "등판 높이(나사 구멍 두 개가 들어감)", wall: "등판과 끝 턱의 두께", bottom: "물건이 걸리는 걸이 두께. 무거운 물건은 두껍게", hole_diameter: "벽 나사 구멍 지름. 위쪽이 뾰족한 물방울 모양이라 서포트 없이 출력됩니다", lip_height: "물건이 미끄러지지 않게 막는 끝 턱 높이" }, keycap: { text: "윗면에 새길 글자(6자 이하). 비워 두면 글자 없는 키캡입니다", text_size: "새긴 글자의 높이. 1u 윗면에는 5 mm 이하가 알맞습니다", text_depth: "윗면에 파이는 글자 깊이", height: "베드에서 키캡 윗면 가장자리까지", wall: "키캡 옆벽 두께", bottom: "오목한 윗면 가운데의 두께", fit_clearance: "체리 MX 십자 구멍(4.0 × 1.17 mm)에 더하는 여유. 빡빡하면 늘리고 헐거우면 줄이세요", top_tilt: "열마다 다른 윗면 기울기(조각). 양수면 윗면이 앞(사용자 쪽)을, 음수면 뒤를 향합니다. 0이면 평평하고, 높이는 윗면 가운데 기준입니다" } };
-  const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1, text_size: 0.5, text_depth: 0.2, hole_diameter: 0.5, key_units: 0.25, drain_hole: 0.5, top_tilt: 1 };
+  const templateFieldDescriptions = { cup: { width: "컵의 바깥 지름(가로·세로가 같음)", height: "바닥에서 컵 위 끝까지", wall: "원통 옆벽 두께", bottom: "컵 바닥 두께" }, tray: { corner_radius: "바깥 네 모서리의 반경. 안쪽 칸도 벽 두께를 유지하며 함께 둥글어집니다" }, phone_stand: { wall: "등판과 앞턱의 두께", fit_clearance: "홈 폭에 더하는 여유", corner_radius: "옆에서 본 모서리를 둥글게 다듬는 반경. 얇은 판 두께의 절반보다 작게" }, name_tag: { wall: "글자 둘레와 구멍 둘레에 남길 판 폭", bottom: "글자를 받치는 판의 두께" }, wall_hook: { width: "후크의 폭(벽에 붙는 면의 가로)", depth: "벽에서 앞으로 나온 걸이 길이", height: "등판 높이(나사 구멍 두 개가 들어감)", wall: "등판과 끝 턱의 두께", bottom: "물건이 걸리는 걸이 두께. 무거운 물건은 두껍게", hole_diameter: "벽 나사 구멍 지름. 위쪽이 뾰족한 물방울 모양이라 서포트 없이 출력됩니다", lip_height: "물건이 미끄러지지 않게 막는 끝 턱 높이", corner_radius: "옆에서 본 모서리를 둥글게 다듬는 반경. 얇은 판 두께의 절반보다 작게" }, keycap: { text: "윗면에 새길 글자(6자 이하). 비워 두면 글자 없는 키캡입니다", text_size: "새긴 글자의 높이. 1u 윗면에는 5 mm 이하가 알맞습니다", text_depth: "윗면에 파이는 글자 깊이", height: "베드에서 키캡 윗면 가장자리까지", wall: "키캡 옆벽 두께", bottom: "오목한 윗면 가운데의 두께", fit_clearance: "체리 MX 십자 구멍(4.0 × 1.17 mm)에 더하는 여유. 빡빡하면 늘리고 헐거우면 줄이세요", top_tilt: "열마다 다른 윗면 기울기(조각). 양수면 윗면이 앞(사용자 쪽)을, 음수면 뒤를 향합니다. 0이면 평평하고, 높이는 윗면 가운데 기준입니다" } };
+  const fieldNudges = { width: 1, depth: 1, height: 1, wall: 0.1, bottom: 0.1, dividers: 1, slots: 1, cable_diameter: 0.5, inset_diameter: 1, inset_depth: 0.1, fit_clearance: 0.05, lean_angle: 1, device_thickness: 0.5, lip_height: 1, text_size: 0.5, text_depth: 0.2, hole_diameter: 0.5, key_units: 0.25, drain_hole: 0.5, top_tilt: 1, corner_radius: 0.5 };
   const fieldGroups = [["text", "글자", ["text", "text_size", "text_depth"]], ["size", "크기", ["key_units", "width", "depth", "height"]], ["thickness", "두께", ["wall", "bottom"]], ["color", "색", ["color", "accent_color"]]];
   const PARAMETER_FORMAT = "3d-printer-agent/parameters";
 
@@ -253,6 +257,8 @@
     renderModelEdit();
     $("model-confirm-replace").disabled = busy || !state.modelReplacement;
     $("model-cancel-replace").disabled = busy;
+    document.querySelectorAll(".plate-open, .plate-remove, [data-example-set]").forEach((control) => { control.disabled = busy; });
+    if ($("plate-add")) $("plate-add").disabled = busy || !state.template || (typeof plates === "object" && plates.list.length >= MAX_PLATES);
   }
 
   function invalidateCurrentJob(message) {
@@ -324,7 +330,7 @@
     if (name === "history") loadHistory();
     if (name === "offers") { renderOffersModelHint(); if (state.offersResult && !$("offers-result").hidden) renderOffers(state.offersResult); }
     if (name === "profiles") renderSetupPrinterFill();
-    if (name === "models") viewer.requestDraw();
+    if (name === "models") { if (typeof setStudioTab === "function") setStudioTab("prepare"); viewer.requestDraw(); }
     if (name === "imports") { importViewer.requestDraw(); loadRecentImports(); }
     if (name === "inventory") loadInventory();
     if (name === "guide") renderGlossary();
@@ -630,7 +636,7 @@
     const optionalKeys = parameters && typeof parameters === "object" ? Object.keys(parameters).filter((key) => Object.hasOwn(OPTIONAL_NUMBERS, key)) : [];
     for (const key of optionalKeys) {
       const value = parameters[key], definition = fields[key];
-      if (parameters.template !== "keycap" || typeof value !== "number" || !Number.isFinite(value) || value === OPTIONAL_NUMBERS[key] || value < definition.min || value > definition.max) throw new Error("수정 제안의 치수 응답이 올바르지 않습니다.");
+      if (!OPTIONAL_NUMBER_TEMPLATES[key].includes(parameters.template) || typeof value !== "number" || !Number.isFinite(value) || value === OPTIONAL_NUMBERS[key] || value < definition.min || value > definition.max) throw new Error("수정 제안의 치수 응답이 올바르지 않습니다.");
     }
     // Colours appear only when chosen (see schemas.COLOR_FIELDS); letters only on a name tag.
     const colorKeys = parameters && typeof parameters === "object" ? Object.keys(parameters).filter((key) => COLOR_PARAMETERS.has(key)) : [];
@@ -648,7 +654,7 @@
       const definition = fields[key];
       if (definition && (value < definition.min || value > definition.max)) throw new Error("수정 제안의 치수 범위를 확인해 주세요.");
     }
-    return [...applicable[parameters.template], ...(parameters.template === "keycap" ? Object.keys(OPTIONAL_NUMBERS) : []), ...colorKeys];
+    return [...applicable[parameters.template], ...Object.keys(OPTIONAL_NUMBERS).filter((key) => OPTIONAL_NUMBER_TEMPLATES[key].includes(parameters.template)), ...colorKeys];
   }
 
   function parameterKeys(template) {
@@ -777,6 +783,7 @@
     cancelModelEdit();
     invalidateCurrentJob("치수가 바뀌었습니다. 새 모델을 생성하면 변경한 형상을 확인할 수 있습니다.");
     if (typeof livePreviewDraftChanged === "function") livePreviewDraftChanged();
+    if (typeof platesDraftChanged === "function") platesDraftChanged();
   }
 
   async function planModelEdit() {
@@ -913,9 +920,11 @@
     if (state.workflowBusy) return;
     cancelModelReplacement();
     cancelProjectApplication();
-    if (action.kind === "plan" ? newPlanHasPendingWork() : (state.retainedOutcomeDrafts.length || modelHasUnsavedChanges() || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges())) {
+    // A plate keeps its own dimensions, so switching plates only asks about slicer and outcome work.
+    const draftAtRisk = action.kind === "plate" ? false : modelHasUnsavedChanges();
+    if (action.kind === "plan" ? newPlanHasPendingWork() : (state.retainedOutcomeDrafts.length || draftAtRisk || slicerHasUnsavedChanges() || outcomeHasUnsavedChanges())) {
       state.modelReplacement = { ...action, signature: replacementSignature() };
-      const titles = { history: "현재 제작안을 저장된 모델로 바꿀까요?", retry: "현재 제작안을 이 기록의 치수로 바꿀까요?", template: "현재 제작안을 다른 템플릿으로 바꿀까요?", reset: "현재 제작안을 기본 치수로 되돌릴까요?" };
+      const titles = { plate: "다른 플레이트로 옮길까요?", history: "현재 제작안을 저장된 모델로 바꿀까요?", retry: "현재 제작안을 이 기록의 치수로 바꿀까요?", template: "현재 제작안을 다른 템플릿으로 바꿀까요?", reset: "현재 제작안을 기본 치수로 되돌릴까요?" };
       $("model-replace-title").textContent = titles[action.kind] || "현재 제작안을 바꿀까요?";
       $("model-replace-detail").textContent = `${action.title || "선택한 제작안"}을 준비합니다. 현재 치수와 미리보기·다운로드를 교체합니다. 저장하지 않은 출력 메모는 원래 작업과 저장 위치를 표시해 이 화면에 보관합니다. 생성해 둔 파일은 작업 기록에 남습니다.`;
       $("model-replace-confirm").hidden = false;
@@ -955,6 +964,8 @@
       hideNotice("model-feedback");
       hideNotice("plan-feedback");
       changeView("models");
+    } else if (action.kind === "plate") {
+      openPlate(action.plate, action.remove ?? null);
     } else if (action.kind === "retry") {
       applyDraft(action.job.request.template, action.job.request, action.job.design_source || null);
       hideNotice("plan-feedback");
@@ -983,6 +994,25 @@
   $("discovery-cancel-apply").addEventListener("click", cancelProjectApplication);
   $("detach-source").addEventListener("click", detachProjectSource);
 
+  // Line pictograms for the template list and plate tree (24 × 24, stroke only).
+  const TEMPLATE_ICONS = {
+    tray: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M9 6v12M15 6v12"/>',
+    cable_comb: '<path d="M3 16h18M3 16V9h3v4a1.5 1.5 0 0 0 3 0V9h3v4a1.5 1.5 0 0 0 3 0V9h3v7"/>',
+    magnet_frame: '<rect x="3.5" y="3.5" width="17" height="17" rx="2"/><circle cx="12" cy="12" r="5"/>',
+    name_tag: '<path d="M4 8h13l3 4-3 4H4z"/><circle cx="7" cy="12" r="1.3"/><path d="M10 12h6"/>',
+    wall_hook: '<path d="M7 3v14a3 3 0 0 0 6 0v-3"/><path d="M5 3h4"/>',
+    keycap: '<path d="M6 7h12l2 10H4z"/><path d="M8 7l1 5h6l1-5"/>',
+    phone_stand: '<rect x="9" y="3" width="7" height="12" rx="1.5" transform="rotate(12 12 9)"/><path d="M4 20h16M6 20l3-5"/>',
+    cup: '<path d="M6 5h12l-1.2 14a1.5 1.5 0 0 1-1.5 1.4H8.7a1.5 1.5 0 0 1-1.5-1.4z"/><ellipse cx="12" cy="5" rx="6" ry="1.5"/>',
+  };
+  function templateIcon(id) {
+    const holder = document.createElement("span");
+    holder.className = "template-icon";
+    holder.setAttribute("aria-hidden", "true");
+    holder.innerHTML = `<svg viewBox="0 0 24 24">${TEMPLATE_ICONS[id] || TEMPLATE_ICONS.tray}</svg>`;
+    return holder;
+  }
+
   function renderTemplates() {
     const list = $("template-cards");
     list.replaceChildren();
@@ -995,9 +1025,10 @@
       button.classList.toggle("selected", template.id === state.template);
       const top = node("div", "template-topline");
       top.append(node("span", "template-index", `0${index + 1} / TEMPLATE`), node("span", "template-select", "✓"));
-      button.append(top, node("strong", "", template.title), node("p", "", template.description));
+      button.append(top, templateIcon(template.id), node("strong", "", template.title), node("p", "", template.description));
       const defaults = template.defaults || {};
       button.append(node("span", "template-size", templateSizeText(defaults)));
+      button.title = template.description;
       button.addEventListener("click", () => requestModelReplacement({ kind: "template", template: template.id, title: template.title, button }));
       list.append(button);
     });
@@ -1047,6 +1078,7 @@
       input.dataset.parameter = key;
       input.setAttribute("aria-describedby", description.id);
       label.htmlFor = input.id;
+      container.title = description.textContent;
       container.append(label, description, input);
       return container;
     }
@@ -1085,6 +1117,7 @@
     const help = node("small", "", `기본 ${template.defaults[key]} ${unit}`);
     help.id = `parameter-help-${key}`;
     input.setAttribute("aria-describedby", `${description.id} ${help.id}`);
+    container.title = `${description.textContent} (기본 ${template.defaults[key]} ${unit})`.trim();
     container.append(label, description, stepper, slider, help);
     return container;
   }
@@ -1300,6 +1333,7 @@
     renderTemplates();
     updateWorkflowControls();
     if (typeof livePreviewDraftChanged === "function") livePreviewDraftChanged();
+    if (typeof platesDraftChanged === "function") platesDraftChanged();
   }
 
   $("model-form").addEventListener("input", (event) => {
@@ -1399,6 +1433,7 @@
       const result = await request;
       if (!current()) return;
       viewer.setMesh(result.mesh, "실시간 미리보기", result.template, { live: true });
+      platesMeshShown(result.mesh);
       renderColorLegend(null);
       $("preview-stage").classList.remove("is-stale");
       setBadge("preview-status", "실시간 미리보기 · 파일 생성 전", "info");
@@ -1414,10 +1449,259 @@
     }
   }
 
+  // Plates: several drafts side by side in the studio, like the plates of a slicer project.
+  // Each plate keeps its own template and dimensions (saved in this browser) and, during this
+  // session, its last preview mesh and generated job. Only the current plate is edited; the
+  // others are drawn beside it and open with a click. Files are still made one plate at a time.
+  const PLATES_KEY = "printAgent.plates";
+  const plates = { list: [], current: 0, nextId: 1, opening: false, fill: null, ready: false };
+  const MAX_PLATES = 16;
+  // Example plates: drafts only (template + dimensions, checked by the same rules when previewed
+  // or generated). Unlisted fields keep the template defaults.
+  const EXAMPLE_SETS = {
+    keycaps: { title: "키캡 세트", plates: [
+      {"template": "keycap", "key_units": 1, "text": "Esc", "text_size": 4, "height": 9, "top_tilt": 6, "color": "red"},
+      {"template": "keycap", "key_units": 1, "text": "A", "color": "white"},
+      {"template": "keycap", "key_units": 1, "text": "♥", "text_size": 6, "color": "pink"},
+      {"template": "keycap", "key_units": 1.5, "text": "Tab", "text_size": 4, "color": "gray"},
+      {"template": "keycap", "key_units": 2.25, "text": "Enter", "text_size": 4, "color": "blue"},
+      {"template": "keycap", "key_units": 6.25, "text": "", "height": 8, "top_tilt": -4, "color": "black"}
+    ] },
+    home: { title: "생활 소품", plates: [
+      {"template": "tray", "width": 150, "depth": 90, "height": 30, "dividers": 2, "corner_radius": 6, "color": "white"},
+      {"template": "name_tag", "text": "MINSU", "text_size": 12, "color": "yellow", "accent_color": "black"},
+      {"template": "cup", "width": 80, "height": 75, "drain_hole": 6, "color": "green"},
+      {"template": "phone_stand", "corner_radius": 1.5, "color": "gray"},
+      {"template": "wall_hook", "corner_radius": 1.5, "color": "orange"},
+      {"template": "cable_comb", "slots": 6, "color": "purple"},
+      {"template": "magnet_frame", "color": "brown"}
+    ] },
+  };
+
+  function loadExamples(id) {
+    const set = EXAMPLE_SETS[id];
+    if (!set || state.workflowBusy || !state.templates.length) return;
+    if (plates.list.length + set.plates.length > MAX_PLATES) {
+      toast(`플레이트는 ${MAX_PLATES}개까지입니다. 플레이트를 지운 뒤 다시 불러오세요.`);
+      return;
+    }
+    if (!plates.list.length) platesDraftChanged();
+    const first = plates.list.length;
+    for (const spec of set.plates) plates.list.push({ id: plates.nextId++, template: spec.template, parameters: { ...spec }, mesh: null, job: null, source: null });
+    savePlates();
+    renderPlates();
+    toast(`${set.title} 예시 ${set.plates.length}개를 플레이트로 추가했습니다.`);
+    switchPlate(first);
+  }
+
+  function plateLabel(index) { return `플레이트 ${index + 1}`; }
+
+  function currentDraftParameters() {
+    const parameters = { template: state.template };
+    for (const input of document.querySelectorAll("[data-parameter]")) {
+      const value = readParameter(input);
+      if (typeof value === "string" || Number.isFinite(value)) parameters[input.dataset.parameter] = value;
+    }
+    return parameters;
+  }
+
+  function savePlates() {
+    const stored = { current: plates.current, plates: plates.list.map((plate) => ({ template: plate.template, parameters: plate.parameters })) };
+    try { localStorage.setItem(PLATES_KEY, JSON.stringify(stored)); } catch { /* browser storage unavailable */ }
+  }
+
+  function platesDraftChanged() {
+    if (!plates.ready || plates.opening || !state.template) return;
+    if (!plates.list.length) plates.list.push({ id: plates.nextId++, template: state.template, parameters: {}, mesh: null, job: null, source: null });
+    const plate = plates.list[plates.current];
+    const changed = plate.template !== state.template;
+    plate.template = state.template;
+    plate.parameters = currentDraftParameters();
+    plate.source = state.projectSource || null;
+    plate.job = null;
+    if (changed) plate.mesh = null;
+    savePlates();
+    renderPlates();
+  }
+
+  function platesMeshShown(mesh) {
+    const plate = plates.list[plates.current];
+    if (plate) { plate.mesh = mesh; plate.corners = null; }
+    renderPlates();
+    fillPlateMeshes();
+  }
+
+  function platesJobShown(job) {
+    const plate = plates.list[plates.current];
+    if (!plate || job.result?.template === "imported") return;
+    plate.job = job;
+    plate.mesh = job.result?.mesh || plate.mesh;
+    plate.template = job.result.template;
+    plate.parameters = { ...job.result.parameters, template: job.result.template };
+    savePlates();
+    renderPlates();
+  }
+
+  function plateSummary(plate) {
+    // What a person recognises the plate by: a keycap's size and legend, a tag's text, a
+    // cup's diameter and height, otherwise the outer box.
+    const template = state.templates.find((item) => item.id === plate.template);
+    const p = { ...(template?.defaults || {}), ...(plate.parameters || {}) };
+    let detail = "";
+    if (plate.template === "keycap") detail = `${p.key_units}u${p.text ? ` “${p.text}”` : ""}`;
+    else if (plate.template === "name_tag") detail = p.text ? `“${p.text}”` : "";
+    else if (plate.template === "cup") detail = `⌀${p.width} × ${p.height} mm`;
+    else if ([p.width, p.depth, p.height].every(Number.isFinite)) detail = `${p.width} × ${p.depth} × ${p.height} mm`;
+    return [template?.title || "모델", detail].filter(Boolean).join(" · ");
+  }
+
+  function renderPlates() {
+    const list = $("plate-list");
+    if (!list) return;
+    list.replaceChildren();
+    plates.list.forEach((plate, index) => {
+      const row = node("div", "plate-row");
+      row.classList.toggle("is-current", index === plates.current);
+      const open = node("button", "plate-open");
+      open.type = "button";
+      open.dataset.plate = String(index);
+      open.disabled = state.workflowBusy;
+      open.setAttribute("aria-pressed", String(index === plates.current));
+      const swatch = node("span", "plate-swatch");
+      swatch.setAttribute("aria-hidden", "true");
+      const hex = PALETTE[plate.parameters?.color]?.[1];
+      if (hex) swatch.style.setProperty("--swatch", hex);
+      open.append(templateIcon(plate.template), node("strong", "", plateLabel(index)), node("span", "", plateSummary(plate)), swatch);
+      if (plate.job) open.append(node("small", "plate-file", "파일 있음"));
+      open.addEventListener("click", () => switchPlate(index));
+      row.append(open);
+      if (plates.list.length > 1) {
+        const remove = node("button", "icon-button plate-remove", "×");
+        remove.type = "button";
+        remove.disabled = state.workflowBusy;
+        remove.setAttribute("aria-label", `${plateLabel(index)} 삭제`);
+        remove.addEventListener("click", () => removePlate(index));
+        row.append(remove);
+      }
+      list.append(row);
+    });
+    $("plate-count").textContent = `${plates.list.length}개`;
+    $("plate-add").disabled = state.workflowBusy || !state.template || plates.list.length >= MAX_PLATES;
+    updateViewerPlates();
+  }
+
+  function updateViewerPlates() {
+    if (!plates.list.length) { viewer.setPlates(null); return; }
+    viewer.setPlates({
+      label: plateLabel(plates.current),
+      others: plates.list.map((plate, index) => ({ slot: index - plates.current, label: plateLabel(index), mesh: plate.mesh, corners: plate.corners }))
+        .filter((plate) => plate.slot !== 0),
+    });
+  }
+
+  function switchPlate(index, removeId = null) {
+    if (index === plates.current || state.workflowBusy || !plates.list[index]) return;
+    requestModelReplacement({ kind: "plate", plate: index, remove: removeId, title: plateLabel(index), button: document.querySelector(`[data-plate="${index}"]`) });
+  }
+
+  function openPlate(index, removeId = null) {
+    const target = plates.list[index];
+    if (!target) return;
+    plates.opening = true;
+    try {
+      plates.current = index;
+      // Another plate is another model: no "previous model" outline across plates. The last
+      // shape stays dimmed (stale) until the plate's own preview replaces it.
+      viewer.forgetPrevious();
+      viewer.liveMode = true;
+      const job = target.job;
+      applyDraft(target.template, target.parameters, target.source || null);
+      if (job) { renderJob(job); viewer.forgetPrevious(); }
+      else if (target.mesh && !state.job) {
+        viewer.setMesh(target.mesh, "실시간 미리보기", target.template);
+        viewer.forgetPrevious();
+        viewer.liveMode = true;
+        $("preview-caption").textContent = `${plateLabel(index)} · 형상을 다시 계산하고 있습니다.`;
+      }
+    } finally {
+      plates.opening = false;
+    }
+    if (removeId !== null) {
+      // The plate being removed was open; its neighbour is open now, so drop it.
+      const at = plates.list.findIndex((plate) => plate.id === removeId);
+      if (at >= 0 && at !== plates.current) {
+        plates.list.splice(at, 1);
+        if (at < plates.current) plates.current -= 1;
+      }
+    }
+    savePlates();
+    renderPlates();
+    hideNotice("plan-feedback");
+    hideNotice("model-feedback");
+  }
+
+  function addPlate(template = state.template, parameters = null) {
+    if (state.workflowBusy || !template) return;
+    if (!plates.list.length) platesDraftChanged();
+    plates.list.push({ id: plates.nextId++, template, parameters: parameters || { template }, mesh: null, job: null, source: null });
+    savePlates();
+    switchPlate(plates.list.length - 1);
+  }
+
+  function removePlate(index) {
+    if (state.workflowBusy || plates.list.length < 2 || !plates.list[index]) return;
+    if (index !== plates.current) {
+      plates.list.splice(index, 1);
+      if (index < plates.current) plates.current -= 1;
+      savePlates();
+      renderPlates();
+      return;
+    }
+    // Removing the open plate opens its neighbour first, through the usual confirmation.
+    switchPlate(index === plates.list.length - 1 ? index - 1 : index + 1, plates.list[index].id);
+  }
+
+  async function fillPlateMeshes() {
+    // Draw plates opened in an earlier visit: preview each missing mesh once, one at a time,
+    // only while nothing else needs the CAD lock.
+    if (plates.fill || state.workflowBusy || !state.token) return;
+    const index = plates.list.findIndex((plate, at) => at !== plates.current && !plate.mesh && !plate.failed);
+    if (index < 0) return;
+    const plate = plates.list[index];
+    // The same values applyDraft would put in the form: template defaults, then the plate's own.
+    const template = state.templates.find((item) => item.id === plate.template);
+    const parameters = { template: plate.template };
+    for (const key of template?.editable_fields || []) {
+      const value = Object.prototype.hasOwnProperty.call(plate.parameters || {}, key) ? plate.parameters[key] : template.defaults[key];
+      if (value !== undefined && value !== null) parameters[key] = value;
+    }
+    plates.fill = api("/api/models/preview", parameters)
+      .then((result) => { plate.mesh = result.mesh; })
+      .catch((error) => { if (error.code !== "resource_busy") plate.failed = true; })
+      .finally(() => { plates.fill = null; updateViewerPlates(); renderPlates(); });
+  }
+
+  function restorePlates() {
+    plates.ready = true;
+    let stored = null;
+    try { stored = JSON.parse(localStorage.getItem(PLATES_KEY) || "null"); } catch { stored = null; }
+    const valid = (stored?.plates || []).filter((plate) => state.templates.some((template) => template.id === plate.template)).slice(0, MAX_PLATES);
+    if (!valid.length) { platesDraftChanged(); return; }
+    plates.list = valid.map((plate) => ({ id: plates.nextId++, template: plate.template, parameters: plate.parameters || {}, mesh: null, job: null, source: null }));
+    plates.current = Math.min(Math.max(0, Number(stored.current) || 0), plates.list.length - 1);
+    const current = plates.list[plates.current];
+    plates.opening = true;
+    try { applyDraft(current.template, current.parameters); } finally { plates.opening = false; }
+    // The restored draft is the one stored with its plate, not new unsaved work.
+    state.modelCleanSignature = modelDraftSignature();
+    renderPlates();
+  }
+
   function stopLivePreview() {
     clearTimeout(livePreview.timer);
     livePreview.seq += 1;
-    return livePreview.inflight;
+    const pending = [livePreview.inflight, typeof plates === "object" ? plates.fill : null].filter(Boolean);
+    return pending.length ? Promise.all(pending) : null;
   }
 
   function setLivePreview(on) {
@@ -1441,6 +1725,8 @@
 
   async function generateModel() {
     if (state.workflowBusy) return;
+    // The result appears in the 준비 tab; generating from another tab shows it.
+    if (typeof setStudioTab === "function") setStudioTab("prepare");
     if (!$("model-form").reportValidity()) return;
     // A pending live preview never races the generated model for the CAD lock.
     const pendingPreview = typeof stopLivePreview === "function" ? stopLivePreview() : null;
@@ -1729,6 +2015,7 @@
     renderPrintability(result.printability);
     renderDownloads(job);
     viewer.setMesh(result.mesh, job.title, result.template);
+    if (typeof platesJobShown === "function") platesJobShown(job);
     renderColorLegend(result.color_parts);
     setBadge("preview-status", "실제 CAD 메시", "blue");
     $("preview-caption").textContent = "생성된 모델 · 드래그 또는 방향키로 조작";
@@ -3906,13 +4193,16 @@
   }
 
   $("profile-form").addEventListener("submit", (event) => { event.preventDefault(); reviewProfile(); });
-  $("profile-form").addEventListener("input", (event) => {
+  const profileInputChanged = (event) => {
     if (event.target.id === "profile-file" || event.target.id === "profile-archive" || event.target.id === "profile-target" || event.target.dataset.guided) return;
     if (event.target.id === "profile-json" && state.profileDocuments[state.profileTarget]) state.profileDocuments[state.profileTarget].draftText = $("profile-json").value;
     invalidateProfile();
     markWorkspaceChanged();
     renderGuidedEditor();
-  });
+  };
+  // The usage conditions sit in the side panel; their fields belong to the form through form="profile-form".
+  $("profile-form").addEventListener("input", profileInputChanged);
+  $("profile-setup").addEventListener("input", profileInputChanged);
   $("profile-target").addEventListener("change", selectProfileTarget);
   $("profile-clear").addEventListener("click", clearProfileLibrary);
   $("profile-adopt").addEventListener("click", adoptProfileText);
@@ -5242,6 +5532,8 @@
   class MeshViewer {
     constructor(canvas, ids = {}) {
       this.canvas = canvas;
+      // Every stage is a dark viewport, matching the app theme.
+      this.palette = MeshViewer.DARK;
       // Element ids of the surrounding stage; the import check reuses the viewer with its own.
       this.ids = { stage: "preview-stage", empty: "preview-empty", tools: "preview-tools", previousToggle: "preview-previous-toggle",
         previousLabel: "preview-previous-label", viewButtons: "[data-preview-view]", ...ids };
@@ -5254,6 +5546,9 @@
       this.showOverhangs = true;
       this.showPrevious = true;
       this.bed = null;
+      // Studio plates: other plates drawn beside the current one, and a click on one of them.
+      this.plates = null;
+      this.onPlateClick = null;
       this.afterMesh = null;
       this.previous = null;
       this.lastMesh = null;
@@ -5263,6 +5558,7 @@
       canvas.addEventListener("pointerdown", (event) => {
         if (event.button !== 0) return;
         this.drag = { x: event.clientX, y: event.clientY };
+        this.press = { x: event.clientX, y: event.clientY };
         canvas.setPointerCapture(event.pointerId);
         canvas.classList.add("dragging");
       });
@@ -5275,7 +5571,15 @@
         this.requestDraw();
       });
       const endDrag = () => { this.drag = null; canvas.classList.remove("dragging"); };
-      canvas.addEventListener("pointerup", endDrag);
+      canvas.addEventListener("pointerup", (event) => {
+        const press = this.press;
+        this.press = null;
+        endDrag();
+        if (!press || Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4 || typeof this.onPlateClick !== "function") return;
+        const rect = canvas.getBoundingClientRect();
+        const hit = this.plateAt(event.clientX - rect.left, event.clientY - rect.top);
+        if (hit !== null) this.onPlateClick(hit);
+      });
       canvas.addEventListener("pointercancel", endDrag);
       canvas.addEventListener("lostpointercapture", endDrag);
       canvas.addEventListener("wheel", (event) => { event.preventDefault(); this.changeZoom(event.deltaY > 0 ? 0.9 : 1.1); }, { passive: false });
@@ -5295,11 +5599,45 @@
     }
 
     faceColor(index) {
+      return MeshViewer.partColor(this.mesh, index);
+    }
+
+    static partColor(mesh, index) {
       // Chosen filament colours, else the neutral preview blue.
-      const parts = this.mesh.parts;
+      const parts = mesh.parts;
       if (!Array.isArray(parts) || !parts.length) return [124, 160, 230];
-      const part = parts[this.mesh.face_parts?.[index] ?? 0] || parts[0];
+      const part = parts[mesh.face_parts?.[index] ?? 0] || parts[0];
       return MeshViewer.rgb(part.hex) || [124, 160, 230];
+    }
+
+    static boxCorners(box) {
+      return [[box.x0, box.y0, box.z0], [box.x1, box.y0, box.z0], [box.x1, box.y1, box.z0], [box.x0, box.y1, box.z0]];
+    }
+
+    setPlates(plates) {
+      // plates: { label, others: [{ slot, label, mesh }] } for the studio, or null.
+      this.plates = plates ? {
+        label: plates.label,
+        others: plates.others.filter((plate) => plate.mesh?.vertices?.length).map((plate) => {
+          const bounds = MeshViewer.bounds(plate.mesh);
+          return { ...plate, bounds, size: bounds[1].map((value, axis) => value - bounds[0][axis]), corners: plate.corners || MeshViewer.cornerNormals(plate.mesh) };
+        }),
+      } : null;
+      if (this.mesh) this.frame();
+      this.requestDraw();
+    }
+
+    plateAt(x, y) {
+      // Which other plate is under a canvas point (CSS pixels), if any.
+      for (const hit of this.plateHits || []) {
+        const c = hit.corners;
+        let inside = false;
+        for (let i = 0, j = c.length - 1; i < c.length; j = i, i += 1) {
+          if ((c[i][1] > y) !== (c[j][1] > y) && x < ((c[j][0] - c[i][0]) * (y - c[i][1])) / (c[j][1] - c[i][1]) + c[i][0]) inside = !inside;
+        }
+        if (inside) return hit.slot;
+      }
+      return null;
     }
 
     static rgb(hex) {
@@ -5363,9 +5701,22 @@
       this.requestDraw();
     }
 
+    static plateSide(size) {
+      // Without a chosen printer the studio still draws a plain square plate under each model,
+      // a little larger than that model (a drawing aid, not a printer size).
+      return Math.ceil((Math.max(50, size ? Math.max(size[0], size[1]) : 50) * 1.35) / 10) * 10;
+    }
+
+    plateSide() { return MeshViewer.plateSide(this.size()); }
+
     bedBox() {
       // The plate is centred under the model; Z starts at the model's floor.
-      if (!this.bed || !this.mins) return null;
+      if (!this.mins) return null;
+      if (!this.bed) {
+        if (!this.plates) return null;
+        const side = this.plateSide(), cx = (this.mins[0] + this.maxs[0]) / 2, cy = (this.mins[1] + this.maxs[1]) / 2;
+        return { x0: cx - side / 2, y0: cy - side / 2, x1: cx + side / 2, y1: cy + side / 2, z0: this.mins[2], z1: this.mins[2] + side, generic: true };
+      }
       const cx = (this.mins[0] + this.maxs[0]) / 2, cy = (this.mins[1] + this.maxs[1]) / 2;
       const x0 = cx - this.bed.width / 2, y0 = cy - this.bed.depth / 2;
       return { x0, y0, x1: x0 + this.bed.width, y1: y0 + this.bed.depth, z0: this.mins[2], z1: this.mins[2] + this.bed.height };
@@ -5396,7 +5747,7 @@
         mins[0] = Math.min(mins[0], box.x0); mins[1] = Math.min(mins[1], box.y0);
         maxs[0] = Math.max(maxs[0], box.x1); maxs[1] = Math.max(maxs[1], box.y1);
         // Frame the plate and the model; the full build height would shrink small parts to dots.
-        maxs[2] = Math.max(maxs[2], box.z0 + Math.min(this.bed.height, Math.max(box.x1 - box.x0, box.y1 - box.y0) * 0.2));
+        maxs[2] = Math.max(maxs[2], box.z0 + Math.min(box.z1 - box.z0, Math.max(box.x1 - box.x0, box.y1 - box.y0) * 0.2));
       }
       this.center = mins.map((value, axis) => (value + maxs[axis]) / 2);
       this.extents = mins.map((value, axis) => maxs[axis] - value);
@@ -5514,14 +5865,15 @@
       if (!this.mesh || !this.context || this.canvas.hidden) return;
       const width = this.canvas.clientWidth, height = this.canvas.clientHeight;
       if (!width || !height) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // Always render at least two pixels per CSS pixel; the browser's downscale smooths edges.
+      const dpr = Math.max(2, Math.min(window.devicePixelRatio || 1, 2));
       this.canvas.width = Math.round(width * dpr);
       this.canvas.height = Math.round(height * dpr);
       const ctx = this.context;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), ce = Math.cos(this.elevation), se = Math.sin(this.elevation);
-      const scale = Math.min(width, height) * (this.bed ? 0.44 : 0.34) * this.zoom / this.radius;
+      const scale = Math.min(width, height) * (this.bed || this.plates ? 0.46 : 0.34) * this.zoom / this.radius;
       const distance = this.radius * 4;
       const project = (point) => {
         const x = point[0] - this.center[0], y = point[1] - this.center[1], z = point[2] - this.center[2];
@@ -5533,10 +5885,50 @@
         return [width / 2 + right * scale * perspective, height / 2 - vertical * scale * perspective, depth];
       };
       const box = this.bedBox();
-      if (box) this.drawBed(ctx, project, box);
+      // Other plates sit in order to the left and right of the current one with a gap between
+      // plates; each plain plate fits its own model, a printer plate keeps the printer's size.
+      const others = [];
+      if (box && this.plates) {
+        const side = (plate) => (this.bed ? box.x1 - box.x0 : MeshViewer.plateSide(plate.size));
+        const place = (list, direction) => {
+          let edge = direction > 0 ? box.x1 : box.x0;
+          for (const plate of list) {
+            const width = side(plate), gap = Math.max(12, width * 0.12);
+            const x0 = direction > 0 ? edge + gap : edge - gap - width;
+            edge = direction > 0 ? x0 + width : x0;
+            const depth = this.bed ? box.y1 - box.y0 : width, cyBox = (box.y0 + box.y1) / 2;
+            const plateBox = { x0, x1: x0 + width, y0: cyBox - depth / 2, y1: cyBox + depth / 2, z0: box.z0, z1: box.z1 };
+            const [mins, maxs] = plate.bounds;
+            const shift = [(x0 + width / 2) - (mins[0] + maxs[0]) / 2, cyBox - (mins[1] + maxs[1]) / 2, box.z0 - mins[2]];
+            others.push({ ...plate, box: plateBox, shift });
+          }
+        };
+        // Two plates each way are enough for context; farther ones would reach the camera.
+        const byGap = (direction) => this.plates.others.filter((plate) => Math.sign(plate.slot) === direction).sort((a, b) => Math.abs(a.slot) - Math.abs(b.slot)).slice(0, 2);
+        place(byGap(1), 1);
+        place(byGap(-1), -1);
+      }
+      this.plateHits = [];
+      const nearCamera = (corners) => corners.some((corner) => distance - project(corner)[2] < distance * 0.35);
+      for (const plate of others) if (!nearCamera(MeshViewer.boxCorners(plate.box))) this.drawBed(ctx, project, plate.box, { label: plate.label, dim: true });
+      if (box) this.drawBed(ctx, project, box, { label: this.plates?.label, current: Boolean(this.plates) });
+      if (box && this.plates) this.plateHits = others.map((plate) => ({ slot: plate.slot, corners: MeshViewer.boxCorners(plate.box).map(project) }));
+      // Soft contact shadows on the floor under each model.
+      const shadow = (mins, maxs, shift = [0, 0, 0], strength = 0.5) => {
+        const pad = Math.max(maxs[0] - mins[0], maxs[1] - mins[1]) * 0.04;
+        const corners = [[mins[0] - pad, mins[1] - pad], [maxs[0] + pad, mins[1] - pad], [maxs[0] + pad, maxs[1] + pad], [mins[0] - pad, maxs[1] + pad]]
+          .map(([x, y]) => project([x + shift[0], y + shift[1], mins[2] + shift[2]]));
+        ctx.save();
+        ctx.filter = `blur(${Math.max(4, Math.min(18, (maxs[2] - mins[2]) * scale * 0.18))}px)`;
+        ctx.fillStyle = `rgba(0, 0, 0, ${strength})`;
+        ctx.beginPath(); corners.forEach((point, index) => (index ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1]))); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      };
+      for (const plate of others) shadow(plate.bounds[0], plate.bounds[1], plate.shift, 0.35);
+      shadow(this.mins, this.maxs, [0, 0, 0], 0.5);
       const span = Math.max(this.extents[0], this.extents[1]) * 0.8;
       ctx.lineWidth = 0.6;
-      ctx.strokeStyle = "#dfe7f2";
+      ctx.strokeStyle = this.palette.grid;
       for (let index = box ? 6 : -5; index <= 5; index += 1) {
         const offset = index * span / 5;
         const lines = [
@@ -5548,10 +5940,13 @@
       // Average-depth triangle sorting cannot correctly display concave parts.
       // Rasterize with a per-pixel reciprocal-depth buffer so pockets and walls
       // remain visible exactly where the generated CAD mesh places them.
-      const points = this.mesh.vertices.map((vertex) => {
-        const point = project(vertex);
-        return [point[0] * dpr, point[1] * dpr, 1 / (distance - point[2])];
+      // Points too close to the camera (other plates seen edge-on) are left out, not blown up.
+      const projectPixels = (vertices, shift = [0, 0, 0]) => vertices.map((vertex) => {
+        const point = project([vertex[0] + shift[0], vertex[1] + shift[1], vertex[2] + shift[2]]);
+        const gap = distance - point[2];
+        return gap < distance * 0.35 ? null : [point[0] * dpr, point[1] * dpr, 1 / gap];
       });
+      const points = projectPixels(this.mesh.vertices);
       // Camera-relative lighting: rotate the normal like project() does, then light
       // from the viewer's upper left so every view keeps readable face contrast.
       const light = (n) => {
@@ -5567,43 +5962,54 @@
       const raster = ctx.getImageData(0, 0, pixelWidth, pixelHeight);
       const pixels = raster.data;
       const depths = new Float32Array(pixelWidth * pixelHeight);
-      for (let faceIndex = 0; faceIndex < this.mesh.faces.length; faceIndex += 1) {
-        const face = this.mesh.faces[faceIndex];
-        const [a, b, c] = face.map((index) => points[index]);
-        const denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
-        if (Math.abs(denominator) < 1e-9) continue;
-        const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])));
-        const maxX = Math.min(pixelWidth - 1, Math.ceil(Math.max(a[0], b[0], c[0])));
-        const minY = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1])));
-        const maxY = Math.min(pixelHeight - 1, Math.ceil(Math.max(a[1], b[1], c[1])));
-        const [pa, pb, pc] = face.map((index) => this.mesh.vertices[index]);
-        const u = pb.map((value, axis) => value - pa[axis]), v = pc.map((value, axis) => value - pa[axis]);
-        const normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-        const magnitude = Math.hypot(...normal) || 1;
-        const n = normal.map((value) => value / magnitude);
-        const overhangFace = this.showOverhangs && n[2] < -0.7072 && Math.min(pa[2], pb[2], pc[2]) > this.floor + 1e-6;
-        const base = overhangFace ? [240, 128, 80] : this.faceColor(faceIndex);
-        // Shade each corner from its smoothed normal and blend across the triangle.
-        const corners = this.cornerNormals?.[faceIndex] || [n, n, n];
-        const [shadeA, shadeB, shadeC] = corners.map(light);
-        const inverse = 1 / denominator;
-        for (let y = minY; y <= maxY; y += 1) {
-          for (let x = minX; x <= maxX; x += 1) {
-            const first = ((b[1] - c[1]) * (x + 0.5 - c[0]) + (c[0] - b[0]) * (y + 0.5 - c[1])) * inverse;
-            const second = ((c[1] - a[1]) * (x + 0.5 - c[0]) + (a[0] - c[0]) * (y + 0.5 - c[1])) * inverse;
-            const third = 1 - first - second;
-            if (first < -1e-7 || second < -1e-7 || third < -1e-7) continue;
-            const depth = first * a[2] + second * b[2] + third * c[2];
-            const index = y * pixelWidth + x;
-            if (depth <= depths[index]) continue;
-            depths[index] = depth;
-            const shade = first * shadeA + second * shadeB + third * shadeC;
-            const offset = index * 4;
-            pixels[offset] = Math.min(255, base[0] * shade); pixels[offset + 1] = Math.min(255, base[1] * shade);
-            pixels[offset + 2] = Math.min(255, base[2] * shade); pixels[offset + 3] = 255;
+      const rasterize = (mesh, meshPoints, colorOf, cornersOf, dim = 1) => {
+        for (let faceIndex = 0; faceIndex < mesh.faces.length; faceIndex += 1) {
+          const face = mesh.faces[faceIndex];
+          const [a, b, c] = face.map((index) => meshPoints[index]);
+          if (!a || !b || !c) continue;
+          const denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+          if (Math.abs(denominator) < 1e-9) continue;
+          const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])));
+          const maxX = Math.min(pixelWidth - 1, Math.ceil(Math.max(a[0], b[0], c[0])));
+          const minY = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1])));
+          const maxY = Math.min(pixelHeight - 1, Math.ceil(Math.max(a[1], b[1], c[1])));
+          if (minX > maxX || minY > maxY) continue;
+          const [pa, pb, pc] = face.map((index) => mesh.vertices[index]);
+          const u = pb.map((value, axis) => value - pa[axis]), v = pc.map((value, axis) => value - pa[axis]);
+          const normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+          const magnitude = Math.hypot(...normal) || 1;
+          const n = normal.map((value) => value / magnitude);
+          const base = colorOf(faceIndex, n, pa, pb, pc);
+          // Shade each corner from its smoothed normal and blend across the triangle.
+          const corners = cornersOf(faceIndex) || [n, n, n];
+          const [shadeA, shadeB, shadeC] = corners.map((corner) => light(corner) * dim);
+          const inverse = 1 / denominator;
+          for (let y = minY; y <= maxY; y += 1) {
+            for (let x = minX; x <= maxX; x += 1) {
+              const first = ((b[1] - c[1]) * (x + 0.5 - c[0]) + (c[0] - b[0]) * (y + 0.5 - c[1])) * inverse;
+              const second = ((c[1] - a[1]) * (x + 0.5 - c[0]) + (a[0] - c[0]) * (y + 0.5 - c[1])) * inverse;
+              const third = 1 - first - second;
+              if (first < -1e-7 || second < -1e-7 || third < -1e-7) continue;
+              const depth = first * a[2] + second * b[2] + third * c[2];
+              const index = y * pixelWidth + x;
+              if (depth <= depths[index]) continue;
+              depths[index] = depth;
+              const shade = first * shadeA + second * shadeB + third * shadeC;
+              const offset = index * 4;
+              pixels[offset] = Math.min(255, base[0] * shade); pixels[offset + 1] = Math.min(255, base[1] * shade);
+              pixels[offset + 2] = Math.min(255, base[2] * shade); pixels[offset + 3] = 255;
+            }
           }
         }
+      };
+      for (const plate of others) {
+        const colorOf = (faceIndex) => MeshViewer.partColor(plate.mesh, faceIndex);
+        rasterize(plate.mesh, projectPixels(plate.mesh.vertices, plate.shift), colorOf, (faceIndex) => plate.corners?.[faceIndex], 0.72);
       }
+      rasterize(this.mesh, points, (faceIndex, n, pa, pb, pc) => {
+        const overhangFace = this.showOverhangs && n[2] < -0.7072 && Math.min(pa[2], pb[2], pc[2]) > this.floor + 1e-6;
+        return overhangFace ? [240, 128, 80] : this.faceColor(faceIndex);
+      }, (faceIndex) => this.cornerNormals?.[faceIndex]);
       // Crease edges: depth-tested against the same buffer so hidden edges stay hidden.
       for (const [startIndex, endIndex] of this.featureEdges || []) {
         const a = points[startIndex], b = points[endIndex];
@@ -5615,8 +6021,9 @@
           const depth = a[2] + (b[2] - a[2]) * t;
           const index = y * pixelWidth + x;
           if (depth < depths[index] * (1 - 2e-4)) continue;
+          // Darken what is there, so outlines follow the part colour instead of a black line.
           const offset = index * 4;
-          pixels[offset] = 38; pixels[offset + 1] = 56; pixels[offset + 2] = 96; pixels[offset + 3] = 255;
+          pixels[offset] *= 0.62; pixels[offset + 1] *= 0.62; pixels[offset + 2] *= 0.62;
         }
       }
       ctx.putImageData(raster, 0, 0);
@@ -5625,7 +6032,7 @@
         // shaded, so it cannot be mistaken for the current CAD.
         ctx.save();
         ctx.setLineDash([5, 4]);
-        ctx.strokeStyle = "rgba(71, 85, 105, 0.7)";
+        ctx.strokeStyle = this.palette.previous;
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         for (const [start, end] of this.previous.edges) {
@@ -5636,29 +6043,46 @@
         ctx.restore();
       }
       if (this.showDimensions) this.drawDimensions(ctx, project);
-      const origin = [31, height - 31];
-      const axes = [["X", cy, se * sy, "#bb8391"], ["Y", -sy, se * cy, "#79a190"], ["Z", 0, ce, "#7898c8"]];
-      ctx.font = "9px sans-serif";
+      // Orientation gizmo: coloured axes in a small disc, labels in filled dots.
+      const origin = [38, height - 38];
+      ctx.save();
+      ctx.fillStyle = "rgba(20, 22, 25, 0.55)"; ctx.beginPath(); ctx.arc(origin[0], origin[1], 30, 0, Math.PI * 2); ctx.fill();
+      const axes = [["X", cy, se * sy, "#e5626f"], ["Y", -sy, se * cy, "#6cc28f"], ["Z", 0, ce, "#6b9bff"]];
+      ctx.font = "700 9px Pretendard, 'Apple SD Gothic Neo', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       axes.forEach(([label, x, y, color]) => {
         const end = [origin[0] + x * 20, origin[1] - y * 20];
-        ctx.strokeStyle = color; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(...origin); ctx.lineTo(...end); ctx.stroke();
-        ctx.fillStyle = color; ctx.fillText(label, end[0] + 3, end[1] - 3);
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(...origin); ctx.lineTo(...end); ctx.stroke();
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(end[0], end[1], 6.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#101114"; ctx.fillText(label, end[0], end[1] + 0.5);
       });
+      ctx.restore();
     }
   }
 
-  MeshViewer.prototype.drawBed = function drawBed(ctx, project, box) {
-    const bed = this.bed;
+  MeshViewer.DARK = { grid: "#565a62", edge: [24, 32, 52], previous: "rgba(220, 226, 236, 0.75)", bed: "#2f3237", bedOverflow: "#4a3029",
+    bedEdge: "#7d8593", bedGrid: "#464a52", volume: "#7c828d", label: "#c9ced6" };
+
+  MeshViewer.prototype.drawBed = function drawBed(ctx, project, box, options = {}) {
+    const bed = this.bed || { generic: true, width: box.x1 - box.x0, depth: box.y1 - box.y0, height: box.z1 - box.z0 };
     const polygon = (corners) => { ctx.beginPath(); corners.map(project).forEach((point, index) => (index ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1]))); ctx.closePath(); };
     const z = box.z0;
     ctx.save();
+    // A plate has thickness: draw its sides first so the top covers the far ones.
+    const thickness = Math.max(1.5, (box.x1 - box.x0) * 0.012);
+    const ring = [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]];
+    ctx.fillStyle = options.dim ? "#202226" : "#1b1d20";
+    ring.forEach(([x, y], index) => {
+      const [nx, ny] = ring[(index + 1) % 4];
+      polygon([[x, y, z], [nx, ny, z], [nx, ny, z - thickness], [x, y, z - thickness]]); ctx.fill();
+    });
     polygon([[box.x0, box.y0, z], [box.x1, box.y0, z], [box.x1, box.y1, z], [box.x0, box.y1, z]]);
     const size = this.size();
-    const overflow = size && (size[0] > bed.width || size[1] > bed.depth || size[2] > bed.height);
-    ctx.fillStyle = overflow ? "#f8e9e3" : "#e9eef6"; ctx.fill();
-    ctx.strokeStyle = overflow ? "#d0704a" : "#8ea0bb"; ctx.lineWidth = overflow ? 1.6 : 1.2; ctx.stroke();
+    const overflow = !options.dim && !bed.generic && size && (size[0] > bed.width || size[1] > bed.depth || size[2] > bed.height);
+    const palette = this.palette;
+    ctx.fillStyle = overflow ? palette.bedOverflow : palette.bed; ctx.fill();
+    ctx.strokeStyle = overflow ? "#d0704a" : palette.bedEdge; ctx.lineWidth = overflow ? 1.6 : 1.2; ctx.stroke();
     // 8 × 8 grid over the plate.
-    ctx.strokeStyle = "#d3dbe8"; ctx.lineWidth = 0.6; ctx.beginPath();
+    ctx.strokeStyle = palette.bedGrid; ctx.lineWidth = 0.6; ctx.beginPath();
     for (let index = 1; index < 8; index += 1) {
       const x = box.x0 + (box.x1 - box.x0) * index / 8, y = box.y0 + (box.y1 - box.y0) * index / 8;
       for (const [start, end] of [[[x, box.y0, z], [x, box.y1, z]], [[box.x0, y, z], [box.x1, y, z]]]) {
@@ -5666,6 +6090,7 @@
       }
     }
     ctx.stroke();
+    if (options.current) { ctx.strokeStyle = "#5b8cff"; ctx.lineWidth = 1.6; polygon([[box.x0, box.y0, z], [box.x1, box.y0, z], [box.x1, box.y1, z], [box.x0, box.y1, z]]); ctx.stroke(); }
     for (const [ex0, ey0, ex1, ey1] of bed.exclude || []) {
       polygon([[box.x0 + ex0, box.y0 + ey0, z], [box.x0 + ex1, box.y0 + ey0, z], [box.x0 + ex1, box.y0 + ey1, z], [box.x0 + ex0, box.y0 + ey1, z]]);
       ctx.fillStyle = "#f3c6b6"; ctx.fill();
@@ -5680,7 +6105,8 @@
     // Build-volume corners up to the framed height, drawn first so the model covers them.
     // The full height is outlined only when it is inside the frame.
     const top = Math.min(box.z1, this.center[2] + this.extents[2] / 2);
-    ctx.setLineDash([3, 5]); ctx.strokeStyle = "#b7c3d6"; ctx.lineWidth = 0.9; ctx.beginPath();
+    if (bed.generic) { this.drawPlateLabel(ctx, project, box, options); ctx.restore(); return; }
+    ctx.setLineDash([3, 5]); ctx.strokeStyle = palette.volume; ctx.lineWidth = 0.9; ctx.beginPath();
     for (const [x, y] of [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]]) {
       const a = project([x, y, z]), b = project([x, y, top]); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
     }
@@ -5693,11 +6119,28 @@
     const corners = [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]].map(([x, y]) => project([x, y, z]));
     const far = corners.reduce((best, point) => (point[1] < best[1] ? point : best));
     ctx.font = "600 10px Pretendard, 'Apple SD Gothic Neo', sans-serif";
-    ctx.fillStyle = "#5b6f8f";
+    ctx.fillStyle = palette.label;
     const text = `${bed.vendor} ${bed.name} · ${bed.width} × ${bed.depth} mm`;
     const textWidth = ctx.measureText(text).width;
     const canvasWidth = this.canvas.clientWidth || 0;
     ctx.fillText(text, Math.max(6, Math.min(far[0] - textWidth / 2, canvasWidth - textWidth - 6)), Math.max(58, far[1] - 8));
+    this.drawPlateLabel(ctx, project, box, options);
+    ctx.restore();
+  };
+
+  MeshViewer.prototype.drawPlateLabel = function drawPlateLabel(ctx, project, box, options) {
+    // The plate number sits at the near corner like a plate tag; the current plate is blue.
+    if (!options.label) return;
+    const corners = MeshViewer.boxCorners(box).map(project);
+    const near = corners.reduce((best, point) => (point[1] > best[1] ? point : best));
+    ctx.save();
+    ctx.font = "700 11px Pretendard, 'Apple SD Gothic Neo', sans-serif";
+    const width = ctx.measureText(options.label).width + 14;
+    ctx.fillStyle = options.current ? "#5b8cff" : "#3a3d43";
+    ctx.beginPath(); ctx.roundRect(near[0] - width / 2, near[1] + 6, width, 20, 6); ctx.fill();
+    ctx.fillStyle = options.current ? "#ffffff" : "#c9ced6";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(options.label, near[0], near[1] + 16.5);
     ctx.restore();
   };
 
@@ -5746,6 +6189,66 @@
   };
 
   $("journey-next-button").addEventListener("click", goToJourneyTarget);
+
+  // Studio tabs: 준비 (the model), 시작점 (starting points) and 출력 · 기록 (preparation,
+  // sending and the outcome). Code that scrolls to or focuses something in another tab, and
+  // in-page links, open that tab first, so every existing flow keeps reaching its target.
+  function setStudioTab(name, focus = false) {
+    document.querySelectorAll("[data-studio-tab]").forEach((tab) => {
+      const on = tab.dataset.studioTab === name;
+      tab.classList.toggle("is-current", on);
+      tab.setAttribute("aria-selected", String(on));
+      tab.tabIndex = on ? 0 : -1;
+      if (on && focus) tab.focus();
+    });
+    document.querySelectorAll("[data-studio-panel]").forEach((panel) => { panel.hidden = panel.dataset.studioPanel !== name; });
+    updatePrintTabDot();
+    if (name === "prepare") viewer.requestDraw();
+  }
+
+  function revealStudioPanel(element) {
+    const panel = element?.closest?.("[data-studio-panel]");
+    if (panel?.hidden) setStudioTab(panel.dataset.studioPanel);
+  }
+
+  function updatePrintTabDot() {
+    // A dot on 출력 · 기록 when sending or an outcome record is waiting there.
+    const ready = !$("print-send-card").hidden || !$("outcome-card").hidden;
+    $("studio-tab-print-dot").hidden = !ready || !$("studio-panel-print").hidden;
+  }
+
+  for (const [proto, method] of [[Element.prototype, "scrollIntoView"], [HTMLElement.prototype, "focus"]]) {
+    const original = proto[method];
+    proto[method] = function revealing(...args) { revealStudioPanel(this); return original.apply(this, args); };
+  }
+  function setStudioHealth(open) {
+    document.body.classList.toggle("studio-health-open", open);
+    $("studio-health-toggle").setAttribute("aria-expanded", String(open));
+  }
+  $("studio-health-toggle").addEventListener("click", () => setStudioHealth(!document.body.classList.contains("studio-health-open")));
+  // Like any popover: a click elsewhere or Escape closes it.
+  document.addEventListener("pointerdown", (event) => {
+    if (document.body.classList.contains("studio-health-open") && !event.target.closest("#local-runtime, #studio-health-toggle")) setStudioHealth(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.body.classList.contains("studio-health-open")) { setStudioHealth(false); $("studio-health-toggle").focus(); }
+  });
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest?.('a[href^="#"]');
+    if (link && link.getAttribute("href").length > 1) revealStudioPanel(document.getElementById(link.getAttribute("href").slice(1)));
+  }, true);
+  document.querySelectorAll("[data-studio-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => setStudioTab(tab.dataset.studioTab));
+    tab.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      const tabs = [...document.querySelectorAll("[data-studio-tab]")];
+      const next = tabs[(tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      event.preventDefault();
+      setStudioTab(next.dataset.studioTab, true);
+    });
+  });
+  new MutationObserver(updatePrintTabDot).observe($("print-send-card"), { attributes: true, attributeFilter: ["hidden"] });
+  new MutationObserver(updatePrintTabDot).observe($("outcome-card"), { attributes: true, attributeFilter: ["hidden"] });
   document.querySelectorAll("[data-history-filter]").forEach((button) => button.addEventListener("click", () => setHistoryFilter(button.dataset.historyFilter)));
   renderJourney();
   $("download-links").addEventListener("click", (event) => {
@@ -5766,6 +6269,9 @@
   $("zoom-out").addEventListener("click", () => viewer.changeZoom(1 / 1.15));
   $("reset-view").addEventListener("click", () => viewer.reset());
   viewer.afterMesh = () => updateBedFit();
+  viewer.onPlateClick = (slot) => switchPlate(plates.current + slot);
+  $("plate-add").addEventListener("click", () => addPlate());
+  document.querySelectorAll("[data-example-set]").forEach((button) => button.addEventListener("click", () => loadExamples(button.dataset.exampleSet)));
   $("preview-bed").addEventListener("change", (event) => chooseBed(event.target.value));
   $("preview-save").addEventListener("click", savePreviewImage);
 
@@ -6752,7 +7258,10 @@
       $("provider-note").textContent = state.provider.configured
         ? `LLM ${state.provider.model || "모델"} 설정이 있습니다. 실제 연결과 응답은 요청 시 확인합니다. 기본은 템플릿 모드입니다.`
         : "LLM은 아직 설정되지 않았습니다. 템플릿 모드로 지원하는 물건과 치수를 해석할 수 있습니다.";
-      if (!state.template && state.templates.length) applyDraft(state.templates[0].id);
+      if (!state.template && state.templates.length) {
+        applyDraft(state.templates[0].id);
+        if (typeof restorePlates === "function") restorePlates();
+      }
       else renderTemplates();
       setDiscoveryCatalog(data.discovery, Boolean(state.discovery));
       setStoreGuide(data.store_guide);

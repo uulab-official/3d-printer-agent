@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // Real server and storage. Only the generated job is marked as sliced with a 12.5 g
 // slicer estimate (synthetic; the browser CI has no Bambu Studio), so the outcome card

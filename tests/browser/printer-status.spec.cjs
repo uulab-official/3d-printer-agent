@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // The first case uses the real server and a closed loopback port: it proves the
 // separate "unreachable" state, not a printer connection. The second case labels

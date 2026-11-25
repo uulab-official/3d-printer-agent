@@ -216,6 +216,7 @@ _ALIASES = {
     'lean_angle':r'(?:등판\s*)?(?:각도|기울기)|lean\s*angle',
     'device_thickness':r'(?:기기|폰|휴대폰|스마트폰|케이스)\s*(?:포함\s*)?두께|device\s*thickness',
     'lip_height':r'앞\s*턱(?:\s*높이)?|끝\s*턱(?:\s*높이)?|턱\s*높이|lip\s*height',
+    'corner_radius':r'모서리(?:\s*(?:반경|반지름|둥글기|라운드))?|둥글기|corner\s*radius',
 }
 _ANGLES = {'lean_angle', 'top_tilt'}
 _NUMBER = r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)'

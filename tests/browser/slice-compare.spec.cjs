@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // The browser CI has no Bambu Studio: the environment flag and the comparison answer are
 // labelled synthetic responses. CAD generation and the settings JSON edit are real.

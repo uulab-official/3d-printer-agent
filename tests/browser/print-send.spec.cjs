@@ -1,4 +1,7 @@
 const { test, expect } = require('@playwright/test');
+const { installStudioTabs } = require('./studio-tabs.cjs');
+
+test.beforeEach(({ page }) => installStudioTabs(page));
 
 // The send card in a real browser. CAD generation is real; the browser CI has no
 // Bambu Studio and no printer, so the slice marker and printer answers below are

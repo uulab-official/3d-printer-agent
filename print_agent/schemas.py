@@ -3,12 +3,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 TEMPLATE_SPECIFIC_FIELDS = {
-    'tray': {'dividers'},
+    'tray': {'dividers','corner_radius'},
     'cable_comb': {'slots','cable_diameter','fit_clearance'},
     'magnet_frame': {'inset_diameter','inset_depth','fit_clearance'},
-    'phone_stand': {'lean_angle','device_thickness','lip_height','fit_clearance'},
+    'phone_stand': {'lean_angle','device_thickness','lip_height','fit_clearance','corner_radius'},
     'name_tag': {'text','text_size','text_depth','hole_diameter'},
-    'wall_hook': {'hole_diameter','lip_height'},
+    'wall_hook': {'hole_diameter','lip_height','corner_radius'},
     'keycap': {'text','text_size','text_depth','fit_clearance','key_units','top_tilt'},
     'cup': {'drain_hole'},
 }
@@ -33,10 +33,10 @@ KEY_UNITS = (1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.75, 6.25, 7.0)
 # Fields added after v0.10. They appear in canonical parameters only for the
 # templates that use them, so earlier jobs, recipes and review hashes keep the
 # exact same eleven-field shape.
-LATER_FIELDS = {'lean_angle','device_thickness','lip_height','text','text_size','text_depth','hole_diameter','key_units','drain_hole','top_tilt'}
+LATER_FIELDS = {'lean_angle','device_thickness','lip_height','text','text_size','text_depth','hole_diameter','key_units','drain_hole','top_tilt','corner_radius'}
 # Numbers added to an existing template. Like an unchosen colour, the neutral value (0) is
 # omitted from canonical parameters so earlier jobs of that template keep their exact shape.
-OPTIONAL_NUMBERS = {'top_tilt'}
+OPTIONAL_NUMBERS = {'top_tilt','corner_radius'}
 # Colours are optional for every template; an unchosen colour ('') is omitted from
 # canonical parameters, so models without colours keep their earlier shape and hashes.
 
@@ -67,6 +67,9 @@ class GeometryRequest(BaseModel):
     # Keycap row sculpt: the top tilts about the left-right axis. Positive faces the typist
     # (like upper-row keys), negative faces away (like lower rows). 0 is a flat top.
     top_tilt: float = Field(default=0, ge=-12, le=12)
+    # Rounded edges. A tray rounds its four outer corners (the cavity follows); a wall hook and a
+    # phone stand round the edges of their side profile. 0 keeps the earlier sharp shape.
+    corner_radius: float = Field(default=0, ge=0, le=20)
     color: str = Field(default="", max_length=16)
     accent_color: str = Field(default="", max_length=16)
 
