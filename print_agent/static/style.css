@@ -1284,7 +1284,7 @@ body:has(#view-models:not([hidden])) main > .replacement-confirm { margin: 10px 
   .studio-panel .parameter-grid { grid-template-columns: 1fr; }
   .viewport-bottom { left: 10px; right: 10px; max-width: none; align-items: stretch; }
   .studio-viewport .preview-bed label { flex-wrap: wrap; white-space: normal; }
-  .studio-viewport .preview-footer > :last-child { display: none; }
+  .studio-viewport .preview-footer > :last-child:not(:only-child) { display: none; }
 }
 
 /* Studio craft pass: icon toolbar, a dense property list and a lit viewport. Sizes follow a
@@ -1439,4 +1439,37 @@ body:has(#view-models:not([hidden])) .main-footer { display: none; }
 body.studio-health-open:has(#view-models:not([hidden])) main > .workspace-health.is-quiet { display: block; position: fixed; top: 48px; right: 12px; z-index: 60; width: min(520px, calc(100vw - 24px)); max-height: calc(100vh - 64px); overflow: auto; margin: 0; padding: 12px 14px; border-radius: 12px; box-shadow: 0 18px 40px #00000066; }
 @media (max-width: 940px) {
   .studio-welcome { position: absolute; top: 58px; left: 10px; right: 10px; bottom: auto; max-width: none; margin: 0; }
+}
+
+/* Clear viewport: the printer choice and the first-run card live in the side panel, and the
+   viewport keeps only one-line chips (plate fit and the preview caption). */
+.studio-panel .studio-welcome { position: static; inset: auto; max-width: none; margin: 10px 10px 0; padding: 12px 13px; border-radius: 10px; background: linear-gradient(160deg, #2c3550, #24272d); border-color: #3f4a66; box-shadow: none; backdrop-filter: none; }
+.studio-panel .studio-welcome h2 { font-size: 12.5px; }
+.studio-panel .studio-welcome p { margin-top: 4px; font-size: 11.5px; line-height: 1.55; color: #b9c0cc; }
+.studio-panel .studio-welcome .button-row { margin-top: 9px; gap: 6px; }
+.section-note { font-size: 10.5px; color: #8a919c; }
+.studio-printer .studio-section-body.preview-bed { display: block; padding: 10px 14px 12px; }
+.printer-pick { position: relative; display: flex; align-items: center; margin: 0; }
+.printer-pick svg { position: absolute; left: 10px; width: 16px; height: 16px; fill: none; stroke: #9fb7f0; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.printer-pick select { width: 100%; margin: 0; padding: 7px 10px 7px 34px; font-size: 12px; font-weight: 600; }
+.studio-printer .preview-bed-legend { margin: 7px 0 0; font-size: 10.5px; line-height: 1.5; color: #8a919c; }
+.viewport-bottom { gap: 6px; max-width: min(560px, calc(100% - 150px)); }
+.studio-viewport .viewport-chip { display: flex; align-items: center; gap: 8px; max-width: 100%; margin: 0; padding: 5px 11px; border: 1px solid #3d4047; border-radius: 999px; background: #1f2124e6; backdrop-filter: blur(10px); font-size: 11px; line-height: 1.5; color: #d0d5dd; }
+.studio-viewport .viewport-chip, .studio-viewport .viewport-chip > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.studio-viewport .preview-bed-fit.viewport-chip { display: block; padding-left: 24px; position: relative; cursor: default; }
+.studio-viewport .preview-bed-fit.viewport-chip:empty { display: none; }
+.studio-viewport .preview-bed-fit.viewport-chip::before { content: ""; position: absolute; left: 10px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: #8a919c; }
+.studio-viewport .preview-bed-fit.is-success::before { background: var(--green); }
+.studio-viewport .preview-bed-fit.is-warning::before { background: #f3c068; }
+.studio-viewport .preview-bed-fit.is-error::before { background: #ea9471; }
+.studio-viewport .preview-bed-fit.is-success { color: #d0d5dd; }
+.studio-viewport .preview-bed-fit.viewport-chip:hover, .studio-viewport .preview-bed-fit.viewport-chip:focus-visible { white-space: normal; border-radius: 12px; }
+.studio-viewport .preview-footer.viewport-chip > :first-child { color: #c3c8d0; }
+@media (max-width: 760px) {
+  .viewport-bottom { max-width: none; }
+  /* On a phone the chips go under the view instead of over the plate tag and axis gizmo. */
+  .studio-viewport { display: flex; flex-direction: column; height: auto; min-height: 0; }
+  .studio-viewport #preview-stage { position: relative; inset: auto; flex: none; height: min(62vh, 500px); min-height: 320px; }
+  .viewport-bottom { position: static; gap: 4px; padding: 8px 10px 10px; }
+  .studio-viewport .viewport-chip { padding-top: 3px; padding-bottom: 3px; font-size: 10.5px; }
 }

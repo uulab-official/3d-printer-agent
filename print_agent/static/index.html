@@ -106,6 +106,17 @@
           </header>
           <div id="studio-panel-prepare" class="studio" role="tabpanel" aria-labelledby="studio-tab-prepare" data-studio-panel="prepare">
             <aside class="studio-panel" aria-label="모델 설정">
+              <section id="welcome" class="welcome studio-welcome" aria-labelledby="welcome-heading" hidden>
+              <div><h2 id="welcome-heading">3D 프린팅이 처음이어도 괜찮아요</h2><p>만들 것 고르기부터 결과 기록까지 다섯 단계로 진행합니다. 모르는 말은 제목 아래 “○○ 뜻”을 누르거나 용어 사전에서 찾아보세요.</p></div>
+              <div class="button-row"><button id="welcome-guide" class="button button-primary" type="button">단계 안내 보기</button><button id="welcome-dismiss" class="button button-secondary" type="button">안내 닫기</button></div>
+              </section>
+              <section class="studio-section studio-printer" aria-labelledby="printer-heading">
+                <div class="studio-section-head"><h2 id="printer-heading">프린터</h2><span class="section-note">출력판 보기용</span></div>
+                <div class="studio-section-body preview-bed">
+                  <label class="printer-pick" for="preview-bed"><span class="sr-only">출력판에 놓아 보기</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8V3h10v5 M4 8h12a1 1 0 0 1 1 1v5h-3v3H6v-3H3V9a1 1 0 0 1 1-1z M7 13h6"/></svg><select id="preview-bed"><option value="">출력판 표시 안 함</option></select></label>
+                  <p id="preview-bed-legend" class="preview-bed-legend"></p>
+                </div>
+              </section>
               <section class="studio-section studio-plates" aria-labelledby="plates-heading">
                 <div class="studio-section-head"><h2 id="plates-heading">플레이트 <span id="plate-count" class="plate-count">1개</span></h2><button id="plate-add" class="text-button" type="button" disabled>+ 플레이트 추가</button></div>
                 <div class="studio-section-body"><div id="plate-list" class="plate-list" role="group" aria-label="플레이트 선택"></div><div class="plate-examples"><span>예시로 채우기</span><button class="button button-secondary" type="button" data-example-set="keycaps">키캡 세트 6</button><button class="button button-secondary" type="button" data-example-set="home">생활 소품 7</button></div><p class="field-help plate-help">플레이트마다 템플릿과 치수를 따로 둡니다. 뷰포트의 다른 플레이트를 눌러도 열립니다. 파일은 열린 플레이트에서 만듭니다.</p></div>
@@ -176,7 +187,7 @@
             <section class="studio-viewport preview-card" aria-labelledby="preview-heading">
               <h2 id="preview-heading" class="sr-only">모델 미리보기</h2>
               <div id="preview-stage" class="preview-stage">
-                <canvas id="model-canvas" tabindex="0" aria-label="생성한 3D 모델. 방향키로 회전하고 더하기와 빼기 키로 확대하거나 축소합니다." hidden></canvas>
+                <canvas id="model-canvas" tabindex="0" aria-label="생성한 3D 모델. 방향키로 회전하고 더하기와 빼기 키로 확대하거나 축소합니다." title="드래그로 회전 · 휠로 확대" hidden></canvas>
                 <div id="preview-empty" class="preview-empty"><span class="empty-mark" aria-hidden="true">+</span><h3>첫 모델을 기다리고 있어요</h3><p>치수를 확인하고 모델을 생성하면<br>실제 CAD 형상이 여기에 나타납니다.</p></div>
                 <div class="viewport-toolbar">
                   <div id="preview-views" class="preview-views" role="group" aria-label="미리보기 시점">
@@ -202,18 +213,10 @@
                 </div>
               </div>
               <div class="viewport-overlay viewport-bottom">
-                <div class="preview-bed">
-                <label for="preview-bed">출력판에 놓아 보기<select id="preview-bed"><option value="">출력판 표시 안 함</option></select></label>
-                <p id="preview-bed-fit" class="preview-bed-fit" role="status"></p>
-                <p id="preview-bed-legend" class="preview-bed-legend"></p>
-              </div>
+                <p id="preview-bed-fit" class="preview-bed-fit viewport-chip" role="status" tabindex="0"></p>
                 <ul id="preview-colors" class="preview-colors" aria-label="모델 색" hidden></ul>
-                <div class="preview-footer"><span id="preview-caption">생성된 메시만 표시합니다.</span><span>드래그로 회전 · 휠로 확대</span></div>
+                <div class="preview-footer viewport-chip"><span id="preview-caption">생성된 메시만 표시합니다.</span></div>
               </div>
-              <section id="welcome" class="welcome studio-welcome" aria-labelledby="welcome-heading" hidden>
-          <div><h2 id="welcome-heading">3D 프린팅이 처음이어도 괜찮아요</h2><p>만들 것 고르기부터 결과 기록까지 다섯 단계로 진행합니다. 모르는 말은 제목 아래 “○○ 뜻”을 누르거나 용어 사전에서 찾아보세요.</p></div>
-          <div class="button-row"><button id="welcome-guide" class="button button-primary" type="button">단계 안내 보기</button><button id="welcome-dismiss" class="button button-secondary" type="button">안내 닫기</button></div>
-        </section>
             </section>
             <section id="model-result" class="card result-card studio-result" aria-labelledby="result-heading" hidden>
               <div class="card-heading"><div><span class="step-label">생성한 파일</span><h2 id="result-heading">모델 파일이 준비됐어요</h2></div><span class="badge badge-warning">실물 출력 미검증</span></div>

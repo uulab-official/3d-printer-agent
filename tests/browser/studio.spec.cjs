@@ -116,3 +116,31 @@ test('studio tabs swap the workspace and links to another tab open it', async ({
   if (!isMobile) expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
 });
 
+
+test('the viewport stays clear: the printer and the first-run card sit in the panel and the plate fit is one chip', async ({ page, isMobile }) => {
+  // Layout only: the plate is a recorded size for viewing, not a slice or a printer connection.
+  await page.evaluate(() => { try { localStorage.removeItem('printAgent.welcomeDismissed'); } catch {} });
+  await page.reload();
+  await expect(page.locator('#generate-button')).toBeEnabled();
+  const panel = page.locator('.studio-panel');
+  await expect(panel.locator('#welcome')).toBeVisible();
+  await expect(panel.locator('#preview-bed')).toBeVisible();
+  await page.locator('#preview-bed').selectOption('bambu-n2s');
+  await expect(page.locator('#preview-bed-legend')).toContainText('출처:');
+  const fit = page.locator('#preview-bed-fit');
+  await expect(fit).toContainText('Bambu Lab A1 출력판(256 × 256 × 높이 256 mm)에 들어갑니다.', { timeout: 20_000 });
+  await expect(fit).toHaveClass(/viewport-chip/);
+  await expect(fit).toHaveClass(/is-success/);
+  // The whole sentence stays available as a tooltip and to assistive technology.
+  expect(await fit.getAttribute('title')).toContain('남는 공간');
+  await expect(page.locator('#preview-caption')).toHaveAttribute('title', /120 × 80 × 35 mm/);
+  await expect(page.locator('#preview-caption')).toBeVisible();
+  if (!isMobile) {
+    // Nothing but one-line chips at the bottom of the viewport; no card over the model.
+    const [stage, welcome, chip, caption] = await Promise.all(['#preview-stage', '#welcome', '#preview-bed-fit', '#preview-caption'].map(s => page.locator(s).boundingBox()));
+    expect(welcome.x + welcome.width).toBeLessThanOrEqual(stage.x + 1);
+    expect(chip.height).toBeLessThan(34);
+    expect(caption.height).toBeLessThan(24);
+    expect(chip.y).toBeGreaterThan(stage.y + stage.height * 0.8);
+  }
+});
