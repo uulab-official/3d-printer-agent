@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.44 turns the modeling studio into a full-window dark workspace (icon rail, section tabs, a left settings panel, a viewport filling the window and a right result panel) with plates (several drafts side by side, example sets of keycaps and household items), adds optional rounded edges for the tray, wall hook and phone stand, moves the whole app to one dark theme and gives the other seven screens a matching frame (a compact title row, a wide main column and a side panel that stays in view).
+Version 0.44 turns the modeling studio into a full-window dark workspace (icon rail, section tabs, a left settings panel, a viewport filling the window and a right result panel) with plates (several drafts side by side, example sets of keycaps and household items), adds optional rounded edges for the tray, wall hook and phone stand, moves the whole app to one dark theme and gives the other seven screens a matching frame (a compact title row, a wide main column and a side panel that stays in view). Published as [v0.44.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.44.0) on 2026-11-25 from `b795391`.
 
 Version 0.43 turns the model page into a modeling studio (a large central 3D view between a template list and the dimension panel) with a live mesh preview while the draft changes; the preview stores no job or file, and generating still produces and checks the real files. Published as [v0.43.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.43.0) on 2026-11-23 from `0ab1ef4`.
 
