@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.45 clears the modeling viewport: the printer (plate) choice and the first-run card move into the settings panel, and only one-line chips for the plate fit and the preview caption stay over the 3D view. Not yet published.
+Version 0.45 clears the modeling viewport: the printer (plate) choice and the first-run card move into the settings panel, and only one-line chips for the plate fit and the preview caption stay over the 3D view. Published as [v0.45.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.45.0) on 2026-11-26 from `d864073`.
 
 Version 0.44 turns the modeling studio into a full-window dark workspace (icon rail, section tabs, a left settings panel, a viewport filling the window and a right result panel) with plates (several drafts side by side, example sets of keycaps and household items), adds optional rounded edges for the tray, wall hook and phone stand, moves the whole app to one dark theme and gives the other seven screens a matching frame (a compact title row, a wide main column and a side panel that stays in view). Published as [v0.44.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.44.0) on 2026-11-25 from `b795391`.
 
