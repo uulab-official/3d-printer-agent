@@ -1438,7 +1438,7 @@
       $("preview-stage").classList.remove("is-stale");
       setBadge("preview-status", "실시간 미리보기 · 파일 생성 전", "info");
       const size = result.dimensions_mm || {};
-      $("preview-caption").textContent = `${["x", "y", "z"].map((axis) => numberFormat.format(size[axis])).join(" × ")} mm · 형상만 미리 본 것으로, 파일과 검증은 ‘CAD 모델 생성하기’에서 만듭니다.`;
+      $("preview-caption").textContent = `${["x", "y", "z"].map((axis) => numberFormat.format(size[axis])).join(" × ")} mm · 실시간 미리보기(파일은 ‘CAD 모델 생성하기’에서 만듭니다)`;
     } catch (error) {
       if (!current()) return;
       if (error.code === "resource_busy") { livePreview.timer = setTimeout(runLivePreview, 1500); return; }
@@ -6273,6 +6273,11 @@
   $("plate-add").addEventListener("click", () => addPlate());
   document.querySelectorAll("[data-example-set]").forEach((button) => button.addEventListener("click", () => loadExamples(button.dataset.exampleSet)));
   $("preview-bed").addEventListener("change", (event) => chooseBed(event.target.value));
+  // The viewport caption is one line; its whole text stays readable as a tooltip.
+  if (typeof MutationObserver === "function") {
+    const caption = $("preview-caption");
+    new MutationObserver(() => { caption.title = caption.textContent; }).observe(caption, { childList: true, characterData: true, subtree: true });
+  }
   $("preview-save").addEventListener("click", savePreviewImage);
 
   // ---------------------------------------------------------------------------
@@ -6836,9 +6841,10 @@
     $("preview-bed-legend").textContent = bedLegend(bed);
     const message = bedFitMessage(viewer.mesh ? viewer.size() : null, bed);
     const output = $("preview-bed-fit");
-    output.className = `preview-bed-fit${message ? ` is-${message.tone}` : ""}`;
+    output.className = `preview-bed-fit viewport-chip${message ? ` is-${message.tone}` : ""}`;
     output.textContent = message ? message.text : (bed ? "모델을 만들면 출력판에 들어가는지 알려 드립니다." : "");
-    output.title = bed ? `${bed.source}. ${state.printerBedScope || ""}` : "";
+    // The chip shows one line; the whole sentence and its source stay in the tooltip.
+    output.title = bed ? `${output.textContent}\n${bed.source}. ${state.printerBedScope || ""}`.trim() : "";
     // The imported-model check uses the same plate for the chosen placement.
     if (typeof importViewer !== "undefined") {
       const placed = bedFitMessage(importViewer.mesh ? importViewer.size() : null, bed);
