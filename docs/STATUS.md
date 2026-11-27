@@ -6,7 +6,7 @@ Canonical repository: [uulab-official/3d-printer-agent](https://github.com/uulab
 
 ## Implemented
 
-Version 0.46 adds undo and redo for the current draft (header buttons and ⌘/Ctrl+Z, ⇧⌘/Ctrl+Shift+Z): dimension, text and colour changes step back and forward through the same change path as typing, so the live preview follows and no older file looks current. Not yet published.
+Version 0.46 adds undo and redo for the current draft (header buttons and ⌘/Ctrl+Z, ⇧⌘/Ctrl+Shift+Z): dimension, text and colour changes step back and forward through the same change path as typing, so the live preview follows and no older file looks current. Published as [v0.46.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.46.0) on 2026-11-27 from `7a892bb`.
 
 Version 0.45 clears the modeling viewport: the printer (plate) choice and the first-run card move into the settings panel, and only one-line chips for the plate fit and the preview caption stay over the 3D view. Published as [v0.45.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.45.0) on 2026-11-26 from `d864073`.
 

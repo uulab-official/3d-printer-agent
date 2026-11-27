@@ -134,6 +134,14 @@
 
 자동 검사: Python **680개**, UI 상태 **198개**, Chromium **68개**(데스크톱·모바일) 통과.
 
+## 2026-11-27 v0.46.0 공개 릴리스
+
+[v0.46.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.46.0)을 2026-11-27 05:55:34 UTC에 `7a892bb`에서 게시했습니다(PR #46, 스튜디오 초안 되돌리기·다시 하기).
+[앱 CI](https://github.com/uulab-official/3d-printer-agent/actions/runs/45947074909) Python **880개**·컨트롤러 **232개**·Chromium **156개**(버튼·단축키 되돌리기와 다시 하기, 새 수정 시 다시 하기 기록 삭제, 입력칸 안 단축키 비가로채기, 템플릿 변경 시 새 기록 포함),
+[설치 패키지](https://github.com/uulab-official/3d-printer-agent/actions/runs/45947075365) 세 OS 각 **414개**, [Native](https://github.com/uulab-official/3d-printer-agent/actions/runs/45947074920)가 모두 실행 차수 1로 통과했고, [승격 실행](https://github.com/uulab-official/3d-printer-agent/actions/runs/45948600310)도 차수 1에
+게시했습니다. 공개 자산 7개를 인증 없이 내려받아 wheel(415,490바이트, `6cf7064151d442d2…`)이 `SHA256SUMS`·영수증과 같고, 근거 JSON의 보고서 해시·소스 커밋이
+내려받은 보고서·tag와 같으며 보고서가 모두 통과 상태임을 확인했습니다. 화면 동작 변경이며 슬라이스 결과와 실물 출력 검증이 아닙니다.
+
 ## 2026-11-26 v0.45.0 공개 릴리스
 
 [v0.45.0](https://github.com/uulab-official/3d-printer-agent/releases/tag/v0.45.0)을 2026-11-26 00:13:58 UTC에 `d864073`에서 게시했습니다(PR #45, 뷰포트 정리·프린터와 첫 안내를 설정 패널로 이동·한 줄 칩).
