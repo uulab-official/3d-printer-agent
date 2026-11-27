@@ -144,3 +144,57 @@ test('the viewport stays clear: the printer and the first-run card sit in the pa
     expect(chip.y).toBeGreaterThan(stage.y + stage.height * 0.8);
   }
 });
+
+test('dimension changes undo and redo like a design tool, and a new template starts a new history', async ({ page }) => {
+  // The draft only: restored values go through the same change path, so the live preview follows them.
+  const width = page.locator('#parameter-width'), depth = page.locator('#parameter-depth');
+  const undo = page.locator('#draft-undo'), redo = page.locator('#draft-redo');
+  await expect(page.locator('#preview-caption')).toContainText('120 × 80 × 35 mm', { timeout: 20_000 });
+  await expect(undo).toBeDisabled();
+  await expect(redo).toBeDisabled();
+
+  await width.fill('150');
+  await expect(undo).toBeEnabled();
+  await expect(redo).toBeDisabled();
+  await page.waitForTimeout(700);  // one history step per pause
+  const more = page.locator('[data-step-for="depth"][data-direction="1"]');
+  await more.click();
+  await more.click();
+  await expect(depth).toHaveValue('82');
+  await page.waitForTimeout(700);
+
+  await page.keyboard.press('ControlOrMeta+z');  // focus is on the +/- button, not a text box
+  await expect(depth).toHaveValue('80');
+  await expect(width).toHaveValue('150');
+  await expect(redo).toBeEnabled();
+  await undo.click();
+  await expect(width).toHaveValue('120');
+  await expect(undo).toBeDisabled();
+  await expect(page.locator('#preview-caption')).toContainText('120 × 80 × 35 mm', { timeout: 20_000 });
+
+  await page.keyboard.press('ControlOrMeta+Shift+z');
+  await expect(width).toHaveValue('150');
+  await redo.click();
+  await expect(depth).toHaveValue('82');
+  await expect(redo).toBeDisabled();
+  await expect(page.locator('#preview-caption')).toContainText('150 × 82 × 35 mm', { timeout: 20_000 });
+
+  // A new edit after an undo drops the redo branch.
+  await undo.click();
+  await expect(depth).toHaveValue('80');
+  await width.fill('140');
+  await expect(redo).toBeDisabled();
+
+  // Inside a number box the browser's own undo applies; the shortcut does not jump the draft.
+  await width.focus();
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(depth).toHaveValue('80');
+
+  // Another template is a new draft with its own history.
+  await page.locator('.template-card[data-template="magnet_frame"]').click();
+  const confirm = page.locator('#model-confirm-replace');
+  if (await confirm.isVisible()) await confirm.click();
+  await expect(page.locator('.template-card[data-template="magnet_frame"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(undo).toBeDisabled();
+  await expect(redo).toBeDisabled();
+});

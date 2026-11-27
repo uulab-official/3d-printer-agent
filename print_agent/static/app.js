@@ -258,6 +258,7 @@
     $("model-confirm-replace").disabled = busy || !state.modelReplacement;
     $("model-cancel-replace").disabled = busy;
     document.querySelectorAll(".plate-open, .plate-remove, [data-example-set]").forEach((control) => { control.disabled = busy; });
+    if (typeof renderDraftHistory === "function") renderDraftHistory();
     if ($("plate-add")) $("plate-add").disabled = busy || !state.template || (typeof plates === "object" && plates.list.length >= MAX_PLATES);
   }
 
@@ -1332,6 +1333,7 @@
     }
     renderTemplates();
     updateWorkflowControls();
+    if (typeof resetDraftHistory === "function") resetDraftHistory();
     if (typeof livePreviewDraftChanged === "function") livePreviewDraftChanged();
     if (typeof platesDraftChanged === "function") platesDraftChanged();
   }
@@ -1355,6 +1357,109 @@
   $("paste-parameters").addEventListener("click", openPastePanel);
   $("paste-apply").addEventListener("click", applyPastedParameters);
   $("paste-cancel").addEventListener("click", () => { $("paste-panel").hidden = true; });
+
+  // Draft history: undo/redo of the current draft's field values, like a design tool.
+  // It covers one draft (template); choosing another template, plate or plan starts a new
+  // history. Restoring goes through the same change path as typing, so an old preview or
+  // file never looks current for restored values.
+  const DRAFT_HISTORY_LIMIT = 100;
+  // var: updateWorkflowControls can run before this line during start-up.
+  var draftHistory = { template: null, entries: [], index: -1, timer: null, restoring: false };
+
+  function draftFieldValues() {
+    const values = {};
+    for (const input of document.querySelectorAll("#model-form [data-parameter]")) values[input.dataset.parameter] = input.value;
+    return values;
+  }
+
+  function sameDraftValues(a, b) {
+    const keys = Object.keys(a || {});
+    return Boolean(b) && keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+  }
+
+  function renderDraftHistory() {
+    const undo = $("draft-undo"), redo = $("draft-redo");
+    if (!undo || !redo || !draftHistory) return;
+    const editable = Boolean(state.template) && draftHistory.template === state.template && !state.workflowBusy && !$("model-form").querySelector("[data-parameter]:disabled");
+    const pending = Boolean(draftHistory.timer);
+    undo.disabled = !editable || (draftHistory.index <= 0 && !pending);
+    redo.disabled = !editable || pending || draftHistory.index >= draftHistory.entries.length - 1;
+  }
+
+  function resetDraftHistory() {
+    clearTimeout(draftHistory.timer);
+    draftHistory.timer = null;
+    draftHistory.template = state.template;
+    draftHistory.entries = state.template ? [draftFieldValues()] : [];
+    draftHistory.index = draftHistory.entries.length - 1;
+    renderDraftHistory();
+  }
+
+  function commitPendingDraftHistory(render = true) {
+    if (!draftHistory.timer) return;
+    clearTimeout(draftHistory.timer);
+    draftHistory.timer = null;
+    if (draftHistory.template !== state.template) { if (render) renderDraftHistory(); return; }
+    const values = draftFieldValues();
+    if (sameDraftValues(values, draftHistory.entries[draftHistory.index])) { if (render) renderDraftHistory(); return; }
+    draftHistory.entries = draftHistory.entries.slice(0, draftHistory.index + 1);
+    draftHistory.entries.push(values);
+    if (draftHistory.entries.length > DRAFT_HISTORY_LIMIT) draftHistory.entries.shift();
+    draftHistory.index = draftHistory.entries.length - 1;
+    if (render) renderDraftHistory();
+  }
+
+  function draftHistoryChanged() {
+    if (draftHistory.restoring || draftHistory.template !== state.template) return;
+    clearTimeout(draftHistory.timer);
+    // One step per pause: a held +/- button or a slider drag becomes a single entry.
+    draftHistory.timer = setTimeout(() => commitPendingDraftHistory(), 500);
+    renderDraftHistory();
+  }
+
+  function restoreDraftValues(values) {
+    draftHistory.restoring = true;
+    try {
+      for (const [key, value] of Object.entries(values)) {
+        const input = $(`parameter-${key}`);
+        if (!input) continue;
+        if (COLOR_PARAMETERS.has(key)) { chooseColor(key, value); continue; }
+        input.value = value;
+        syncParameterSlider(key);
+      }
+      manualModelChanged();
+    } finally { draftHistory.restoring = false; }
+  }
+
+  function stepDraftHistory(direction) {
+    if (!state.template || state.workflowBusy || draftHistory.template !== state.template) return false;
+    if ($("model-form").querySelector("[data-parameter]:disabled")) return false;
+    commitPendingDraftHistory(false);
+    const next = draftHistory.index + direction;
+    if (next < 0 || next >= draftHistory.entries.length) { renderDraftHistory(); return false; }
+    draftHistory.index = next;
+    restoreDraftValues(draftHistory.entries[next]);
+    renderDraftHistory();
+    const label = direction < 0 ? "되돌렸습니다" : "다시 적용했습니다";
+    setBadge("preview-status", `치수 변경을 ${label}`, "neutral");
+    return true;
+  }
+
+  $("model-form").addEventListener("input", (event) => { if (event.target.dataset.parameter) draftHistoryChanged(); });
+  $("draft-undo").addEventListener("click", () => stepDraftHistory(-1));
+  $("draft-redo").addEventListener("click", () => stepDraftHistory(1));
+  document.addEventListener("keydown", (event) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+    const key = event.key.toLowerCase();
+    const redo = (key === "z" && event.shiftKey) || (key === "y" && event.ctrlKey && !event.metaKey && !event.shiftKey);
+    if (!(key === "z" || redo)) return;
+    // Text boxes keep their own undo; the studio must be the visible screen.
+    const target = event.target;
+    if (target?.closest?.("textarea, select, [contenteditable=''], [contenteditable='true']")) return;
+    if (target?.matches?.("input") && !["checkbox", "radio", "range", "button", "hidden"].includes(target.type)) return;
+    if ($("view-models").hidden || !$("model-form").getClientRects().length) return;
+    if (stepDraftHistory(redo ? 1 : -1)) event.preventDefault();
+  });
 
   $("reset-parameters").addEventListener("click", () => requestModelReplacement({ kind: "reset", template: state.template, title: "현재 템플릿의 기본 치수", button: $("reset-parameters") }));
   $("model-confirm-replace").addEventListener("click", confirmModelReplacement);

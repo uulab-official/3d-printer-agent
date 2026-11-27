@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.46.0 — 2026-11-26
+
+- **Undo and redo.** The studio header has 되돌리기 and 다시 하기 buttons, and ⌘/Ctrl+Z, ⇧⌘/Ctrl+Shift+Z (or Ctrl+Y) step through the current draft's dimension, text and colour changes. A pause ends a step, so a held − / + button or a slider drag is one step; an edit after an undo drops the redo branch; up to 100 steps are kept. Restored values go through the same change path as typing, so the live preview follows them and an older generated file never looks current. Choosing another template, plate, plan or pasted setting starts a new history. Inside a text or number box the browser's own undo still applies; the buttons are disabled while work is running.
+
 ## 0.45.0 — 2026-11-25
 
 - **A clear viewport.** Nothing covers the model any more. The printer choice moves out of the viewport into a 프린터 section at the top of the studio's settings panel, with the plate source underneath; the first-run welcome card sits at the top of that panel instead of floating over the 3D view. At the bottom of the viewport only two one-line chips remain: the plate fit with a coloured status dot (green fits, amber needs turning, orange too large) and the preview caption, which is shorter. Their whole text is a tooltip (and the fit sentence expands on hover or keyboard focus); the rotate and zoom hint moved into the canvas tooltip. Every control, its id and its behaviour is unchanged.

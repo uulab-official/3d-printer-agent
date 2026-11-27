@@ -1473,3 +1473,9 @@ body.studio-health-open:has(#view-models:not([hidden])) main > .workspace-health
   .viewport-bottom { position: static; gap: 4px; padding: 8px 10px 10px; }
   .studio-viewport .viewport-chip { padding-top: 3px; padding-bottom: 3px; font-size: 10.5px; }
 }
+
+/* Draft history: undo/redo of the current draft's values, next to the other studio actions. */
+.studio-history { display: flex; gap: 2px; padding-right: 8px; border-right: 1px solid #34373c; }
+.studio-history svg { stroke-linejoin: round; }
+.studio-icon-button:disabled { opacity: .35; cursor: default; background: transparent; color: #b9bec7; }
+.studio-icon-button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
